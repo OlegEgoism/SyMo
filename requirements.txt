@@ -1,0 +1,4 @@
+psutil==5.9.8
+pycairo==1.26.0
+PyGObject==3.48.2
+PyGObject-stubs==2.11.0
