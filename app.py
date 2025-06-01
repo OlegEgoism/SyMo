@@ -27,8 +27,7 @@ LANGUAGES = {
         'apply_label': "Применить",
         'cancel_label': "Отмена",
         'download_log': " Скачать ",
-        'language_label': "Язык интерфейса",
-        'language': "Язык интерфейса",
+        'language': "Язык",
         'language_name': "Русский",
         'enable_logging': "Логирование"
     },
@@ -46,8 +45,7 @@ LANGUAGES = {
         'apply_label': "Apply",
         'cancel_label': "Cancel",
         'download_log': "Download",
-        'language_label': "Interface Language",
-        'language': "Interface Language",
+        'language': "Language",
         'language_name': "English",
         'enable_logging': "Enable logging"
     },
@@ -65,8 +63,7 @@ LANGUAGES = {
         'apply_label': "    应用    ",
         'cancel_label': "取消",
         'download_log': "下载日志",
-        'language_label': "界面语言",
-        'language': "界面语言",
+        'language': "语言",
         'language_name': "中文",
         'enable_logging': "启用日志记录"
     },
@@ -84,7 +81,6 @@ LANGUAGES = {
         'apply_label': "Übernehmen",
         'cancel_label': "Abbrechen",
         'download_log': "Herunterladen",
-        'language_label': "Sprache",
         'language': "Sprache",
         'language_name': "Deutsch",
         'enable_logging': "Protokolle"
@@ -206,12 +202,6 @@ class SettingsDialog(Gtk.Dialog):
 
         box.add(logging_box)
 
-        separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        separator.set_margin_top(4)
-        box.add(separator)
-
-        # ВНИМАНИЕ: выбор языка удалён из диалога настроек по требованию
-
         self.show_all()
 
     def download_log_file(self, widget):
@@ -250,89 +240,75 @@ class SystemTrayApp:
 
         current_lang = self.visibility_settings.get('language', 'ru')
 
+        self.create_menu()
         self.prev_net_data = {
             'recv': psutil.net_io_counters().bytes_recv,
             'sent': psutil.net_io_counters().bytes_sent,
             'time': time.time()
         }
 
-        self.create_menu()
-
     def create_menu(self):
         """Создать или воссоздать меню с текущим языком"""
         self.menu = Gtk.Menu()
 
-        # Создаём пункты меню заново каждый раз
-        cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
-        ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
-        swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
-        disk_item = Gtk.MenuItem(label=f"{tr('disk_loading')}: N/A")
-        net_item = Gtk.MenuItem(label=f"{tr('lan_speed')}: N/A")
-        uptime_item = Gtk.MenuItem(label=f"{tr('uptime_label')}: N/A")
+        # Создаем элементы меню
+        self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
+        self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
+        self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
+        self.disk_item = Gtk.MenuItem(label=f"{tr('disk_loading')}: N/A")
+        self.net_item = Gtk.MenuItem(label=f"{tr('lan_speed')}: N/A")
+        self.uptime_item = Gtk.MenuItem(label=f"{tr('uptime_label')}: N/A")
 
-        separator = Gtk.SeparatorMenuItem()
-        settings_item = Gtk.MenuItem(label=tr('settings_label'))
-        quit_item = Gtk.MenuItem(label=tr('exit_app'))
+        # Разделители
+        self.main_separator = Gtk.SeparatorMenuItem()
+        self.exit_separator = Gtk.SeparatorMenuItem()  # Новый разделитель перед выходом
 
-        settings_item.connect("activate", self.show_settings)
-        quit_item.connect("activate", self.quit)
+        # Пункт настроек
+        self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
+        self.settings_item.connect("activate", self.show_settings)
 
-        # Добавляем пункты меню, учитывая видимость
-        if self.visibility_settings['cpu']:
-            self.menu.append(cpu_temp_item)
-        if self.visibility_settings['ram']:
-            self.menu.append(ram_item)
-        if self.visibility_settings['swap']:
-            self.menu.append(swap_item)
-        if self.visibility_settings['disk']:
-            self.menu.append(disk_item)
-        if self.visibility_settings['net']:
-            self.menu.append(net_item)
-        if self.visibility_settings['uptime']:
-            self.menu.append(uptime_item)
-
-        self.menu.append(separator)
-        self.menu.append(settings_item)
-
-        # Ветка выбора языка с радиокнопками
-        language_menu = Gtk.Menu()
-        language_radio_group = None
+        # Создаем подменю выбора языка
+        self.language_menu = Gtk.Menu()
         for code in ['ru', 'en', 'cn', 'de']:
-            label = LANGUAGES[code]['language_name']
-            radio = Gtk.RadioMenuItem.new_with_label_from_widget(language_radio_group, label)
-            if language_radio_group is None:
-                language_radio_group = radio
-            radio.set_active(code == current_lang)
-            radio.connect("toggled", self.on_language_toggled, code)
-            language_menu.append(radio)
+            lang_item = Gtk.RadioMenuItem.new_with_label_from_widget(
+                None, LANGUAGES[code]['language_name']
+            )
+            lang_item.set_active(code == current_lang)
+            lang_item.connect("activate", self._on_language_selected, code)
+            self.language_menu.append(lang_item)
 
-        language_menu_item = Gtk.MenuItem(label=tr('language'))
-        language_menu_item.set_submenu(language_menu)
-        self.menu.append(language_menu_item)
+        # Пункт меню для выбора языка
+        self.language_menu_item = Gtk.MenuItem(label=tr('language'))
+        self.language_menu_item.set_submenu(self.language_menu)
 
-        self.menu.append(quit_item)
+        # Пункт выхода
+        self.quit_item = Gtk.MenuItem(label=tr('exit_app'))
+        self.quit_item.connect("activate", self.quit)
 
-        # Сохраняем ссылки на пункты меню для обновления в update_info
-        self.cpu_temp_item = cpu_temp_item
-        self.ram_item = ram_item
-        self.swap_item = swap_item
-        self.disk_item = disk_item
-        self.net_item = net_item
-        self.uptime_item = uptime_item
-        self.separator = separator
-        self.settings_item = settings_item
-        self.quit_item = quit_item
+        # Обновляем видимость элементов
+        self.update_menu_visibility()
+
+        # Добавляем элементы в меню в правильном порядке
+        # Информационные элементы добавляются в update_menu_visibility()
+
+        # Постоянные элементы меню
+        self.menu.append(self.main_separator)
+        self.menu.append(self.language_menu_item)
+        self.menu.append(self.settings_item)
+        self.menu.append(self.exit_separator)  # Добавляем разделитель перед выходом
+        self.menu.append(self.quit_item)
 
         self.menu.show_all()
         self.indicator.set_menu(self.menu)
 
-    def on_language_toggled(self, widget, lang_code):
+    def _on_language_selected(self, widget, lang_code):
         global current_lang
-        if widget.get_active() and current_lang != lang_code:
-            current_lang = lang_code
-            self.visibility_settings['language'] = current_lang
-            self.save_settings()
-            self.create_menu()
+        if widget.get_active():
+            if current_lang != lang_code:
+                current_lang = lang_code
+                self.visibility_settings['language'] = current_lang
+                self.save_settings()
+                self.create_menu()  # Полностью пересоздаем меню с новым языком
 
     def load_settings(self):
         default = {
@@ -353,6 +329,57 @@ class SystemTrayApp:
                 json.dump(self.visibility_settings, f, indent=4)
         except Exception as e:
             print("Ошибка при сохранении настроек:", e)
+
+    def update_menu_visibility(self):
+        """Обновляем видимость элементов меню, сохраняя структуру"""
+        # Удаляем только информационные элементы, оставляя остальные
+        children = self.menu.get_children()
+        for child in children:
+            if child not in [self.main_separator, self.exit_separator,
+                             self.language_menu_item, self.settings_item,
+                             self.quit_item]:
+                self.menu.remove(child)
+
+        # Добавляем элементы в правильном порядке (сверху вниз)
+        if self.visibility_settings['uptime']:
+            self.menu.prepend(self.uptime_item)
+
+        if self.visibility_settings['net']:
+            self.menu.prepend(self.net_item)
+
+        if self.visibility_settings['disk']:
+            self.menu.prepend(self.disk_item)
+
+        if self.visibility_settings['swap']:
+            self.menu.prepend(self.swap_item)
+
+        if self.visibility_settings['ram']:
+            self.menu.prepend(self.ram_item)
+
+        if self.visibility_settings['cpu']:
+            self.menu.prepend(self.cpu_temp_item)
+
+        self.menu.show_all()
+
+    def show_settings(self, widget):
+        dialog = SettingsDialog(None, self.visibility_settings)
+        response = dialog.run()
+
+        if response == Gtk.ResponseType.OK:
+            self.visibility_settings['cpu'] = dialog.cpu_check.get_active()
+            self.visibility_settings['ram'] = dialog.ram_check.get_active()
+            self.visibility_settings['swap'] = dialog.swap_check.get_active()
+            self.visibility_settings['disk'] = dialog.disk_check.get_active()
+            self.visibility_settings['net'] = dialog.net_check.get_active()
+            self.visibility_settings['uptime'] = dialog.uptime_check.get_active()
+            self.visibility_settings['tray_cpu'] = dialog.tray_cpu_check.get_active()
+            self.visibility_settings['tray_ram'] = dialog.tray_ram_check.get_active()
+            self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
+
+            self.update_menu_visibility()
+            self.save_settings()
+
+        dialog.destroy()
 
     def update_info(self):
         cpu_temp = SystemUsage.get_cpu_temp()
@@ -387,10 +414,11 @@ class SystemTrayApp:
         if self.visibility_settings.get('tray_ram', True):
             tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
 
-        tray_text = "  ".join(tray_parts)
+        tray_text = "" + "  ".join(tray_parts)
+        self.indicator.set_label(tray_text, "")
         self.indicator.set_label(tray_text, "")
 
-        # Логирование
+        """Логирование"""
         if self.visibility_settings.get('logging_enabled', True):
             try:
                 with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -404,42 +432,6 @@ class SystemTrayApp:
             except Exception as e:
                 print("Ошибка записи в лог:", e)
         return True
-
-    def show_settings(self, widget):
-        global current_lang
-
-        dialog = SettingsDialog(None, self.visibility_settings)
-        response = dialog.run()
-
-        if response == Gtk.ResponseType.OK:
-            new_lang = dialog.lang_combo.get_active_id()
-            lang_changed = (new_lang != current_lang)
-
-            self.visibility_settings['cpu'] = dialog.cpu_check.get_active()
-            self.visibility_settings['ram'] = dialog.ram_check.get_active()
-            self.visibility_settings['swap'] = dialog.swap_check.get_active()
-            self.visibility_settings['disk'] = dialog.disk_check.get_active()
-            self.visibility_settings['net'] = dialog.net_check.get_active()
-            self.visibility_settings['uptime'] = dialog.uptime_check.get_active()
-            self.visibility_settings['tray_cpu'] = dialog.tray_cpu_check.get_active()
-            self.visibility_settings['tray_ram'] = dialog.tray_ram_check.get_active()
-            self.visibility_settings['language'] = new_lang
-            self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
-
-            current_lang = new_lang
-
-            if lang_changed:
-                self.create_menu()
-            else:
-                self.update_menu_visibility()
-
-            self.save_settings()
-
-        dialog.destroy()
-
-    def update_menu_visibility(self):
-        # Меню создаётся заново в create_menu, здесь можно убрать или оставить пустым
-        pass
 
     def quit(self, *args):
         Gtk.main_quit()
