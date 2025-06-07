@@ -5,6 +5,7 @@ import time
 import os
 import json
 from datetime import timedelta
+from pynput import keyboard, mouse
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
@@ -29,7 +30,10 @@ LANGUAGES = {
         'download_log': " Скачать ",
         'language': "Язык",
         'language_name': "Русский",
-        'enable_logging': "Логирование"
+        'enable_logging': "Логирование",
+        'keyboard_clicks': "Нажатия клавиш",
+        'mouse_clicks': "Клики мыши",
+        'clicks_tray': "Клики в трее"
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -47,7 +51,10 @@ LANGUAGES = {
         'download_log': "Download",
         'language': "Language",
         'language_name': "English",
-        'enable_logging': "Enable logging"
+        'enable_logging': "Enable logging",
+        'keyboard_clicks': "Keyboard clicks",
+        'mouse_clicks': "Mouse clicks",
+        'clicks_tray': "Clicks in tray"
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -65,7 +72,10 @@ LANGUAGES = {
         'download_log': "下载日志",
         'language': "语言",
         'language_name': "中文",
-        'enable_logging': "启用日志记录"
+        'enable_logging': "启用日志记录",
+        'keyboard_clicks': "键盘点击",
+        'mouse_clicks': "鼠标点击",
+        'clicks_tray': "托盘点击"
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -83,13 +93,20 @@ LANGUAGES = {
         'download_log': "Herunterladen",
         'language': "Sprache",
         'language_name': "Deutsch",
-        'enable_logging': "Protokolle"
+        'enable_logging': "Protokolle",
+        'keyboard_clicks': "Tastenklicks",
+        'mouse_clicks': "Mausklicks",
+        'clicks_tray': "Klicks im Tray"
     }
 }
 
 current_lang = 'ru'
 time_update = 1
 LOG_FILE = os.path.join(os.path.expanduser("~"), "symo_log.txt")
+
+# Глобальные переменные для подсчета кликов
+keyboard_clicks = 0
+mouse_clicks = 0
 
 
 def tr(key):
@@ -161,6 +178,16 @@ class SettingsDialog(Gtk.Dialog):
         self.tray_ram_check.set_active(self.visibility_settings.get('tray_ram', True))
         box.add(self.tray_ram_check)
 
+        self.tray_clicks_check = Gtk.CheckButton(label=tr('clicks_tray'))
+        self.tray_clicks_check.set_active(self.visibility_settings.get('tray_clicks', True))
+        box.add(self.tray_clicks_check)
+
+        separator = Gtk.SeparatorMenuItem()
+        separator.set_margin_top(6)
+        separator.set_margin_bottom(6)
+        separator.set_size_request(0, 3)
+        box.add(separator)
+
         self.cpu_check = Gtk.CheckButton(label=tr('cpu_info'))
         self.cpu_check.set_active(self.visibility_settings['cpu'])
         box.add(self.cpu_check)
@@ -185,11 +212,20 @@ class SettingsDialog(Gtk.Dialog):
         self.uptime_check.set_active(self.visibility_settings['uptime'])
         box.add(self.uptime_check)
 
+        self.keyboard_check = Gtk.CheckButton(label=tr('keyboard_clicks'))
+        self.keyboard_check.set_active(self.visibility_settings.get('keyboard_clicks', True))
+        box.add(self.keyboard_check)
+
+        self.mouse_check = Gtk.CheckButton(label=tr('mouse_clicks'))
+        self.mouse_check.set_active(self.visibility_settings.get('mouse_clicks', True))
+        box.add(self.mouse_check)
+
         logging_box = Gtk.Box(spacing=0)
 
-        separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        separator.set_margin_top(4)
-        separator.set_margin_bottom(4)
+        separator = Gtk.SeparatorMenuItem()
+        separator.set_margin_top(6)
+        separator.set_margin_bottom(6)
+        separator.set_size_request(0, 3)
         box.add(separator)
 
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
@@ -230,8 +266,22 @@ class SystemTrayApp:
     def __init__(self):
         global current_lang
 
-        self.indicator = AppIndicator3.Indicator.new("SyMo", "", AppIndicator3.IndicatorCategory.SYSTEM_SERVICES)
-        icon_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        # Инициализация GTK
+        if not Gtk.init_check()[0]:
+            Gtk.init([])
+
+        self.indicator = AppIndicator3.Indicator.new(
+            "SyMo",
+            "",
+            AppIndicator3.IndicatorCategory.SYSTEM_SERVICES
+        )
+
+        # Проверяем путь к иконке
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+        if not os.path.exists(icon_path):
+            # Если иконки нет, используем стандартную
+            icon_path = "system-run-symbolic"
+
         self.indicator.set_icon_full(icon_path, "SyMo")
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
 
@@ -247,6 +297,32 @@ class SystemTrayApp:
             'time': time.time()
         }
 
+        # Инициализация слушателей клавиатуры и мыши
+        self.keyboard_listener = None
+        self.mouse_listener = None
+        self.init_listeners()
+
+    def init_listeners(self):
+        """Инициализация слушателей событий"""
+        try:
+            self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
+            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
+            self.keyboard_listener.start()
+            self.mouse_listener.start()
+        except Exception as e:
+            print(f"Ошибка инициализации слушателей: {e}")
+
+    def on_key_press(self, key):
+        """Обработчик нажатия клавиши"""
+        global keyboard_clicks
+        keyboard_clicks += 1
+
+    def on_mouse_click(self, x, y, button, pressed):
+        """Обработчик клика мыши"""
+        global mouse_clicks
+        if pressed:
+            mouse_clicks += 1
+
     def create_menu(self):
         """Создать или воссоздать меню с текущим языком"""
         self.menu = Gtk.Menu()
@@ -258,10 +334,12 @@ class SystemTrayApp:
         self.disk_item = Gtk.MenuItem(label=f"{tr('disk_loading')}: N/A")
         self.net_item = Gtk.MenuItem(label=f"{tr('lan_speed')}: N/A")
         self.uptime_item = Gtk.MenuItem(label=f"{tr('uptime_label')}: N/A")
+        self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
+        self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
 
         # Разделители
         self.main_separator = Gtk.SeparatorMenuItem()
-        self.exit_separator = Gtk.SeparatorMenuItem()  # Новый разделитель перед выходом
+        self.exit_separator = Gtk.SeparatorMenuItem()
 
         # Пункт настроек
         self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
@@ -288,14 +366,11 @@ class SystemTrayApp:
         # Обновляем видимость элементов
         self.update_menu_visibility()
 
-        # Добавляем элементы в меню в правильном порядке
-        # Информационные элементы добавляются в update_menu_visibility()
-
-        # Постоянные элементы меню
+        # Добавляем элементы в меню
         self.menu.append(self.main_separator)
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
-        self.menu.append(self.exit_separator)  # Добавляем разделитель перед выходом
+        self.menu.append(self.exit_separator)
         self.menu.append(self.quit_item)
 
         self.menu.show_all()
@@ -308,12 +383,13 @@ class SystemTrayApp:
                 current_lang = lang_code
                 self.visibility_settings['language'] = current_lang
                 self.save_settings()
-                self.create_menu()  # Полностью пересоздаем меню с новым языком
+                self.create_menu()
 
     def load_settings(self):
         default = {
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
-            'tray_cpu': True, 'tray_ram': True, 'language': 'ru', 'logging_enabled': True
+            'tray_cpu': True, 'tray_ram': True, 'tray_clicks': True, 'keyboard_clicks': True,
+            'mouse_clicks': True, 'language': 'ru', 'logging_enabled': True
         }
         try:
             with open(self.settings_file, "r", encoding="utf-8") as f:
@@ -331,8 +407,7 @@ class SystemTrayApp:
             print("Ошибка при сохранении настроек:", e)
 
     def update_menu_visibility(self):
-        """Обновляем видимость элементов меню, сохраняя структуру"""
-        # Удаляем только информационные элементы, оставляя остальные
+        """Обновляем видимость элементов меню"""
         children = self.menu.get_children()
         for child in children:
             if child not in [self.main_separator, self.exit_separator,
@@ -340,7 +415,13 @@ class SystemTrayApp:
                              self.quit_item]:
                 self.menu.remove(child)
 
-        # Добавляем элементы в правильном порядке (сверху вниз)
+        # Добавляем элементы в правильном порядке
+        if self.visibility_settings['mouse_clicks']:
+            self.menu.prepend(self.mouse_item)
+
+        if self.visibility_settings['keyboard_clicks']:
+            self.menu.prepend(self.keyboard_item)
+
         if self.visibility_settings['uptime']:
             self.menu.prepend(self.uptime_item)
 
@@ -374,6 +455,9 @@ class SystemTrayApp:
             self.visibility_settings['uptime'] = dialog.uptime_check.get_active()
             self.visibility_settings['tray_cpu'] = dialog.tray_cpu_check.get_active()
             self.visibility_settings['tray_ram'] = dialog.tray_ram_check.get_active()
+            self.visibility_settings['tray_clicks'] = dialog.tray_clicks_check.get_active()
+            self.visibility_settings['keyboard_clicks'] = dialog.keyboard_check.get_active()
+            self.visibility_settings['mouse_clicks'] = dialog.mouse_check.get_active()
             self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
 
             self.update_menu_visibility()
@@ -382,6 +466,8 @@ class SystemTrayApp:
         dialog.destroy()
 
     def update_info(self):
+        global keyboard_clicks, mouse_clicks
+
         cpu_temp = SystemUsage.get_cpu_temp()
         cpu_usage = SystemUsage.get_cpu_usage()
         ram_used, ram_total = SystemUsage.get_ram_usage()
@@ -408,14 +494,21 @@ class SystemTrayApp:
         if self.visibility_settings['uptime']:
             self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
 
+        if self.visibility_settings['keyboard_clicks']:
+            self.keyboard_item.set_label(f"{tr('keyboard_clicks')}: {keyboard_clicks}")
+
+        if self.visibility_settings['mouse_clicks']:
+            self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks}")
+
         tray_parts = []
         if self.visibility_settings.get('tray_cpu', True):
             tray_parts.append(f"  {tr('cpu_info')}: {cpu_usage:.0f}%")
         if self.visibility_settings.get('tray_ram', True):
             tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
+        if self.visibility_settings.get('tray_clicks', True):
+            tray_parts.append(f"K:{keyboard_clicks} M:{mouse_clicks}")
 
         tray_text = "" + "  ".join(tray_parts)
-        self.indicator.set_label(tray_text, "")
         self.indicator.set_label(tray_text, "")
 
         """Логирование"""
@@ -428,12 +521,19 @@ class SystemTrayApp:
                             f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
                             f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
                             f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
-                            f"Uptime: {uptime}\n")
+                            f"Uptime: {uptime} | "
+                            f"Keys: {keyboard_clicks} | "
+                            f"Clicks: {mouse_clicks}\n")
             except Exception as e:
                 print("Ошибка записи в лог:", e)
         return True
 
     def quit(self, *args):
+        # Остановка слушателей перед выходом
+        if self.keyboard_listener:
+            self.keyboard_listener.stop()
+        if self.mouse_listener:
+            self.mouse_listener.stop()
         Gtk.main_quit()
 
     def run(self):
@@ -442,6 +542,9 @@ class SystemTrayApp:
 
 
 if __name__ == "__main__":
+    if not Gtk.init_check()[0]:
+        Gtk.init([])
+
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     app = SystemTrayApp()
     app.run()
