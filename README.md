@@ -31,7 +31,7 @@
 
 ---------------------------------------------------------------------------------
 🎥 Видео-демо
-[![Watch the video](https://img.youtube.com/vi/lcWTL0O7paI/maxresdefault.jpg)](https://www.youtube.com/watch?v=lcWTL0O7paI)
+[![Watch the video](https://img.youtube.com/vi/lcWTL0O7paI/maxresdefault.jpg)](https://youtu.be/eNh-yalHPO0)
 
 ---------------------------------------------------------------------------------
 -  ЗАПУСК В РЕЖИМИ РАЗАРБОТКИ.
