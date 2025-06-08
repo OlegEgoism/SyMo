@@ -11,11 +11,10 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
 gi.require_version('AppIndicator3', '0.1')
 
-from gi.repository import Gtk, GLib, AppIndicator3, GObject
+from gi.repository import Gtk, GLib, AppIndicator3
 
 LANGUAGES = {
     'ru': {
-        # System Monitor translations
         'cpu_tray': "ЦПУ в трее",
         'ram_tray': "ОЗУ в трее",
         'cpu_info': "ЦПУ",
@@ -36,7 +35,6 @@ LANGUAGES = {
         'mouse_clicks': "Клики мыши",
         'clicks_tray': "Клики в трее",
 
-        # Power Control translations
         'power_off': "Выключение",
         'reboot': "Перезагрузка",
         'lock': "Блокировка",
@@ -60,7 +58,6 @@ LANGUAGES = {
         'cancelled_text': "Запланированное действие сброшено.",
     },
     'en': {
-        # System Monitor translations
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
         'cpu_info': "CPU",
@@ -81,7 +78,6 @@ LANGUAGES = {
         'mouse_clicks': "Mouse clicks",
         'clicks_tray': "Clicks in tray",
 
-        # Power Control translations
         'power_off': "Power Off",
         'reboot': "Reboot",
         'lock': "Lock",
@@ -105,7 +101,6 @@ LANGUAGES = {
         'cancelled_text': "Scheduled action cancelled.",
     },
     'cn': {
-        # System Monitor translations
         'cpu_tray': "CPU在托盘",
         'ram_tray': "内存托盘显示",
         'cpu_info': "处理器",
@@ -126,7 +121,6 @@ LANGUAGES = {
         'mouse_clicks': "鼠标点击",
         'clicks_tray': "托盘点击",
 
-        # Power Control translations
         'power_off': "关闭电源",
         'reboot': "重启",
         'lock': "锁屏",
@@ -150,7 +144,6 @@ LANGUAGES = {
         'cancelled_text': "已取消计划操作。",
     },
     'de': {
-        # System Monitor translations
         'cpu_tray': "CPU im Tray",
         'ram_tray': "RAM im Tray",
         'cpu_info': "CPU",
@@ -171,7 +164,6 @@ LANGUAGES = {
         'mouse_clicks': "Mausklicks",
         'clicks_tray': "Klicks im Tray",
 
-        # Power Control translations
         'power_off': "Herunterfahren",
         'reboot': "Neustart",
         'lock': "Sperren",
@@ -201,7 +193,6 @@ time_update = 1
 LOG_FILE = os.path.join(os.path.expanduser("~"), "system_monitor_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_settings.json")
 
-# Global variables for click counting
 keyboard_clicks = 0
 mouse_clicks = 0
 
@@ -313,7 +304,6 @@ class PowerControl:
         content.add(box)
         content.set_border_width(10)
 
-        # Time input
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         time_label = Gtk.Label(label=tr('minutes'))
         time_label.set_xalign(0)
@@ -326,7 +316,6 @@ class PowerControl:
         time_box.pack_start(time_label, True, True, 0)
         time_box.pack_start(time_spin, False, False, 0)
 
-        # Action selection
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         action_label = Gtk.Label(label=tr('action'))
         action_label.set_xalign(0)
@@ -339,7 +328,6 @@ class PowerControl:
         action_box.pack_start(action_label, True, True, 0)
         action_box.pack_start(action_combo, False, False, 0)
 
-        # Buttons
         apply_button = Gtk.Button(label=tr('apply'))
         cancel_button = Gtk.Button(label=tr('cancel'))
         reset_button = Gtk.Button(label=tr('reset'))
@@ -477,18 +465,12 @@ class SettingsDialog(Gtk.Dialog):
         box = self.get_content_area()
         box.set_border_width(10)
 
-        # Info
         monitor_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         monitor_box.set_halign(Gtk.Align.END)
-        monitor_label = Gtk.Label(label="<b>SyMo Ⓡ</b>")
-        monitor_label.set_use_markup(True)
-        monitor_box.pack_end(monitor_label, False, False, 0)
+        monitor_link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
+        monitor_link.set_halign(Gtk.Align.END)
+        monitor_box.pack_end(monitor_link, False, False, 0)
         box.add(monitor_box)
-
-        # # System monitor settings
-        # monitor_label = Gtk.Label(label="<b>System Monitor</b>")
-        # monitor_label.set_use_markup(True)
-        # box.add(monitor_label)
 
         self.tray_cpu_check = Gtk.CheckButton(label=tr('cpu_tray'))
         self.tray_cpu_check.set_active(self.visibility_settings.get('tray_cpu', True))
@@ -540,16 +522,11 @@ class SettingsDialog(Gtk.Dialog):
         self.mouse_check.set_active(self.visibility_settings.get('mouse_clicks', True))
         box.add(self.mouse_check)
 
-        # Power control settings
         power_separator = Gtk.SeparatorMenuItem()
         power_separator.set_margin_top(6)
         power_separator.set_margin_bottom(6)
         power_separator.set_size_request(0, 3)
         box.add(power_separator)
-
-        # power_label = Gtk.Label(label="<b>Power Control</b>")
-        # power_label.set_use_markup(True)
-        # box.add(power_label)
 
         self.power_off_check = Gtk.CheckButton(label=tr('power_off'))
         self.power_off_check.set_active(self.visibility_settings.get('show_power_off', True))
@@ -567,7 +544,6 @@ class SettingsDialog(Gtk.Dialog):
         self.timer_check.set_active(self.visibility_settings.get('show_timer', True))
         box.add(self.timer_check)
 
-        # Logging settings
         logging_box = Gtk.Box(spacing=0)
         separator = Gtk.SeparatorMenuItem()
         separator.set_margin_top(6)
@@ -613,18 +589,15 @@ class SystemTrayApp:
     def __init__(self):
         global current_lang
 
-        # Initialize GTK
         if not Gtk.init_check()[0]:
             Gtk.init([])
 
-        # Initialize indicator with a default icon
         self.indicator = AppIndicator3.Indicator.new(
             "SystemMonitor",
             "system-run-symbolic",
             AppIndicator3.IndicatorCategory.SYSTEM_SERVICES
         )
 
-        # Try to set custom icon
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
         if os.path.exists(icon_path):
             try:
@@ -642,10 +615,8 @@ class SystemTrayApp:
 
         current_lang = self.visibility_settings.get('language', 'ru')
 
-        # Initialize power control
         self.power_control = PowerControl(self)
 
-        # Create menu
         self.create_menu()
         self.prev_net_data = {
             'recv': psutil.net_io_counters().bytes_recv,
@@ -653,7 +624,6 @@ class SystemTrayApp:
             'time': time.time()
         }
 
-        # Initialize listeners
         self.keyboard_listener = None
         self.mouse_listener = None
         self.init_listeners()
@@ -683,7 +653,6 @@ class SystemTrayApp:
         """Create or recreate menu with current language"""
         self.menu = Gtk.Menu()
 
-        # System monitor items
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
         self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
         self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
@@ -693,38 +662,29 @@ class SystemTrayApp:
         self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
         self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
 
-        # Power control items
         self.power_separator = Gtk.SeparatorMenuItem()
 
         self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
-        self.power_off_item.connect("activate", self.power_control._confirm_action,
-                                    self.power_control._shutdown, tr('confirm_text_power_off'))
+        self.power_off_item.connect("activate", self.power_control._confirm_action, self.power_control._shutdown, tr('confirm_text_power_off'))
 
         self.reboot_item = Gtk.MenuItem(label=tr('reboot'))
-        self.reboot_item.connect("activate", self.power_control._confirm_action,
-                                 self.power_control._reboot, tr('confirm_text_reboot'))
+        self.reboot_item.connect("activate", self.power_control._confirm_action, self.power_control._reboot, tr('confirm_text_reboot'))
 
         self.lock_item = Gtk.MenuItem(label=tr('lock'))
-        self.lock_item.connect("activate", self.power_control._confirm_action,
-                               self.power_control._lock_screen, tr('confirm_text_lock'))
+        self.lock_item.connect("activate", self.power_control._confirm_action, self.power_control._lock_screen, tr('confirm_text_lock'))
 
         self.timer_item = Gtk.MenuItem(label=tr('settings'))
         self.timer_item.connect("activate", self.power_control._open_settings)
 
-        # Other menu items
         self.main_separator = Gtk.SeparatorMenuItem()
         self.exit_separator = Gtk.SeparatorMenuItem()
 
-        # Settings item
         self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
         self.settings_item.connect("activate", self.show_settings)
 
-        # Language selection submenu
         self.language_menu = Gtk.Menu()
         for code in ['ru', 'en', 'cn', 'de']:
-            lang_item = Gtk.RadioMenuItem.new_with_label_from_widget(
-                None, LANGUAGES[code]['language_name']
-            )
+            lang_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, LANGUAGES[code]['language_name'])
             lang_item.set_active(code == current_lang)
             lang_item.connect("activate", self._on_language_selected, code)
             self.language_menu.append(lang_item)
@@ -732,14 +692,11 @@ class SystemTrayApp:
         self.language_menu_item = Gtk.MenuItem(label=tr('language'))
         self.language_menu_item.set_submenu(self.language_menu)
 
-        # Exit item
         self.quit_item = Gtk.MenuItem(label=tr('exit_app'))
         self.quit_item.connect("activate", self.quit)
 
-        # Update menu visibility
         self.update_menu_visibility()
 
-        # Add power control items if they are enabled
         if any([
             self.visibility_settings.get('show_power_off', True),
             self.visibility_settings.get('show_reboot', True),
@@ -760,7 +717,6 @@ class SystemTrayApp:
             if self.visibility_settings.get('show_timer', True):
                 self.menu.append(self.timer_item)
 
-        # Add other items
         self.menu.append(self.main_separator)
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
@@ -809,7 +765,6 @@ class SystemTrayApp:
                              self.language_menu_item, self.settings_item, self.quit_item]:
                 self.menu.remove(child)
 
-        # Add items in correct order
         if self.visibility_settings['mouse_clicks']:
             self.menu.prepend(self.mouse_item)
 
@@ -841,7 +796,6 @@ class SystemTrayApp:
         response = dialog.run()
 
         if response == Gtk.ResponseType.OK:
-            # System monitor settings
             self.visibility_settings['cpu'] = dialog.cpu_check.get_active()
             self.visibility_settings['ram'] = dialog.ram_check.get_active()
             self.visibility_settings['swap'] = dialog.swap_check.get_active()
@@ -854,17 +808,15 @@ class SystemTrayApp:
             self.visibility_settings['keyboard_clicks'] = dialog.keyboard_check.get_active()
             self.visibility_settings['mouse_clicks'] = dialog.mouse_check.get_active()
 
-            # Power control settings
             self.visibility_settings['show_power_off'] = dialog.power_off_check.get_active()
             self.visibility_settings['show_reboot'] = dialog.reboot_check.get_active()
             self.visibility_settings['show_lock'] = dialog.lock_check.get_active()
             self.visibility_settings['show_timer'] = dialog.timer_check.get_active()
 
-            # Logging settings
             self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
 
             self.save_settings()
-            self.create_menu()  # Recreate menu with new settings
+            self.create_menu()
 
         dialog.destroy()
 
@@ -880,7 +832,6 @@ class SystemTrayApp:
             net_recv_speed, net_sent_speed = SystemUsage.get_network_speed(self.prev_net_data)
             uptime = SystemUsage.get_uptime()
 
-            # Use GLib.idle_add to safely update the UI from another thread
             GLib.idle_add(self._update_ui,
                           cpu_temp, cpu_usage,
                           ram_used, ram_total,
@@ -890,7 +841,6 @@ class SystemTrayApp:
                           uptime,
                           keyboard_clicks, mouse_clicks)
 
-            # Logging
             if self.visibility_settings.get('logging_enabled', True):
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -956,7 +906,6 @@ class SystemTrayApp:
             print(f"Error in _update_ui: {e}")
 
     def quit(self, *args):
-        # Stop listeners before quitting
         if self.keyboard_listener:
             self.keyboard_listener.stop()
         if self.mouse_listener:
