@@ -33,7 +33,6 @@ LANGUAGES = {
         'enable_logging': "Логирование",
         'keyboard_clicks': "Нажатия клавиш",
         'mouse_clicks': "Клики мыши",
-        'clicks_tray': "Клики в трее",
 
         'power_off': "Выключение",
         'reboot': "Перезагрузка",
@@ -76,7 +75,6 @@ LANGUAGES = {
         'enable_logging': "Enable logging",
         'keyboard_clicks': "Keyboard clicks",
         'mouse_clicks': "Mouse clicks",
-        'clicks_tray': "Clicks in tray",
 
         'power_off': "Power Off",
         'reboot': "Reboot",
@@ -119,7 +117,6 @@ LANGUAGES = {
         'enable_logging': "启用日志记录",
         'keyboard_clicks': "键盘点击",
         'mouse_clicks': "鼠标点击",
-        'clicks_tray': "托盘点击",
 
         'power_off': "关闭电源",
         'reboot': "重启",
@@ -162,7 +159,6 @@ LANGUAGES = {
         'enable_logging': "Protokolle",
         'keyboard_clicks': "Tastenklicks",
         'mouse_clicks': "Mausklicks",
-        'clicks_tray': "Klicks im Tray",
 
         'power_off': "Herunterfahren",
         'reboot': "Neustart",
@@ -479,10 +475,6 @@ class SettingsDialog(Gtk.Dialog):
         self.tray_ram_check = Gtk.CheckButton(label=tr('ram_tray'))
         self.tray_ram_check.set_active(self.visibility_settings.get('tray_ram', True))
         box.add(self.tray_ram_check)
-
-        self.tray_clicks_check = Gtk.CheckButton(label=tr('clicks_tray'))
-        self.tray_clicks_check.set_active(self.visibility_settings.get('tray_clicks', True))
-        box.add(self.tray_clicks_check)
 
         separator = Gtk.SeparatorMenuItem()
         separator.set_margin_top(6)
