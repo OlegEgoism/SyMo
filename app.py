@@ -25,12 +25,10 @@ mouse_clicks = 0
 
 
 def tr(key):
-    """Translation function"""
     return LANGUAGES.get(current_lang, LANGUAGES['en']).get(key, key)
 
 
 class SystemUsage:
-    """System resource monitoring"""
 
     @staticmethod
     def get_cpu_temp():
@@ -77,7 +75,6 @@ class SystemUsage:
 
 
 class PowerControl:
-    """Power control functionality"""
 
     def __init__(self, app):
         self.app = app
@@ -87,10 +84,9 @@ class PowerControl:
         self._notify_timer_id = None
         self._action_timer_id = None
         self.current_dialog = None
-        self.parent_window = None  # Родительское окно для диалогов
+        self.parent_window = None
 
     def set_parent_window(self, parent):
-        """Установить родительское окно для диалогов"""
         self.parent_window = parent if isinstance(parent, Gtk.Widget) else None
 
     def _confirm_action(self, widget, action_callback, message):
@@ -240,14 +236,14 @@ class PowerControl:
         self._show_message(tr('cancelled'), tr('cancelled_text'))
 
     def _notify_before_action(self, action):
-        if not self.app:  # Проверка, существует ли приложение
+        if not self.app:
             return False
         self._notify_timer_id = None
         self._show_message(tr('notification'), tr('action_in_1_min').format(action))
         return False
 
     def _update_indicator_label(self):
-        if not self.app:  # Проверка, существует ли приложение
+        if not self.app:
             return False
         if self.remaining_seconds <= 0:
             self.app.indicator.set_label("", "")
@@ -261,7 +257,7 @@ class PowerControl:
         return True
 
     def _delayed_action(self, action):
-        if not self.app:  # Проверка, существует ли приложение
+        if not self.app:
             return False
         self._action_timer_id = None
         self.app.indicator.set_label("", "")
@@ -304,8 +300,6 @@ class PowerControl:
 
 
 class SettingsDialog(Gtk.Dialog):
-    """Settings dialog"""
-
     def __init__(self, parent, visibility_settings):
         super().__init__(title=tr('settings_label'), transient_for=parent if isinstance(parent, Gtk.Widget) else None, flags=0)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL, tr('apply_label'), Gtk.ResponseType.OK)
@@ -410,7 +404,6 @@ class SettingsDialog(Gtk.Dialog):
         self.show_all()
 
     def download_log_file(self, widget):
-        # Проверяем, что self является валидным виджетом
         parent = self if isinstance(self, Gtk.Widget) and self.get_mapped() else None
         dialog = Gtk.FileChooserDialog(
             title=tr('download_log'),
@@ -433,8 +426,6 @@ class SettingsDialog(Gtk.Dialog):
 
 
 class SystemTrayApp:
-    """System tray application with combined functionality"""
-
     def __init__(self):
         global current_lang
 
@@ -465,7 +456,7 @@ class SystemTrayApp:
         current_lang = self.visibility_settings.get('language', 'ru')
 
         self.power_control = PowerControl(self)
-        self.power_control.set_parent_window(None)  # Можно установить родительское окно, если оно есть
+        self.power_control.set_parent_window(None)
 
         self.create_menu()
         self.prev_net_data = {
@@ -479,7 +470,6 @@ class SystemTrayApp:
         self.init_listeners()
 
     def init_listeners(self):
-        """Initialize event listeners"""
         try:
             self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
             self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
@@ -489,18 +479,15 @@ class SystemTrayApp:
             print(f"Error initializing listeners: {e}")
 
     def on_key_press(self, key):
-        """Key press handler"""
         global keyboard_clicks
         keyboard_clicks += 1
 
     def on_mouse_click(self, x, y, button, pressed):
-        """Mouse click handler"""
         global mouse_clicks
         if pressed:
             mouse_clicks += 1
 
     def create_menu(self):
-        """Create or recreate menu with current language"""
         self.menu = Gtk.Menu()
 
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
@@ -608,7 +595,6 @@ class SystemTrayApp:
             print("Error saving settings:", e)
 
     def update_menu_visibility(self):
-        """Update menu item visibility"""
         children = self.menu.get_children()
         for child in children:
             if child not in [self.main_separator, self.power_separator, self.exit_separator,
@@ -643,7 +629,7 @@ class SystemTrayApp:
 
     def show_settings(self, widget):
         dialog = SettingsDialog(None, self.visibility_settings)
-        self.power_control.set_parent_window(dialog)  # Устанавливаем родительское окно для PowerControl
+        self.power_control.set_parent_window(dialog)
         response = dialog.run()
 
         if response == Gtk.ResponseType.OK:
@@ -668,7 +654,7 @@ class SystemTrayApp:
 
         if isinstance(dialog, Gtk.Widget):
             dialog.destroy()
-        self.power_control.set_parent_window(None)  # Сбрасываем родительское окно после закрытия
+        self.power_control.set_parent_window(None)
 
     def update_info(self):
         try:
@@ -715,7 +701,6 @@ class SystemTrayApp:
                    disk_used, disk_total, swap_used, swap_total,
                    net_recv_speed, net_sent_speed, uptime,
                    keyboard_clicks, mouse_clicks):
-        """Update UI elements safely from the main thread"""
         try:
             if self.visibility_settings['cpu']:
                 self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
