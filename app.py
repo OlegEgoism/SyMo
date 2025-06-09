@@ -7,182 +7,13 @@ import time
 from datetime import timedelta
 from pynput import keyboard, mouse
 
+from language import LANGUAGES
+
 gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
 gi.require_version('AppIndicator3', '0.1')
 
 from gi.repository import Gtk, GLib, AppIndicator3
-
-LANGUAGES = {
-    'ru': {
-        'cpu_tray': "ЦПУ в трее",
-        'ram_tray': "ОЗУ в трее",
-        'cpu_info': "ЦПУ",
-        'ram_loading': "ОЗУ",
-        'swap_loading': "Подкачка",
-        'disk_loading': "Диск",
-        'lan_speed': "Сеть",
-        'uptime_label': "Время работы",
-        'settings_label': "Настройки",
-        'exit_app': "Выход",
-        'apply_label': "Применить",
-        'cancel_label': "Отмена",
-        'download_log': " Скачать ",
-        'language': "Язык",
-        'language_name': "Русский",
-        'enable_logging': "Логирование",
-        'keyboard_clicks': "Нажатия клавиш",
-        'mouse_clicks': "Клики мыши",
-
-        'power_off': "Выключение",
-        'reboot': "Перезагрузка",
-        'lock': "Блокировка",
-        'settings': "Таймер",
-        'minutes': "Минуты:",
-        'action': "",
-        'apply': "Применить",
-        'cancel': "Отмена",
-        'reset': "Сбросить",
-        'confirm_title': "Подтверждение действия",
-        'confirm_text_power_off': "Выключить компьютер?",
-        'confirm_text_reboot': "Перезагрузить компьютер?",
-        'confirm_text_lock': "Заблокировать экран?",
-        'scheduled': "Запланировано",
-        'error': "Ошибка",
-        'error_minutes_positive': "Введите значение больше 0.",
-        'notification': "Предупреждение",
-        'action_in_1_min': "{} через 1 минуту.",
-        'action_in_time': "{} через {} минут.",
-        'cancelled': "Отменено",
-        'cancelled_text': "Запланированное действие сброшено.",
-    },
-    'en': {
-        'cpu_tray': "CPU in tray",
-        'ram_tray': "RAM in tray",
-        'cpu_info': "CPU",
-        'ram_loading': "RAM",
-        'swap_loading': "Swap",
-        'disk_loading': "Disk",
-        'lan_speed': "Network",
-        'uptime_label': "Uptime",
-        'settings_label': "Settings",
-        'exit_app': "Exit",
-        'apply_label': "Apply",
-        'cancel_label': "Cancel",
-        'download_log': "Download",
-        'language': "Language",
-        'language_name': "English",
-        'enable_logging': "Enable logging",
-        'keyboard_clicks': "Keyboard clicks",
-        'mouse_clicks': "Mouse clicks",
-
-        'power_off': "Power Off",
-        'reboot': "Reboot",
-        'lock': "Lock",
-        'settings': "Settings",
-        'minutes': "Minutes:",
-        'action': "",
-        'apply': "Apply",
-        'cancel': "Cancel",
-        'reset': "Reset",
-        'confirm_title': "Confirm Action",
-        'confirm_text_power_off': "Power off the computer?",
-        'confirm_text_reboot': "Reboot the computer?",
-        'confirm_text_lock': "Lock the screen?",
-        'scheduled': "Scheduled",
-        'error': "Error",
-        'error_minutes_positive': "Please enter a value greater than 0.",
-        'notification': "Notification",
-        'action_in_1_min': "{} in 1 minute.",
-        'action_in_time': "{} in {} minutes.",
-        'cancelled': "Cancelled",
-        'cancelled_text': "Scheduled action cancelled.",
-    },
-    'cn': {
-        'cpu_tray': "CPU在托盘",
-        'ram_tray': "内存托盘显示",
-        'cpu_info': "处理器",
-        'ram_loading': "内存",
-        'swap_loading': "交换分区",
-        'disk_loading': "磁盘",
-        'lan_speed': "网络",
-        'uptime_label': "运行时间",
-        'settings_label': "设置",
-        'exit_app': "退出",
-        'apply_label': "    应用    ",
-        'cancel_label': "取消",
-        'download_log': "下载日志",
-        'language': "语言",
-        'language_name': "中文",
-        'enable_logging': "启用日志记录",
-        'keyboard_clicks': "键盘点击",
-        'mouse_clicks': "鼠标点击",
-
-        'power_off': "关闭电源",
-        'reboot': "重启",
-        'lock': "锁屏",
-        'settings': "设置",
-        'minutes': "分钟:",
-        'action': "",
-        'apply': "应用",
-        'cancel': "取消",
-        'reset': "重置",
-        'confirm_title': "确认操作",
-        'confirm_text_power_off': "关闭计算机？",
-        'confirm_text_reboot': "重启计算机？",
-        'confirm_text_lock': "锁定屏幕？",
-        'scheduled': "已安排",
-        'error': "错误",
-        'error_minutes_positive': "请输入大于0的值。",
-        'notification': "通知",
-        'action_in_1_min': "{} 还有1分钟。",
-        'action_in_time': "{} 还有{}分钟。",
-        'cancelled': "已取消",
-        'cancelled_text': "已取消计划操作。",
-    },
-    'de': {
-        'cpu_tray': "CPU im Tray",
-        'ram_tray': "RAM im Tray",
-        'cpu_info': "CPU",
-        'ram_loading': "RAM",
-        'swap_loading': "Auslagerung",
-        'disk_loading': "Festplatte",
-        'lan_speed': "Netzwerk",
-        'uptime_label': "Betriebszeit",
-        'settings_label': "Einstellungen",
-        'exit_app': "Beenden",
-        'apply_label': "Übernehmen",
-        'cancel_label': "Abbrechen",
-        'download_log': "Herunterladen",
-        'language': "Sprache",
-        'language_name': "Deutsch",
-        'enable_logging': "Protokolle",
-        'keyboard_clicks': "Tastenklicks",
-        'mouse_clicks': "Mausklicks",
-
-        'power_off': "Herunterfahren",
-        'reboot': "Neustart",
-        'lock': "Sperren",
-        'settings': "Einstellungen",
-        'minutes': "Minuten:",
-        'action': "",
-        'apply': "Übernehmen",
-        'cancel': "Abbrechen",
-        'reset': "Zurücksetzen",
-        'confirm_title': "Aktion bestätigen",
-        'confirm_text_power_off': "Computer ausschalten?",
-        'confirm_text_reboot': "Computer neu starten?",
-        'confirm_text_lock': "Bildschirm sperren?",
-        'scheduled': "Geplant",
-        'error': "Fehler",
-        'error_minutes_positive': "Bitte geben Sie einen Wert größer als 0 ein.",
-        'notification': "Benachrichtigung",
-        'action_in_1_min': "{} in 1 Minute.",
-        'action_in_time': "{} in {} Minuten.",
-        'cancelled': "Abgebrochen",
-        'cancelled_text': "Geplante Aktion abgebrochen.",
-    }
-}
 
 current_lang = 'ru'
 time_update = 1
@@ -194,12 +25,10 @@ mouse_clicks = 0
 
 
 def tr(key):
-    """Translation function"""
     return LANGUAGES.get(current_lang, LANGUAGES['en']).get(key, key)
 
 
 class SystemUsage:
-    """System resource monitoring"""
 
     @staticmethod
     def get_cpu_temp():
@@ -246,7 +75,6 @@ class SystemUsage:
 
 
 class PowerControl:
-    """Power control functionality"""
 
     def __init__(self, app):
         self.app = app
@@ -256,13 +84,18 @@ class PowerControl:
         self._notify_timer_id = None
         self._action_timer_id = None
         self.current_dialog = None
+        self.parent_window = None
+
+    def set_parent_window(self, parent):
+        self.parent_window = parent if isinstance(parent, Gtk.Widget) else None
 
     def _confirm_action(self, widget, action_callback, message):
-        if self.current_dialog:
+        if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
             self.current_dialog.destroy()
+            self.current_dialog = None
 
         dialog = Gtk.MessageDialog(
-            transient_for=None,
+            transient_for=self.parent_window,
             flags=0,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.OK_CANCEL,
@@ -274,7 +107,8 @@ class PowerControl:
         def on_response(dialog, response_id):
             if response_id == Gtk.ResponseType.OK and action_callback:
                 action_callback()
-            dialog.destroy()
+            if isinstance(dialog, Gtk.Widget):
+                dialog.destroy()
             self.current_dialog = None
 
         dialog.connect("response", on_response)
@@ -290,15 +124,19 @@ class PowerControl:
         os.system("loginctl lock-session")
 
     def _open_settings(self, *_):
-        if self.current_dialog:
+        if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
             self.current_dialog.destroy()
+            self.current_dialog = None
 
-        dialog = Gtk.Dialog(title=tr('settings'), flags=0)
+        dialog = Gtk.Dialog(
+            title=tr('settings'),
+            transient_for=self.parent_window,
+            flags=0
+        )
         self.current_dialog = dialog
         content = dialog.get_content_area()
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=6)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=10)
         content.add(box)
-        content.set_border_width(10)
 
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         time_label = Gtk.Label(label=tr('minutes'))
@@ -357,7 +195,8 @@ class PowerControl:
 
             if minutes <= 0:
                 self._show_message(tr('error'), tr('error_minutes_positive'))
-                dialog.destroy()
+                if isinstance(dialog, Gtk.Widget):
+                    dialog.destroy()
                 self.current_dialog = None
                 return
 
@@ -374,7 +213,8 @@ class PowerControl:
 
             self._show_message(tr('scheduled'), tr('action_in_time').format(action, minutes))
 
-        dialog.destroy()
+        if isinstance(dialog, Gtk.Widget):
+            dialog.destroy()
         self.current_dialog = None
 
     def _reset_action_button(self, *_):
@@ -396,11 +236,15 @@ class PowerControl:
         self._show_message(tr('cancelled'), tr('cancelled_text'))
 
     def _notify_before_action(self, action):
+        if not self.app:
+            return False
         self._notify_timer_id = None
         self._show_message(tr('notification'), tr('action_in_1_min').format(action))
         return False
 
     def _update_indicator_label(self):
+        if not self.app:
+            return False
         if self.remaining_seconds <= 0:
             self.app.indicator.set_label("", "")
             return False
@@ -413,6 +257,8 @@ class PowerControl:
         return True
 
     def _delayed_action(self, action):
+        if not self.app:
+            return False
         self._action_timer_id = None
         self.app.indicator.set_label("", "")
         self.scheduled_action = None
@@ -430,11 +276,12 @@ class PowerControl:
         return False
 
     def _show_message(self, title, message):
-        if self.current_dialog:
+        if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
             self.current_dialog.destroy()
+            self.current_dialog = None
 
         dialog = Gtk.MessageDialog(
-            transient_for=None,
+            transient_for=self.parent_window,
             flags=0,
             message_type=Gtk.MessageType.INFO,
             buttons=Gtk.ButtonsType.OK,
@@ -444,7 +291,8 @@ class PowerControl:
         self.current_dialog = dialog
 
         def on_response(dialog, response_id):
-            dialog.destroy()
+            if isinstance(dialog, Gtk.Widget):
+                dialog.destroy()
             self.current_dialog = None
 
         dialog.connect("response", on_response)
@@ -452,10 +300,8 @@ class PowerControl:
 
 
 class SettingsDialog(Gtk.Dialog):
-    """Settings dialog"""
-
     def __init__(self, parent, visibility_settings):
-        super().__init__(title=tr('settings_label'), transient_for=parent, flags=0)
+        super().__init__(title=tr('settings_label'), transient_for=parent if isinstance(parent, Gtk.Widget) else None, flags=0)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL, tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility_settings
         box = self.get_content_area()
@@ -558,9 +404,10 @@ class SettingsDialog(Gtk.Dialog):
         self.show_all()
 
     def download_log_file(self, widget):
+        parent = self if isinstance(self, Gtk.Widget) and self.get_mapped() else None
         dialog = Gtk.FileChooserDialog(
             title=tr('download_log'),
-            parent=self,
+            parent=parent,
             action=Gtk.FileChooserAction.SAVE
         )
         dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK)
@@ -574,12 +421,11 @@ class SettingsDialog(Gtk.Dialog):
                     dst.write(src.read())
             except Exception as e:
                 print("Error saving log:", e)
-        dialog.destroy()
+        if isinstance(dialog, Gtk.Widget):
+            dialog.destroy()
 
 
 class SystemTrayApp:
-    """System tray application with combined functionality"""
-
     def __init__(self):
         global current_lang
 
@@ -610,6 +456,7 @@ class SystemTrayApp:
         current_lang = self.visibility_settings.get('language', 'ru')
 
         self.power_control = PowerControl(self)
+        self.power_control.set_parent_window(None)
 
         self.create_menu()
         self.prev_net_data = {
@@ -623,7 +470,6 @@ class SystemTrayApp:
         self.init_listeners()
 
     def init_listeners(self):
-        """Initialize event listeners"""
         try:
             self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
             self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
@@ -633,18 +479,15 @@ class SystemTrayApp:
             print(f"Error initializing listeners: {e}")
 
     def on_key_press(self, key):
-        """Key press handler"""
         global keyboard_clicks
         keyboard_clicks += 1
 
     def on_mouse_click(self, x, y, button, pressed):
-        """Mouse click handler"""
         global mouse_clicks
         if pressed:
             mouse_clicks += 1
 
     def create_menu(self):
-        """Create or recreate menu with current language"""
         self.menu = Gtk.Menu()
 
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
@@ -732,7 +575,7 @@ class SystemTrayApp:
     def load_settings(self):
         default = {
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
-            'tray_cpu': True, 'tray_ram': True, 'tray_clicks': True, 'keyboard_clicks': True,
+            'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True,
             'mouse_clicks': True, 'language': 'ru', 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True
         }
@@ -752,7 +595,6 @@ class SystemTrayApp:
             print("Error saving settings:", e)
 
     def update_menu_visibility(self):
-        """Update menu item visibility"""
         children = self.menu.get_children()
         for child in children:
             if child not in [self.main_separator, self.power_separator, self.exit_separator,
@@ -787,6 +629,7 @@ class SystemTrayApp:
 
     def show_settings(self, widget):
         dialog = SettingsDialog(None, self.visibility_settings)
+        self.power_control.set_parent_window(dialog)
         response = dialog.run()
 
         if response == Gtk.ResponseType.OK:
@@ -798,21 +641,20 @@ class SystemTrayApp:
             self.visibility_settings['uptime'] = dialog.uptime_check.get_active()
             self.visibility_settings['tray_cpu'] = dialog.tray_cpu_check.get_active()
             self.visibility_settings['tray_ram'] = dialog.tray_ram_check.get_active()
-            self.visibility_settings['tray_clicks'] = dialog.tray_clicks_check.get_active()
             self.visibility_settings['keyboard_clicks'] = dialog.keyboard_check.get_active()
             self.visibility_settings['mouse_clicks'] = dialog.mouse_check.get_active()
-
             self.visibility_settings['show_power_off'] = dialog.power_off_check.get_active()
             self.visibility_settings['show_reboot'] = dialog.reboot_check.get_active()
             self.visibility_settings['show_lock'] = dialog.lock_check.get_active()
             self.visibility_settings['show_timer'] = dialog.timer_check.get_active()
-
             self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
 
             self.save_settings()
             self.create_menu()
 
-        dialog.destroy()
+        if isinstance(dialog, Gtk.Widget):
+            dialog.destroy()
+        self.power_control.set_parent_window(None)
 
     def update_info(self):
         try:
@@ -859,7 +701,6 @@ class SystemTrayApp:
                    disk_used, disk_total, swap_used, swap_total,
                    net_recv_speed, net_sent_speed, uptime,
                    keyboard_clicks, mouse_clicks):
-        """Update UI elements safely from the main thread"""
         try:
             if self.visibility_settings['cpu']:
                 self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
@@ -890,8 +731,6 @@ class SystemTrayApp:
                 tray_parts.append(f"  {tr('cpu_info')}: {cpu_usage:.0f}%")
             if self.visibility_settings.get('tray_ram', True):
                 tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
-            if self.visibility_settings.get('tray_clicks', True):
-                tray_parts.append(f"K:{keyboard_clicks} M:{mouse_clicks}")
 
             tray_text = "" + "  ".join(tray_parts)
             self.indicator.set_label(tray_text, "")
@@ -904,6 +743,9 @@ class SystemTrayApp:
             self.keyboard_listener.stop()
         if self.mouse_listener:
             self.mouse_listener.stop()
+        if self.power_control.current_dialog and isinstance(self.power_control.current_dialog, Gtk.Widget):
+            self.power_control.current_dialog.destroy()
+            self.power_control.current_dialog = None
         Gtk.main_quit()
 
     def run(self):
