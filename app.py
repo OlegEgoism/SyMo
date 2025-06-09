@@ -545,10 +545,12 @@ class SettingsDialog(Gtk.Dialog):
 
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
+        self.logging_check.set_margin_bottom(10)  # Set 10px margin at the bottom
         logging_box.pack_start(self.logging_check, False, False, 0)
 
         self.download_button = Gtk.Button(label=tr('download_log'))
         self.download_button.connect("clicked", self.download_log_file)
+        self.download_button.set_margin_bottom(10)  # Set 10px margin at the bottom
         logging_box.pack_end(self.download_button, False, False, 0)
 
         box.add(logging_box)
