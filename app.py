@@ -33,7 +33,7 @@ class SystemUsage:
     @staticmethod
     def get_cpu_temp():
         temps = psutil.sensors_temperatures()
-        if 'coretemp' in temps:
+        if 'coretemp' in temps and temps['coretemp']:
             return int(temps['coretemp'][0].current)
         return 0
 
@@ -61,8 +61,11 @@ class SystemUsage:
         net = psutil.net_io_counters()
         current_time = time.time()
         elapsed = current_time - prev_data['time']
-        recv_speed = (net.bytes_recv - prev_data['recv']) / elapsed / 1024 / 1024
-        sent_speed = (net.bytes_sent - prev_data['sent']) / elapsed / 1024 / 1024
+        if elapsed <= 0:
+            recv_speed = sent_speed = 0.0
+        else:
+            recv_speed = (net.bytes_recv - prev_data['recv']) / elapsed / 1024 / 1024
+            sent_speed = (net.bytes_sent - prev_data['sent']) / elapsed / 1024 / 1024
         prev_data['recv'] = net.bytes_recv
         prev_data['sent'] = net.bytes_sent
         prev_data['time'] = current_time
