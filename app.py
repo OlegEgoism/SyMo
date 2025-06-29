@@ -474,8 +474,8 @@ class SystemTrayApp:
 
     def init_listeners(self):
         try:
-            self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
-            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
+            self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
+            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
             self.keyboard_listener.start()
             self.mouse_listener.start()
         except Exception as e:
@@ -744,10 +744,8 @@ class SystemTrayApp:
     def quit(self, *args):
         if self.keyboard_listener:
             self.keyboard_listener.stop()
-            self.keyboard_listener.join()
         if self.mouse_listener:
             self.mouse_listener.stop()
-            self.mouse_listener.join()
         if self.power_control.current_dialog and isinstance(self.power_control.current_dialog, Gtk.Widget):
             self.power_control.current_dialog.destroy()
             self.power_control.current_dialog = None
