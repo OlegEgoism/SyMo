@@ -474,8 +474,6 @@ class SystemTrayApp:
 
     def init_listeners(self):
         try:
-            self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
-            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
             self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
             self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
             self.keyboard_listener.start()
