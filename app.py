@@ -458,6 +458,9 @@ class SystemTrayApp:
 
         current_lang = self.visibility_settings.get('language', 'ru')
 
+        signal.signal(signal.SIGTERM, self.quit)
+        signal.signal(signal.SIGINT, self.quit)
+
         self.power_control = PowerControl(self)
         self.power_control.set_parent_window(None)
 
@@ -749,34 +752,20 @@ class SystemTrayApp:
             print(f"Error in _update_ui: {e}")
 
     def quit(self, *args):
-        try:
-            if self.keyboard_listener:
-                self.keyboard_listener.stop()
-                self.keyboard_listener = None
-        except Exception as e:
-            print(f"Error stopping keyboard_listener: {e}")
-        try:
-            if self.mouse_listener:
-                self.mouse_listener.stop()
-                self.mouse_listener = None
-        except Exception as e:
-            print(f"Error stopping mouse_listener: {e}")
-        if self.power_control.current_dialog and isinstance(self.power_control.current_dialog, Gtk.Widget):
-            try:
+        if self.keyboard_listener:
+            self.keyboard_listener.stop()
+        if self.mouse_listener:
+            self.mouse_listener.stop()
+        if hasattr(self.power_control, 'current_dialog') and self.power_control.current_dialog:
+            if isinstance(self.power_control.current_dialog, Gtk.Widget):
                 self.power_control.current_dialog.destroy()
-            except Exception:
-                pass
             self.power_control.current_dialog = None
-        if self.power_control._update_timer_id:
+        if hasattr(self.power_control, '_update_timer_id') and self.power_control._update_timer_id:
             GLib.source_remove(self.power_control._update_timer_id)
-            self.power_control._update_timer_id = None
-        if self.power_control._notify_timer_id:
+        if hasattr(self.power_control, '_notify_timer_id') and self.power_control._notify_timer_id:
             GLib.source_remove(self.power_control._notify_timer_id)
-            self.power_control._notify_timer_id = None
-        if self.power_control._action_timer_id:
+        if hasattr(self.power_control, '_action_timer_id') and self.power_control._action_timer_id:
             GLib.source_remove(self.power_control._action_timer_id)
-            self.power_control._action_timer_id = None
-
         Gtk.main_quit()
         os._exit(0)
 
