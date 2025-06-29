@@ -2,13 +2,14 @@
 
 # Настройки пакета
 PACKAGE_NAME="systray-monitor"
-VERSION="1.0.0"
+VERSION="1.0.1"  # Увеличиваем версию
 MAINTAINER="Your Name <your.email@example.com>"
 DESCRIPTION="System monitoring application with tray icon"
-DEPENDS="python3, python3-gi, python3-psutil, gir1.2-appindicator3-0.1, python3-pynput"
+DEPENDS="python3, python3-gi, python3-psutil, gir1.2-appindicator3-0.1, python3-pynput, python3-evdev"
 
 # Создаем временную директорию сборки
 BUILD_DIR="deb_build"
+rm -rf ${BUILD_DIR}  # Очищаем предыдущую сборку
 mkdir -p ${BUILD_DIR}/DEBIAN
 mkdir -p ${BUILD_DIR}/usr/share/${PACKAGE_NAME}
 mkdir -p ${BUILD_DIR}/usr/share/applications
@@ -16,13 +17,16 @@ mkdir -p ${BUILD_DIR}/usr/share/icons/hicolor/48x48/apps
 mkdir -p ${BUILD_DIR}/usr/bin
 
 # Копируем файлы проекта
-cp -r app.py language.py logo.png requirements.txt ${BUILD_DIR}/usr/share/${PACKAGE_NAME}/
+cp -r app.py language.py logo.png ${BUILD_DIR}/usr/share/${PACKAGE_NAME}/
+
+# Удаляем requirements.txt, так как будем использовать системные пакеты
+rm -f ${BUILD_DIR}/usr/share/${PACKAGE_NAME}/requirements.txt
 
 # Создаем исполняемый файл в /usr/bin
 cat > ${BUILD_DIR}/usr/bin/${PACKAGE_NAME} <<EOF
 #!/bin/bash
 cd /usr/share/${PACKAGE_NAME}
-python3 app.py
+exec python3 app.py
 EOF
 chmod +x ${BUILD_DIR}/usr/bin/${PACKAGE_NAME}
 
@@ -35,7 +39,7 @@ cat > ${BUILD_DIR}/usr/share/applications/${PACKAGE_NAME}.desktop <<EOF
 Name=System Monitor
 Comment=${DESCRIPTION}
 Exec=${PACKAGE_NAME}
-Icon=/usr/share/icons/hicolor/48x48/apps/${PACKAGE_NAME}.png
+Icon=${PACKAGE_NAME}
 Terminal=false
 Type=Application
 Categories=Utility;System;
@@ -60,11 +64,8 @@ EOF
 # Создаем postinst скрипт
 cat > ${BUILD_DIR}/DEBIAN/postinst <<EOF
 #!/bin/bash
-# Установка зависимостей Python
-pip3 install -r /usr/share/${PACKAGE_NAME}/requirements.txt
-
 # Обновление иконок
-gtk-update-icon-cache -f /usr/share/icons/hicolor/
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor/
 update-desktop-database /usr/share/applications/
 
 # Установка прав
@@ -81,7 +82,7 @@ EOF
 chmod +x ${BUILD_DIR}/DEBIAN/prerm
 
 # Собираем пакет
-dpkg-deb --build ${BUILD_DIR} ${PACKAGE_NAME}_${VERSION}_all.deb
+fakeroot dpkg-deb --build ${BUILD_DIR} ${PACKAGE_NAME}_${VERSION}_all.deb
 
 # Проверяем пакет
 lintian ${PACKAGE_NAME}_${VERSION}_all.deb
