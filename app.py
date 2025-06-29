@@ -475,11 +475,18 @@ class SystemTrayApp:
     def init_listeners(self):
         try:
             self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
-            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
+            self.keyboard_listener.daemon = True  # <-- Делаем демон-поток
             self.keyboard_listener.start()
+        except Exception as e:
+            print(f"Error initializing keyboard listener: {e}")
+            self.keyboard_listener = None
+        try:
+            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
+            self.mouse_listener.daemon = True  # <-- Делаем демон-поток
             self.mouse_listener.start()
         except Exception as e:
-            print(f"Error initializing listeners: {e}")
+            print(f"Error initializing mouse listener: {e}")
+            self.mouse_listener = None
 
     def on_key_press(self, key):
         global keyboard_clicks
@@ -742,14 +749,36 @@ class SystemTrayApp:
             print(f"Error in _update_ui: {e}")
 
     def quit(self, *args):
-        if self.keyboard_listener:
-            self.keyboard_listener.stop()
-        if self.mouse_listener:
-            self.mouse_listener.stop()
+        try:
+            if self.keyboard_listener:
+                self.keyboard_listener.stop()
+                self.keyboard_listener = None
+        except Exception as e:
+            print(f"Error stopping keyboard_listener: {e}")
+        try:
+            if self.mouse_listener:
+                self.mouse_listener.stop()
+                self.mouse_listener = None
+        except Exception as e:
+            print(f"Error stopping mouse_listener: {e}")
         if self.power_control.current_dialog and isinstance(self.power_control.current_dialog, Gtk.Widget):
-            self.power_control.current_dialog.destroy()
+            try:
+                self.power_control.current_dialog.destroy()
+            except Exception:
+                pass
             self.power_control.current_dialog = None
+        if self.power_control._update_timer_id:
+            GLib.source_remove(self.power_control._update_timer_id)
+            self.power_control._update_timer_id = None
+        if self.power_control._notify_timer_id:
+            GLib.source_remove(self.power_control._notify_timer_id)
+            self.power_control._notify_timer_id = None
+        if self.power_control._action_timer_id:
+            GLib.source_remove(self.power_control._action_timer_id)
+            self.power_control._action_timer_id = None
+
         Gtk.main_quit()
+        os._exit(0)
 
     def run(self):
         GLib.timeout_add_seconds(time_update, self.update_info)
