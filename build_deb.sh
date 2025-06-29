@@ -16,7 +16,7 @@ mkdir -p ${BUILD_DIR}/usr/share/icons/hicolor/48x48/apps
 mkdir -p ${BUILD_DIR}/usr/bin
 
 # Копируем файлы проекта
-cp -r app.py language.py logo.png ${BUILD_DIR}/usr/share/${PACKAGE_NAME}/
+cp -r app.py language.py logo.png requirements.txt ${BUILD_DIR}/usr/share/${PACKAGE_NAME}/
 
 # Создаем исполняемый файл в /usr/bin
 cat > ${BUILD_DIR}/usr/bin/${PACKAGE_NAME} <<EOF
