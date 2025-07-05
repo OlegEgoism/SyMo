@@ -4,6 +4,7 @@ import signal
 import json
 import psutil
 import time
+import requests
 from datetime import timedelta
 from pynput import keyboard, mouse
 
@@ -19,6 +20,7 @@ current_lang = 'ru'
 time_update = 1
 LOG_FILE = os.path.join(os.path.expanduser("~"), "system_monitor_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_settings.json")
+TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_telegram.json")
 
 keyboard_clicks = 0
 mouse_clicks = 0
@@ -75,6 +77,63 @@ class SystemUsage:
     def get_uptime():
         seconds = time.time() - psutil.boot_time()
         return str(timedelta(seconds=seconds)).split(".")[0]
+
+
+class TelegramNotifier:
+    def __init__(self):
+        self.token = None
+        self.chat_id = None
+        self.enabled = False
+        self.notification_interval = 3600
+        self.load_config()
+
+    def load_config(self):
+        try:
+            if os.path.exists(TELEGRAM_CONFIG_FILE):
+                with open(TELEGRAM_CONFIG_FILE, "r") as f:
+                    config = json.load(f)
+                    self.token = config.get('TELEGRAM_BOT_TOKEN')
+                    self.chat_id = config.get('TELEGRAM_CHAT_ID')
+                    self.enabled = config.get('enabled', False)
+                    self.notification_interval = config.get('notification_interval', 3600)
+        except Exception as e:
+            print(f"Ошибка загрузки конфигурации Telegram: {e}")
+
+    def save_config(self, token, chat_id, enabled, interval):
+        try:
+            self.token = token
+            self.chat_id = chat_id
+            self.enabled = enabled
+            self.notification_interval = int(interval)
+
+            with open(TELEGRAM_CONFIG_FILE, "w") as f:
+                json.dump({
+                    'TELEGRAM_BOT_TOKEN': token,
+                    'TELEGRAM_CHAT_ID': chat_id,
+                    'enabled': enabled,
+                    'notification_interval': self.notification_interval
+                }, f)
+            return True
+        except Exception as e:
+            print(f"Ошибка сохранения конфигурации Telegram: {e}")
+            return False
+
+    def send_message(self, message):
+        if not self.enabled or not self.token or not self.chat_id:
+            return False
+
+        try:
+            url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+            payload = {
+                'chat_id': self.chat_id,
+                'text': message,
+                'parse_mode': 'HTML'
+            }
+            response = requests.post(url, data=payload, timeout=10)
+            return response.status_code == 200
+        except Exception as e:
+            print(f"Ошибка отправки сообщения в Telegram: {e}")
+            return False
 
 
 class PowerControl:
@@ -310,7 +369,7 @@ class SettingsDialog(Gtk.Dialog):
         box = self.get_content_area()
         box.set_border_width(10)
 
-        monitor_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        monitor_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         monitor_box.set_halign(Gtk.Align.END)
         monitor_link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
         monitor_link.set_halign(Gtk.Align.END)
@@ -394,17 +453,103 @@ class SettingsDialog(Gtk.Dialog):
 
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
-        self.logging_check.set_margin_bottom(10)
+        self.logging_check.set_margin_bottom(3)
         logging_box.pack_start(self.logging_check, False, False, 0)
-
         self.download_button = Gtk.Button(label=tr('download_log'))
         self.download_button.connect("clicked", self.download_log_file)
-        self.download_button.set_margin_bottom(10)
+        self.download_button.set_margin_bottom(3)
         logging_box.pack_end(self.download_button, False, False, 0)
-
         box.add(logging_box)
 
+        telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
+        self.telegram_enable_check.set_margin_top(3)
+        self.telegram_enable_check.set_margin_bottom(3)
+        telegram_box.pack_start(self.telegram_enable_check, False, False, 0)
+
+        test_button = Gtk.Button(label=tr('check_telegram'))
+        test_button.set_margin_top(3)
+        test_button.set_margin_bottom(3)
+        test_button.set_halign(Gtk.Align.END)
+        test_button.connect("clicked", self.test_telegram)
+        telegram_box.pack_end(test_button, False, False, 0)
+        box.add(telegram_box)
+
+        token_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        token_label = Gtk.Label(label=tr('token_bot'))
+        token_label.set_xalign(0)
+        self.token_entry = Gtk.Entry()
+        self.token_entry.set_placeholder_text("123...:ABC...")
+        token_box.pack_start(token_label, False, False, 0)
+        token_box.pack_start(self.token_entry, True, True, 0)
+        token_box.set_margin_top(3)
+        token_box.set_margin_bottom(3)
+        box.add(token_box)
+
+        chat_id_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        chat_id_label = Gtk.Label(label=tr('id_chat'))
+        chat_id_label.set_xalign(0)
+        self.chat_id_entry = Gtk.Entry()
+        self.chat_id_entry.set_placeholder_text("123456789")
+        chat_id_box.pack_start(chat_id_label, False, False, 0)
+        chat_id_box.pack_start(self.chat_id_entry, True, True, 0)
+        chat_id_box.set_margin_top(3)
+        chat_id_box.set_margin_bottom(3)
+        box.add(chat_id_box)
+
+        interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        interval_label = Gtk.Label(label=tr('time_send'))
+        interval_label.set_xalign(0)
+        self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
+        self.interval_spin.set_value(3600)
+        interval_box.pack_start(interval_label, False, False, 0)
+        interval_box.pack_start(self.interval_spin, True, True, 0)
+        interval_box.set_margin_top(3)
+        interval_box.set_margin_bottom(3)
+        box.add(interval_box)
+
+        try:
+            if os.path.exists(TELEGRAM_CONFIG_FILE):
+                with open(TELEGRAM_CONFIG_FILE, "r") as f:
+                    config = json.load(f)
+                    self.token_entry.set_text(config.get('TELEGRAM_BOT_TOKEN', ''))
+                    self.chat_id_entry.set_text(str(config.get('TELEGRAM_CHAT_ID', '')))
+                    self.telegram_enable_check.set_active(config.get('enabled', False))
+                    self.interval_spin.set_value(config.get('notification_interval', 3600))
+        except Exception as e:
+            print(f"Ошибка загрузки конфигурации Telegram: {e}")
         self.show_all()
+
+    def test_telegram(self, widget):
+        token = self.token_entry.get_text().strip()
+        chat_id = self.chat_id_entry.get_text().strip()
+        enabled = self.telegram_enable_check.get_active()
+        interval = self.interval_spin.get_value()
+
+        if not token or not chat_id:
+            self._show_message(title=tr('error'), message=tr('bot_message'))
+            return
+        notifier = TelegramNotifier()
+        if notifier.save_config(token, chat_id, enabled, interval):
+            test_message = tr('test_message')
+            if notifier.send_message(test_message):
+                self._show_message(title=tr('ok'), message=tr('test_message_ok'))
+            else:
+                self._show_message(title=tr('error'), message=tr('test_message_error'))
+        else:
+            self._show_message(title=tr('error'), message=tr('setting_telegram_error'))
+
+    def _show_message(self, title, message):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=message
+        )
+        dialog.set_title(title)
+        dialog.run()
+        dialog.destroy()
 
     def download_log_file(self, widget):
         parent = self if isinstance(self, Gtk.Widget) and self.get_mapped() else None
@@ -423,7 +568,7 @@ class SettingsDialog(Gtk.Dialog):
                 with open(LOG_FILE, "r", encoding="utf-8") as src, open(dest_path, "w", encoding="utf-8") as dst:
                     dst.write(src.read())
             except Exception as e:
-                print("Error saving log:", e)
+                print("Ошибка сохранения лога:", e)
         if isinstance(dialog, Gtk.Widget):
             dialog.destroy()
 
@@ -446,7 +591,7 @@ class SystemTrayApp:
             try:
                 self.indicator.set_icon_full(icon_path, "System Monitor")
             except Exception as e:
-                print(f"Couldn't set custom icon: {e}")
+                print(f"Не удалось установить иконку: {e}")
                 self.indicator.set_icon("system-run-symbolic")
         else:
             self.indicator.set_icon("system-run-symbolic")
@@ -475,20 +620,23 @@ class SystemTrayApp:
         self.mouse_listener = None
         self.init_listeners()
 
+        self.telegram_notifier = TelegramNotifier()
+        self.last_telegram_notification_time = 0
+
     def init_listeners(self):
         try:
             self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
-            self.keyboard_listener.daemon = True  # <-- Делаем демон-поток
+            self.keyboard_listener.daemon = True
             self.keyboard_listener.start()
         except Exception as e:
-            print(f"Error initializing keyboard listener: {e}")
+            print(f"Ошибка инициализации слушателя клавиатуры: {e}")
             self.keyboard_listener = None
         try:
             self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
-            self.mouse_listener.daemon = True  # <-- Делаем демон-поток
+            self.mouse_listener.daemon = True
             self.mouse_listener.start()
         except Exception as e:
-            print(f"Error initializing mouse listener: {e}")
+            print(f"Ошибка инициализации слушателя мыши: {e}")
             self.mouse_listener = None
 
     def on_key_press(self, key):
@@ -605,7 +753,7 @@ class SystemTrayApp:
             with open(self.settings_file, "w", encoding="utf-8") as f:
                 json.dump(self.visibility_settings, f, indent=4)
         except Exception as e:
-            print("Error saving settings:", e)
+            print("Ошибка сохранения настроек:", e)
 
     def update_menu_visibility(self):
         children = self.menu.get_children()
@@ -662,6 +810,14 @@ class SystemTrayApp:
             self.visibility_settings['show_timer'] = dialog.timer_check.get_active()
             self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
 
+            self.telegram_notifier.save_config(
+                dialog.token_entry.get_text().strip(),
+                dialog.chat_id_entry.get_text().strip(),
+                dialog.telegram_enable_check.get_active(),
+                dialog.interval_spin.get_value()
+            )
+            self.telegram_notifier.load_config()
+
             self.save_settings()
             self.create_menu()
 
@@ -690,6 +846,20 @@ class SystemTrayApp:
                           uptime,
                           keyboard_clicks, mouse_clicks)
 
+            current_time = time.time()
+            if (self.telegram_notifier.enabled and
+                    current_time - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
+                self.send_telegram_notification(
+                    cpu_temp, cpu_usage,
+                    ram_used, ram_total,
+                    disk_used, disk_total,
+                    swap_used, swap_total,
+                    net_recv_speed, net_sent_speed,
+                    uptime,
+                    keyboard_clicks, mouse_clicks
+                )
+                self.last_telegram_notification_time = current_time
+
             if self.visibility_settings.get('logging_enabled', True):
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -703,12 +873,29 @@ class SystemTrayApp:
                                 f"Keys: {keyboard_clicks} | "
                                 f"Clicks: {mouse_clicks}\n")
                 except Exception as e:
-                    print("Error writing to log:", e)
+                    print("Ошибка записи в лог:", e)
             return True
 
         except Exception as e:
-            print(f"Error in update_info: {e}")
+            print(f"Ошибка в update_info: {e}")
             return True
+
+    def send_telegram_notification(self, cpu_temp, cpu_usage, ram_used, ram_total,
+                                   disk_used, disk_total, swap_used, swap_total,
+                                   net_recv_speed, net_sent_speed, uptime,
+                                   keyboard_clicks, mouse_clicks):
+        message = (
+            f"<b>Статус системы</b>\n\n"
+            f"<b>CPU:</b> {cpu_usage:.0f}% ({cpu_temp}°C)\n"
+            f"<b>RAM:</b> {ram_used:.1f}/{ram_total:.1f} GB\n"
+            f"<b>Swap:</b> {swap_used:.1f}/{swap_total:.1f} GB\n"
+            f"<b>Диск:</b> {disk_used:.1f}/{disk_total:.1f} GB\n"
+            f"<b>Сеть:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
+            f"<b>Время работы:</b> {uptime}\n"
+            f"<b>Клавиши:</b> {keyboard_clicks} нажатий\n"
+            f"<b>Мышь:</b> {mouse_clicks} кликов"
+        )
+        self.telegram_notifier.send_message(message)
 
     def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
                    disk_used, disk_total, swap_used, swap_total,
@@ -749,7 +936,7 @@ class SystemTrayApp:
             self.indicator.set_label(tray_text, "")
 
         except Exception as e:
-            print(f"Error in _update_ui: {e}")
+            print(f"Ошибка в _update_ui: {e}")
 
     def quit(self, *args):
         if self.keyboard_listener:
