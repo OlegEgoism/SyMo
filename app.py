@@ -962,9 +962,9 @@ class SystemTrayApp:
 
 
 if __name__ == "__main__":
-    if not Gtk.init_check()[0]:
-        Gtk.init([])
-
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    # if not Gtk.init_check()[0]:
+    #     Gtk.init([])
+    #
+    # signal.signal(signal.SIGINT, signal.SIG_DFL)
     app = SystemTrayApp()
     app.run()
