@@ -93,23 +93,24 @@ ls -l *.deb
 
 💡 Установка собранного пакета после успешной сборки
 ```bash
-sudo apt install ./systray-monitor_1.0.0_all.deb
+#sudo apt install ./systray-monitor_1.0.0_all.deb
+sudo dpkg -i SyMo_1.0.1_all.deb
 ```
 
 💡 Удалить пакет (рекомендуемый способ)
 ```bash
-sudo apt remove systray-monitor
+sudo apt remove symo
 ```
 
 💡 Удалить пакет вместе с конфигурационными файлами
 ```bash
-sudo apt purge systray-monitor
+sudo apt purge SyMo
 ```
 
 💡 Убедится, что пакет удален 
 ```bash
-which systray-monitor
-dpkg -l | grep systray
+which SyMo
+dpkg -l | grep SyMo
 ```
 ---------------------------------------------------------------------------------
 
