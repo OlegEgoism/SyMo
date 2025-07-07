@@ -93,7 +93,6 @@ ls -l *.deb
 
 💡 Установка собранного пакета после успешной сборки
 ```bash
-#sudo apt install ./systray-monitor_1.0.0_all.deb
 sudo dpkg -i SyMo_1.0.1_all.deb
 ```
 
