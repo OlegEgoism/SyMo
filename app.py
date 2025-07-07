@@ -7,14 +7,13 @@ import time
 import requests
 from datetime import timedelta
 from pynput import keyboard, mouse
-
 from language import LANGUAGES
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
 gi.require_version('AppIndicator3', '0.1')
 
-from gi.repository import Gtk, GLib, AppIndicator3
+from gi.repository import Gtk, GLib, AppIndicator3, GdkPixbuf
 
 current_lang = 'ru'
 time_update = 1
@@ -373,7 +372,10 @@ class SettingsDialog(Gtk.Dialog):
         monitor_box.set_halign(Gtk.Align.END)
         monitor_link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
         monitor_link.set_halign(Gtk.Align.END)
-        monitor_box.pack_end(monitor_link, False, False, 0)
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("logo.png", 36, 36)
+        image = Gtk.Image.new_from_pixbuf(pixbuf)
+        monitor_box.pack_start(image, False, False, 0)
+        monitor_box.pack_start(monitor_link, False, False, 0)
         box.add(monitor_box)
 
         self.tray_cpu_check = Gtk.CheckButton(label=tr('cpu_tray'))
@@ -590,7 +592,7 @@ class SystemTrayApp:
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
         if os.path.exists(icon_path):
             try:
-                self.indicator.set_icon_full(icon_path, "System Monitor")
+                self.indicator.set_icon_full(icon_path, "SyMo")
             except Exception as e:
                 print(f"Не удалось установить иконку: {e}")
                 self.indicator.set_icon("system-run-symbolic")
