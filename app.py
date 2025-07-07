@@ -505,7 +505,8 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.pack_start(interval_label, False, False, 0)
         interval_box.pack_start(self.interval_spin, True, True, 0)
         interval_box.set_margin_top(3)
-        interval_box.set_margin_bottom(3)
+        interval_box.set_margin_bottom(33)
+        interval_box.set_margin_end(140)
         box.add(interval_box)
 
         try:
@@ -962,9 +963,9 @@ class SystemTrayApp:
 
 
 if __name__ == "__main__":
-    # if not Gtk.init_check()[0]:
-    #     Gtk.init([])
-    #
-    # signal.signal(signal.SIGINT, signal.SIG_DFL)
+    if not Gtk.init_check()[0]:
+        Gtk.init([])
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
     app = SystemTrayApp()
     app.run()
