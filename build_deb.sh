@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Настройки пакета
-PACKAGE_NAME="system-monitor-indicator"
+PACKAGE_NAME="SyMo"
 VERSION="1.0.1"
-MAINTAINER="Your Name <your.email@example.com>"
-DESCRIPTION="System monitoring application with tray icon"
+MAINTAINER="Your Name <olegpustovalov220@gmail.com>"
+DESCRIPTION="SyMo application with tray icon"
 DEPENDS="python3, python3-gi, python3-psutil, gir1.2-appindicator3-0.1, python3-pynput, python3-requests"
 
 # Создаем временную директорию сборки
@@ -33,7 +33,7 @@ cp logo.png ${BUILD_DIR}/usr/share/icons/hicolor/48x48/apps/${PACKAGE_NAME}.png
 # Создаем desktop-файл
 cat > ${BUILD_DIR}/usr/share/applications/${PACKAGE_NAME}.desktop <<EOF
 [Desktop Entry]
-Name=System Monitor
+Name=SyMo
 Comment=${DESCRIPTION}
 Exec=${PACKAGE_NAME}
 Icon=${PACKAGE_NAME}
@@ -55,7 +55,7 @@ Architecture: all
 Depends: ${DEPENDS}
 Maintainer: ${MAINTAINER}
 Description: ${DESCRIPTION}
- A comprehensive system monitoring application that shows:
+ A comprehensive SyMo application that shows:
   - CPU usage and temperature
   - RAM and swap usage
   - Disk space
