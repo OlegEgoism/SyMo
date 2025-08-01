@@ -2,7 +2,7 @@
 
 # Настройки пакета
 PACKAGE_NAME="SyMo"
-VERSION="1.0.1"
+VERSION="1.0.2"
 MAINTAINER="Your Name <olegpustovalov220@gmail.com>"
 DESCRIPTION="SyMo application with tray icon"
 DEPENDS="python3, python3-gi, python3-psutil, gir1.2-appindicator3-0.1, python3-pynput, python3-requests"

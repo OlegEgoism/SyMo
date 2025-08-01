@@ -1,3 +1,5 @@
+import re
+
 import gi
 import os
 import signal
@@ -15,6 +17,23 @@ gi.require_version('AppIndicator3', '0.1')
 
 from gi.repository import Gtk, GLib, AppIndicator3, GdkPixbuf
 
+def _read_app_version():
+    """Return VERSION string from build_deb.sh if available, otherwise 'unknown'."""
+    build_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build_deb.sh")
+    version_pattern = re.compile(r'^VERSION="([^"]+)"')
+    try:
+        with open(build_script, "r", encoding="utf-8") as f:
+            for line in f:
+                match = version_pattern.match(line.strip())
+                if match:
+                    return match.group(1)
+    except (FileNotFoundError, PermissionError):
+        pass
+    return "unknown"
+
+APP_VERSION = _read_app_version()
+
+
 current_lang = 'ru'
 time_update = 1
 LOG_FILE = os.path.join(os.path.expanduser("~"), "system_monitor_log.txt")
@@ -27,6 +46,8 @@ mouse_clicks = 0
 
 def tr(key):
     return LANGUAGES.get(current_lang, LANGUAGES['en']).get(key, key)
+
+
 
 
 class SystemUsage:
@@ -361,22 +382,22 @@ class PowerControl:
 
 
 class SettingsDialog(Gtk.Dialog):
-    def __init__(self, parent, visibility_settings):
+    def __init__(self, parent, visibility):
         super().__init__(title=tr('settings_label'), transient_for=parent if isinstance(parent, Gtk.Widget) else None, flags=0)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL, tr('apply_label'), Gtk.ResponseType.OK)
-        self.visibility_settings = visibility_settings
+        self.visibility_settings = visibility
         box = self.get_content_area()
         box.set_border_width(10)
 
-        monitor_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        monitor_box.set_halign(Gtk.Align.END)
-        monitor_link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
-        monitor_link.set_halign(Gtk.Align.END)
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        header.set_halign(Gtk.Align.END)
         pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("logo.png", 36, 36)
-        image = Gtk.Image.new_from_pixbuf(pixbuf)
-        monitor_box.pack_start(image, False, False, 0)
-        monitor_box.pack_start(monitor_link, False, False, 0)
-        box.add(monitor_box)
+        header.pack_start(Gtk.Image.new_from_pixbuf(pixbuf), False, False, 0)
+        link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
+        link.set_halign(Gtk.Align.END)
+        header.pack_start(link, False, False, 0)
+        header.pack_start(Gtk.Label(label=f"v{APP_VERSION}"), False, False, 0)
+        box.add(header)
 
         self.tray_cpu_check = Gtk.CheckButton(label=tr('cpu_tray'))
         self.tray_cpu_check.set_active(self.visibility_settings.get('tray_cpu', True))
@@ -482,10 +503,15 @@ class SettingsDialog(Gtk.Dialog):
         token_label.set_xalign(0)
         self.token_entry = Gtk.Entry()
         self.token_entry.set_placeholder_text("123...:ABC...")
+        self.token_entry.set_visibility(False)
         token_box.pack_start(token_label, False, False, 0)
         token_box.pack_start(self.token_entry, True, True, 0)
-        token_box.set_margin_top(3)
-        token_box.set_margin_bottom(3)
+        token_toggle = Gtk.ToggleButton(label="👁")
+        token_toggle.set_relief(Gtk.ReliefStyle.NONE)
+        def on_token_toggle(btn):
+            self.token_entry.set_visibility(btn.get_active())
+        token_toggle.connect("toggled", on_token_toggle)
+        token_box.pack_end(token_toggle, False, False, 0)
         box.add(token_box)
 
         chat_id_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -493,10 +519,15 @@ class SettingsDialog(Gtk.Dialog):
         chat_id_label.set_xalign(0)
         self.chat_id_entry = Gtk.Entry()
         self.chat_id_entry.set_placeholder_text("123456789")
+        self.chat_id_entry.set_visibility(False)
         chat_id_box.pack_start(chat_id_label, False, False, 0)
         chat_id_box.pack_start(self.chat_id_entry, True, True, 0)
-        chat_id_box.set_margin_top(3)
-        chat_id_box.set_margin_bottom(3)
+        chat_id_toggle = Gtk.ToggleButton(label="👁")
+        chat_id_toggle.set_relief(Gtk.ReliefStyle.NONE)
+        def on_chat_toggle(btn):
+            self.chat_id_entry.set_visibility(btn.get_active())
+        chat_id_toggle.connect("toggled", on_chat_toggle)
+        chat_id_box.pack_end(chat_id_toggle, False, False, 0)
         box.add(chat_id_box)
 
         interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -508,7 +539,7 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.pack_start(self.interval_spin, True, True, 0)
         interval_box.set_margin_top(3)
         interval_box.set_margin_bottom(33)
-        interval_box.set_margin_end(140)
+        interval_box.set_margin_end(190)
         box.add(interval_box)
 
         try:
