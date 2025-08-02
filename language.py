@@ -51,6 +51,12 @@ LANGUAGES = {
         'setting_telegram_error': "Не удалось сохранить конфигурацию Telegram.",
         'telegram_notification': "Уведомления в Telegram",
         'ok': "Успех",
+
+        'discord_notification': 'Уведомления в Discord',
+        'webhook_url': 'Webhook URL',
+        'check_discord': 'Проверить',
+        'webhook_required': 'Введите URL webhook Discord.',
+        'setting_discord_error': 'Ошибка сохранения настроек Discord.',
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -104,6 +110,12 @@ LANGUAGES = {
         'setting_telegram_error': "Failed to save Telegram configuration.",
         'telegram_notification': "Telegram notifications",
         'ok': "Success",
+
+        'discord_notification': 'Discord Notifications',
+        'webhook_url': 'Webhook URL',
+        'check_discord': 'Test',
+        'webhook_required': 'Please enter Discord webhook URL.',
+        'setting_discord_error': 'Failed to save Discord settings.',
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
