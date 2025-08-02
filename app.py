@@ -1,5 +1,4 @@
 import re
-
 import gi
 import os
 import signal
@@ -22,6 +21,7 @@ time_update = 1
 LOG_FILE = os.path.join(os.path.expanduser("~"), "system_monitor_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_settings.json")
 TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_telegram.json")
+DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_discord.json")
 
 keyboard_clicks = 0
 mouse_clicks = 0
@@ -137,8 +137,58 @@ class TelegramNotifier:
             return False
 
 
-class PowerControl:
+class DiscordNotifier:
+    def __init__(self):
+        self.webhook_url = None
+        self.enabled = False
+        self.notification_interval = 3600
+        self.load_config()
 
+    def load_config(self):
+        try:
+            if os.path.exists(DISCORD_CONFIG_FILE):
+                with open(DISCORD_CONFIG_FILE, "r") as f:
+                    config = json.load(f)
+                    self.webhook_url = config.get('DISCORD_WEBHOOK_URL')
+                    self.enabled = config.get('enabled', False)
+                    self.notification_interval = config.get('notification_interval', 3600)
+        except Exception as e:
+            print(f"Ошибка загрузки конфигурации Discord: {e}")
+
+    def save_config(self, webhook_url, enabled, interval):
+        try:
+            self.webhook_url = webhook_url.strip()
+            self.enabled = enabled
+            self.notification_interval = int(interval)
+
+            with open(DISCORD_CONFIG_FILE, "w") as f:
+                json.dump({
+                    'DISCORD_WEBHOOK_URL': self.webhook_url,
+                    'enabled': enabled,
+                    'notification_interval': self.notification_interval
+                }, f)
+            return True
+        except Exception as e:
+            print(f"Ошибка сохранения конфигурации Discord: {e}")
+            return False
+
+    def send_message(self, message):
+        if not self.enabled or not self.webhook_url:
+            return False
+
+        try:
+            payload = {
+                "content": message,
+                "username": "System Monitor"
+            }
+            response = requests.post(self.webhook_url, json=payload, timeout=10)
+            return response.status_code in (200, 204)
+        except Exception as e:
+            print(f"Ошибка отправки сообщения в Discord: {e}")
+            return False
+
+
+class PowerControl:
     def __init__(self, app):
         self.app = app
         self.scheduled_action = None
@@ -464,6 +514,7 @@ class SettingsDialog(Gtk.Dialog):
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
 
+        # Telegram
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
         self.telegram_enable_check.set_margin_top(3)
@@ -526,6 +577,49 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.set_margin_end(190)
         box.add(interval_box)
 
+        # Discord
+        discord_separator = Gtk.SeparatorMenuItem()
+        discord_separator.set_margin_top(6)
+        discord_separator.set_margin_bottom(6)
+        box.add(discord_separator)
+
+        discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
+        self.discord_enable_check.set_margin_top(3)
+        self.discord_enable_check.set_margin_bottom(3)
+        discord_box.pack_start(self.discord_enable_check, False, False, 0)
+
+        self.discord_test_button = Gtk.Button(label=tr('check_discord'))
+        self.discord_test_button.set_margin_top(3)
+        self.discord_test_button.set_margin_bottom(3)
+        self.discord_test_button.set_halign(Gtk.Align.END)
+        self.discord_test_button.connect("clicked", self.test_discord)
+        discord_box.pack_end(self.discord_test_button, False, False, 0)
+        box.add(discord_box)
+
+        webhook_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        webhook_label = Gtk.Label(label=tr('webhook_url'))
+        webhook_label.set_xalign(0)
+        self.webhook_entry = Gtk.Entry()
+        self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/...")
+        self.webhook_entry.set_visibility(True)
+        webhook_box.pack_start(webhook_label, False, False, 0)
+        webhook_box.pack_start(self.webhook_entry, True, True, 0)
+        box.add(webhook_box)
+
+        discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        discord_interval_label = Gtk.Label(label=tr('time_send'))
+        discord_interval_label.set_xalign(0)
+        self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
+        self.discord_interval_spin.set_value(3600)
+        discord_interval_box.pack_start(discord_interval_label, False, False, 0)
+        discord_interval_box.pack_start(self.discord_interval_spin, True, True, 0)
+        discord_interval_box.set_margin_top(3)
+        discord_interval_box.set_margin_bottom(33)
+        discord_interval_box.set_margin_end(190)
+        box.add(discord_interval_box)
+
+        # Load configs
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
                 with open(TELEGRAM_CONFIG_FILE, "r") as f:
@@ -536,6 +630,17 @@ class SettingsDialog(Gtk.Dialog):
                     self.interval_spin.set_value(config.get('notification_interval', 3600))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации Telegram: {e}")
+
+        try:
+            if os.path.exists(DISCORD_CONFIG_FILE):
+                with open(DISCORD_CONFIG_FILE, "r") as f:
+                    config = json.load(f)
+                    self.webhook_entry.set_text(config.get('DISCORD_WEBHOOK_URL', ''))
+                    self.discord_enable_check.set_active(config.get('enabled', False))
+                    self.discord_interval_spin.set_value(config.get('notification_interval', 3600))
+        except Exception as e:
+            print(f"Ошибка загрузки конфигурации Discord: {e}")
+
         self.show_all()
 
     def test_telegram(self, widget):
@@ -556,6 +661,25 @@ class SettingsDialog(Gtk.Dialog):
                 self._show_message(title=tr('error'), message=tr('test_message_error'))
         else:
             self._show_message(title=tr('error'), message=tr('setting_telegram_error'))
+
+    def test_discord(self, widget):
+        webhook_url = self.webhook_entry.get_text().strip()
+        enabled = self.discord_enable_check.get_active()
+        interval = self.discord_interval_spin.get_value()
+
+        if not webhook_url:
+            self._show_message(title=tr('error'), message=tr('webhook_required'))
+            return
+
+        notifier = DiscordNotifier()
+        if notifier.save_config(webhook_url, enabled, interval):
+            test_message = tr('test_message')
+            if notifier.send_message(test_message):
+                self._show_message(title=tr('ok'), message=tr('test_message_ok'))
+            else:
+                self._show_message(title=tr('error'), message=tr('test_message_error'))
+        else:
+            self._show_message(title=tr('error'), message=tr('setting_discord_error'))
 
     def _show_message(self, title, message):
         dialog = Gtk.MessageDialog(
@@ -639,7 +763,9 @@ class SystemTrayApp:
         self.init_listeners()
 
         self.telegram_notifier = TelegramNotifier()
+        self.discord_notifier = DiscordNotifier()
         self.last_telegram_notification_time = 0
+        self.last_discord_notification_time = 0
 
     def init_listeners(self):
         self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
@@ -827,6 +953,13 @@ class SystemTrayApp:
             )
             self.telegram_notifier.load_config()
 
+            self.discord_notifier.save_config(
+                dialog.webhook_entry.get_text().strip(),
+                dialog.discord_enable_check.get_active(),
+                dialog.discord_interval_spin.get_value()
+            )
+            self.discord_notifier.load_config()
+
             self.save_settings()
             self.create_menu()
 
@@ -856,6 +989,8 @@ class SystemTrayApp:
                           keyboard_clicks, mouse_clicks)
 
             current_time = time.time()
+
+            # Telegram
             if (self.telegram_notifier.enabled and
                     current_time - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
                 self.send_telegram_notification(
@@ -868,6 +1003,20 @@ class SystemTrayApp:
                     keyboard_clicks, mouse_clicks
                 )
                 self.last_telegram_notification_time = current_time
+
+            # Discord
+            if (self.discord_notifier.enabled and
+                    current_time - self.last_discord_notification_time >= self.discord_notifier.notification_interval):
+                self.send_discord_notification(
+                    cpu_temp, cpu_usage,
+                    ram_used, ram_total,
+                    disk_used, disk_total,
+                    swap_used, swap_total,
+                    net_recv_speed, net_sent_speed,
+                    uptime,
+                    keyboard_clicks, mouse_clicks
+                )
+                self.last_discord_notification_time = current_time
 
             if self.visibility_settings.get('logging_enabled', True):
                 try:
@@ -905,6 +1054,23 @@ class SystemTrayApp:
             f"<b>Мышь:</b> {mouse_clicks} кликов"
         )
         self.telegram_notifier.send_message(message)
+
+    def send_discord_notification(self, cpu_temp, cpu_usage, ram_used, ram_total,
+                                  disk_used, disk_total, swap_used, swap_total,
+                                  net_recv_speed, net_sent_speed, uptime,
+                                  keyboard_clicks, mouse_clicks):
+        message = (
+            f"**Статус системы**\n"
+            f"**CPU:** {cpu_usage:.0f}% ({cpu_temp}°C)\n"
+            f"**RAM:** {ram_used:.1f}/{ram_total:.1f} ГБ\n"
+            f"**Swap:** {swap_used:.1f}/{swap_total:.1f} ГБ\n"
+            f"**Диск:** {disk_used:.1f}/{disk_total:.1f} ГБ\n"
+            f"**Сеть:** ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} МБ/с\n"
+            f"**Время работы:** {uptime}\n"
+            f"**Клавиши:** {keyboard_clicks} нажатий\n"
+            f"**Мышь:** {mouse_clicks} кликов"
+        )
+        self.discord_notifier.send_message(message)
 
     def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
                    disk_used, disk_total, swap_used, swap_total,
