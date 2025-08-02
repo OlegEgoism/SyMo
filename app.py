@@ -17,23 +17,6 @@ gi.require_version('AppIndicator3', '0.1')
 
 from gi.repository import Gtk, GLib, AppIndicator3, GdkPixbuf
 
-def _read_app_version():
-    """Return VERSION string from build_deb.sh if available, otherwise 'unknown'."""
-    build_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build_deb.sh")
-    version_pattern = re.compile(r'^VERSION="([^"]+)"')
-    try:
-        with open(build_script, "r", encoding="utf-8") as f:
-            for line in f:
-                match = version_pattern.match(line.strip())
-                if match:
-                    return match.group(1)
-    except (FileNotFoundError, PermissionError):
-        pass
-    return "unknown"
-
-APP_VERSION = _read_app_version()
-
-
 current_lang = 'ru'
 time_update = 1
 LOG_FILE = os.path.join(os.path.expanduser("~"), "system_monitor_log.txt")
@@ -46,8 +29,6 @@ mouse_clicks = 0
 
 def tr(key):
     return LANGUAGES.get(current_lang, LANGUAGES['en']).get(key, key)
-
-
 
 
 class SystemUsage:
@@ -396,7 +377,6 @@ class SettingsDialog(Gtk.Dialog):
         link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
         link.set_halign(Gtk.Align.END)
         header.pack_start(link, False, False, 0)
-        header.pack_start(Gtk.Label(label=f"v{APP_VERSION}"), False, False, 0)
         box.add(header)
 
         self.tray_cpu_check = Gtk.CheckButton(label=tr('cpu_tray'))
@@ -508,8 +488,10 @@ class SettingsDialog(Gtk.Dialog):
         token_box.pack_start(self.token_entry, True, True, 0)
         token_toggle = Gtk.ToggleButton(label="👁")
         token_toggle.set_relief(Gtk.ReliefStyle.NONE)
+
         def on_token_toggle(btn):
             self.token_entry.set_visibility(btn.get_active())
+
         token_toggle.connect("toggled", on_token_toggle)
         token_box.pack_end(token_toggle, False, False, 0)
         box.add(token_box)
@@ -524,8 +506,10 @@ class SettingsDialog(Gtk.Dialog):
         chat_id_box.pack_start(self.chat_id_entry, True, True, 0)
         chat_id_toggle = Gtk.ToggleButton(label="👁")
         chat_id_toggle.set_relief(Gtk.ReliefStyle.NONE)
+
         def on_chat_toggle(btn):
             self.chat_id_entry.set_visibility(btn.get_active())
+
         chat_id_toggle.connect("toggled", on_chat_toggle)
         chat_id_box.pack_end(chat_id_toggle, False, False, 0)
         box.add(chat_id_box)
@@ -658,20 +642,11 @@ class SystemTrayApp:
         self.last_telegram_notification_time = 0
 
     def init_listeners(self):
-        try:
-            self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
-            self.keyboard_listener.daemon = True
-            self.keyboard_listener.start()
-        except Exception as e:
-            print(f"Ошибка инициализации слушателя клавиатуры: {e}")
-            self.keyboard_listener = None
-        try:
-            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
-            self.mouse_listener.daemon = True
-            self.mouse_listener.start()
-        except Exception as e:
-            print(f"Ошибка инициализации слушателя мыши: {e}")
-            self.mouse_listener = None
+        self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
+        self.keyboard_listener.start()
+
+        self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
+        self.mouse_listener.start()
 
     def on_key_press(self, key):
         global keyboard_clicks
@@ -973,10 +948,6 @@ class SystemTrayApp:
             print(f"Ошибка в _update_ui: {e}")
 
     def quit(self, *args):
-        if self.keyboard_listener:
-            self.keyboard_listener.stop()
-        if self.mouse_listener:
-            self.mouse_listener.stop()
         if hasattr(self.power_control, 'current_dialog') and self.power_control.current_dialog:
             if isinstance(self.power_control.current_dialog, Gtk.Widget):
                 self.power_control.current_dialog.destroy()
