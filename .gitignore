@@ -2,3 +2,4 @@
 *.iml
 deb_build/
 systray-monitor_1.0.0_all.deb
+/SyMo_1.0.1_all.deb
