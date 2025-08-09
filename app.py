@@ -1,4 +1,3 @@
-import re
 import gi
 import os
 import signal
@@ -15,19 +14,19 @@ gi.require_version('GLib', '2.0')
 gi.require_version('AppIndicator3', '0.1')
 from gi.repository import Gtk, GLib, AppIndicator3, GdkPixbuf
 
-current_lang = 'ru'
-time_update = 1
 LOG_FILE = os.path.join(os.path.expanduser("~"), "system_monitor_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_settings.json")
 TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_telegram.json")
 DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_discord.json")
+CURRENT_LANG = 'ru'
 
+time_update = 1
 keyboard_clicks = 0
 mouse_clicks = 0
 
 
 def tr(key):
-    return LANGUAGES.get(current_lang, LANGUAGES['en']).get(key, key)
+    return LANGUAGES.get(CURRENT_LANG, LANGUAGES['en']).get(key, key)
 
 
 class SystemUsage:
@@ -495,13 +494,12 @@ class SettingsDialog(Gtk.Dialog):
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
 
-        # Разделитель между логированием и уведомлениями
         separator_log_telegram = Gtk.SeparatorMenuItem()
         separator_log_telegram.set_margin_top(6)
         separator_log_telegram.set_margin_bottom(6)
+        separator_log_telegram.set_size_request(0, 3)
         box.add(separator_log_telegram)
 
-        # Telegram
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
         self.telegram_enable_check.set_margin_top(3)
@@ -673,7 +671,7 @@ class SettingsDialog(Gtk.Dialog):
 
 class SystemTrayApp:
     def __init__(self):
-        global current_lang
+        global CURRENT_LANG
         if not Gtk.init_check()[0]:
             Gtk.init([])
         self.indicator = AppIndicator3.Indicator.new(
@@ -693,7 +691,7 @@ class SystemTrayApp:
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
         self.settings_file = SETTINGS_FILE
         self.visibility_settings = self.load_settings()
-        current_lang = self.visibility_settings.get('language', 'ru')
+        CURRENT_LANG = self.visibility_settings.get('language', 'ru')
         signal.signal(signal.SIGTERM, self.quit)
         signal.signal(signal.SIGINT, self.quit)
         self.power_control = PowerControl(self)
@@ -753,7 +751,7 @@ class SystemTrayApp:
         self.language_menu = Gtk.Menu()
         for code in ['ru', 'en', 'cn', 'de']:
             lang_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, LANGUAGES[code]['language_name'])
-            lang_item.set_active(code == current_lang)
+            lang_item.set_active(code == CURRENT_LANG)
             lang_item.connect("activate", self._on_language_selected, code)
             self.language_menu.append(lang_item)
         self.language_menu_item = Gtk.MenuItem(label=tr('language'))
@@ -785,11 +783,11 @@ class SystemTrayApp:
         self.indicator.set_menu(self.menu)
 
     def _on_language_selected(self, widget, lang_code):
-        global current_lang
+        global CURRENT_LANG
         if widget.get_active():
-            if current_lang != lang_code:
-                current_lang = lang_code
-                self.visibility_settings['language'] = current_lang
+            if CURRENT_LANG != lang_code:
+                CURRENT_LANG = lang_code
+                self.visibility_settings['language'] = CURRENT_LANG
                 self.save_settings()
                 self.create_menu()
 
@@ -937,14 +935,14 @@ class SystemTrayApp:
                                    net_recv_speed, net_sent_speed, uptime,
                                    keyboard_clicks, mouse_clicks):
         message = (
-            f"<b>Статус системы</b>"
-            f"<b>CPU:</b> {cpu_usage:.0f}% ({cpu_temp}°C)"
-            f"<b>RAM:</b> {ram_used:.1f}/{ram_total:.1f} GB"
-            f"<b>Swap:</b> {swap_used:.1f}/{swap_total:.1f} GB"
-            f"<b>Диск:</b> {disk_used:.1f}/{disk_total:.1f} GB"
-            f"<b>Сеть:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"
-            f"<b>Время работы:</b> {uptime}"
-            f"<b>Клавиши:</b> {keyboard_clicks} нажатий"
+            f"<b>Статус системы</b>\n\n"
+            f"<b>CPU:</b> {cpu_usage:.0f}% ({cpu_temp}°C)\n"
+            f"<b>RAM:</b> {ram_used:.1f}/{ram_total:.1f} GB\n"
+            f"<b>Swap:</b> {swap_used:.1f}/{swap_total:.1f} GB\n"
+            f"<b>Диск:</b> {disk_used:.1f}/{disk_total:.1f} GB\n"
+            f"<b>Сеть:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
+            f"<b>Время работы:</b> {uptime}\n"
+            f"<b>Клавиши:</b> {keyboard_clicks} нажатий\n"
             f"<b>Мышь:</b> {mouse_clicks} кликов"
         )
         self.telegram_notifier.send_message(message)
@@ -954,15 +952,15 @@ class SystemTrayApp:
                                   net_recv_speed, net_sent_speed, uptime,
                                   keyboard_clicks, mouse_clicks):
         message = (
-            f"**Статус системы**"
-            f"**CPU:** {cpu_usage:.0f}% ({cpu_temp}°C)"
-            f"**RAM:** {ram_used:.1f}/{ram_total:.1f} GB"
-            f"**Swap:** {swap_used:.1f}/{swap_total:.1f} GB"
-            f"**Диск:** {disk_used:.1f}/{disk_total:.1f} GB"
-            f"**Сеть:** ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"
-            f"**Время работы:** {uptime}"
-            f"**Клавиши:** {keyboard_clicks} нажатий"
-            f"**Мышь:** {mouse_clicks} кликов"
+            f"Статус системы\n\n"
+            f"CPU: {cpu_usage:.0f}% ({cpu_temp}°C)\n"
+            f"RAM: {ram_used:.1f}/{ram_total:.1f} GB\n"
+            f"Swap: {swap_used:.1f}/{swap_total:.1f} GB\n"
+            f"Диск: {disk_used:.1f}/{disk_total:.1f} GB\n"
+            f"Сеть: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
+            f"Время работы: {uptime}\n"
+            f"Клавиши: {keyboard_clicks} нажатий\n"
+            f"Мышь: {mouse_clicks} кликов"
         )
         self.discord_notifier.send_message(message)
 
