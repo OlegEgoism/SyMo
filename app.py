@@ -559,7 +559,7 @@ class SettingsDialog(Gtk.Dialog):
         webhook_label.set_xalign(0)
         self.webhook_entry = Gtk.Entry()
         self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/...")
-        self.webhook_entry.set_visibility(False)  # Скрываем текст
+        self.webhook_entry.set_visibility(False)
         webhook_box.pack_start(webhook_label, False, False, 0)
         webhook_box.pack_start(self.webhook_entry, True, True, 0)
         webhook_toggle = Gtk.ToggleButton(label="👁")
@@ -580,7 +580,6 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.set_margin_end(190)
         box.add(interval_box)
 
-        # Загрузка настроек
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
                 with open(TELEGRAM_CONFIG_FILE, "r") as f:
@@ -996,7 +995,7 @@ class SystemTrayApp:
             print(f"Ошибка в _update_ui: {e}")
 
     def quit(self, *args):
-        self.save_clicks()  # Сохраняем перед выходом
+        self.save_clicks()
         if hasattr(self.power_control, 'current_dialog') and self.power_control.current_dialog:
             if isinstance(self.power_control.current_dialog, Gtk.Widget):
                 self.power_control.current_dialog.destroy()
