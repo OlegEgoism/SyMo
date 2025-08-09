@@ -996,6 +996,7 @@ class SystemTrayApp:
             print(f"Ошибка в _update_ui: {e}")
 
     def quit(self, *args):
+        self.save_clicks()  # Сохраняем перед выходом
         if hasattr(self.power_control, 'current_dialog') and self.power_control.current_dialog:
             if isinstance(self.power_control.current_dialog, Gtk.Widget):
                 self.power_control.current_dialog.destroy()
@@ -1012,7 +1013,6 @@ class SystemTrayApp:
     def run(self):
         GLib.timeout_add_seconds(time_update, self.update_info)
         Gtk.main()
-
 
 if __name__ == "__main__":
     if not Gtk.init_check()[0]:
