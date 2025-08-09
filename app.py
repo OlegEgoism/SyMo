@@ -573,15 +573,9 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.pack_start(interval_label, False, False, 0)
         interval_box.pack_start(self.interval_spin, True, True, 0)
         interval_box.set_margin_top(3)
-        interval_box.set_margin_bottom(33)
+        interval_box.set_margin_bottom(3)
         interval_box.set_margin_end(190)
         box.add(interval_box)
-
-        # Discord
-        discord_separator = Gtk.SeparatorMenuItem()
-        discord_separator.set_margin_top(6)
-        discord_separator.set_margin_bottom(6)
-        box.add(discord_separator)
 
         discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
@@ -602,9 +596,17 @@ class SettingsDialog(Gtk.Dialog):
         webhook_label.set_xalign(0)
         self.webhook_entry = Gtk.Entry()
         self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/...")
-        self.webhook_entry.set_visibility(True)
+        self.webhook_entry.set_visibility(False)  # Скрыт по умолчанию
         webhook_box.pack_start(webhook_label, False, False, 0)
         webhook_box.pack_start(self.webhook_entry, True, True, 0)
+        webhook_toggle = Gtk.ToggleButton(label="👁")
+        webhook_toggle.set_relief(Gtk.ReliefStyle.NONE)
+
+        def on_webhook_toggle(btn):
+            self.webhook_entry.set_visibility(btn.get_active())
+
+        webhook_toggle.connect("toggled", on_webhook_toggle)
+        webhook_box.pack_end(webhook_toggle, False, False, 0)
         box.add(webhook_box)
 
         discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -615,11 +617,10 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.pack_start(discord_interval_label, False, False, 0)
         discord_interval_box.pack_start(self.discord_interval_spin, True, True, 0)
         discord_interval_box.set_margin_top(3)
-        discord_interval_box.set_margin_bottom(33)
+        discord_interval_box.set_margin_bottom(3)
         discord_interval_box.set_margin_end(190)
         box.add(discord_interval_box)
 
-        # Load configs
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
                 with open(TELEGRAM_CONFIG_FILE, "r") as f:
