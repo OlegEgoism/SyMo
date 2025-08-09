@@ -995,7 +995,10 @@ class SystemTrayApp:
             print(f"Ошибка в _update_ui: {e}")
 
     def quit(self, *args):
-        self.save_clicks()
+        if self.keyboard_listener:
+            self.keyboard_listener.stop()
+        if self.mouse_listener:
+            self.mouse_listener.stop()
         if hasattr(self.power_control, 'current_dialog') and self.power_control.current_dialog:
             if isinstance(self.power_control.current_dialog, Gtk.Widget):
                 self.power_control.current_dialog.destroy()
