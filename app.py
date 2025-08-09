@@ -18,8 +18,9 @@ LOG_FILE = os.path.join(os.path.expanduser("~"), "system_monitor_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_settings.json")
 TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_telegram.json")
 DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_discord.json")
-CURRENT_LANG = 'ru'
+CLICKS_FILE = os.path.join(os.path.expanduser("~"), ".system_monitor_clicks.json")
 
+CURRENT_LANG = 'ru'
 time_update = 1
 keyboard_clicks = 0
 mouse_clicks = 0
@@ -125,7 +126,7 @@ class TelegramNotifier:
                 'text': message,
                 'parse_mode': 'HTML'
             }
-            response = requests.post(url, data=payload, timeout=10)
+            response = requests.post(url, data=payload, timeout=5)
             return response.status_code == 200
         except Exception as e:
             print(f"Ошибка отправки сообщения в Telegram: {e}")
@@ -171,7 +172,7 @@ class DiscordNotifier:
             return False
         try:
             payload = {"content": message, "username": "System Monitor"}
-            response = requests.post(self.webhook_url, json=payload, timeout=10)
+            response = requests.post(self.webhook_url, json=payload, timeout=5)
             return response.status_code == 204
         except Exception as e:
             print(f"Ошибка отправки сообщения в Discord: {e}")
@@ -266,6 +267,7 @@ class PowerControl:
         apply_button = Gtk.Button(label=tr('apply'))
         cancel_button = Gtk.Button(label=tr('cancel'))
         reset_button = Gtk.Button(label=tr('reset'))
+
         apply_button.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.OK))
         cancel_button.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.CANCEL))
 
@@ -285,9 +287,10 @@ class PowerControl:
         box.pack_start(time_box, False, False, 0)
         box.pack_start(action_box, False, False, 0)
         box.pack_start(button_box, False, False, 0)
-        dialog.show_all()
 
+        dialog.show_all()
         response = dialog.run()
+
         if response == Gtk.ResponseType.OK:
             minutes = time_spin.get_value_as_int()
             action = action_combo.get_active_text()
@@ -297,14 +300,17 @@ class PowerControl:
                     dialog.destroy()
                 self.current_dialog = None
                 return
+
             self.scheduled_action = action
             self.remaining_seconds = minutes * 60
             if minutes > 1:
                 self._notify_timer_id = GLib.timeout_add_seconds((minutes - 1) * 60, self._notify_before_action, action)
             self._action_timer_id = GLib.timeout_add_seconds(self.remaining_seconds, self._delayed_action, action)
+
             if self._update_timer_id:
                 GLib.source_remove(self._update_timer_id)
             self._update_timer_id = GLib.timeout_add_seconds(1, self._update_indicator_label)
+
             self._show_message(tr('scheduled'), tr('action_in_time').format(action, minutes))
 
         if isinstance(dialog, Gtk.Widget):
@@ -505,6 +511,7 @@ class SettingsDialog(Gtk.Dialog):
         self.telegram_enable_check.set_margin_top(3)
         self.telegram_enable_check.set_margin_bottom(3)
         telegram_box.pack_start(self.telegram_enable_check, False, False, 0)
+
         test_button = Gtk.Button(label=tr('check_telegram'))
         test_button.set_margin_top(3)
         test_button.set_margin_bottom(3)
@@ -688,26 +695,60 @@ class SystemTrayApp:
         else:
             self.indicator.set_icon("system-run-symbolic")
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+
         self.settings_file = SETTINGS_FILE
         self.visibility_settings = self.load_settings()
         CURRENT_LANG = self.visibility_settings.get('language', 'ru')
+
         signal.signal(signal.SIGTERM, self.quit)
         signal.signal(signal.SIGINT, self.quit)
+
         self.power_control = PowerControl(self)
         self.power_control.set_parent_window(None)
+
         self.create_menu()
+
         self.prev_net_data = {
             'recv': psutil.net_io_counters().bytes_recv,
             'sent': psutil.net_io_counters().bytes_sent,
             'time': time.time()
         }
+
         self.keyboard_listener = None
         self.mouse_listener = None
         self.init_listeners()
+        self.load_clicks()
+
         self.telegram_notifier = TelegramNotifier()
         self.discord_notifier = DiscordNotifier()
         self.last_telegram_notification_time = 0
         self.last_discord_notification_time = 0
+
+    def load_clicks(self):
+        """Загружает сохранённые счётчики кликов из файла."""
+        global keyboard_clicks, mouse_clicks
+        try:
+            if os.path.exists(CLICKS_FILE):
+                with open(CLICKS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    keyboard_clicks = data.get('keyboard_clicks', 0)
+                    mouse_clicks = data.get('mouse_clicks', 0)
+        except Exception as e:
+            print(f"Ошибка загрузки счётчиков кликов: {e}")
+            keyboard_clicks = 0
+            mouse_clicks = 0
+
+    def save_clicks(self):
+        """Сохраняет текущие счётчики кликов в файл."""
+        global keyboard_clicks, mouse_clicks
+        try:
+            with open(CLICKS_FILE, "w", encoding="utf-8") as f:
+                json.dump({
+                    'keyboard_clicks': keyboard_clicks,
+                    'mouse_clicks': mouse_clicks
+                }, f, indent=4)
+        except Exception as e:
+            print(f"Ошибка сохранения счётчиков кликов: {e}")
 
     def init_listeners(self):
         self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
@@ -726,6 +767,7 @@ class SystemTrayApp:
 
     def create_menu(self):
         self.menu = Gtk.Menu()
+
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
         self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
         self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
@@ -734,6 +776,7 @@ class SystemTrayApp:
         self.uptime_item = Gtk.MenuItem(label=f"{tr('uptime_label')}: N/A")
         self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
         self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
+
         self.power_separator = Gtk.SeparatorMenuItem()
         self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
         self.power_off_item.connect("activate", self.power_control._confirm_action, self.power_control._shutdown, tr('confirm_text_power_off'))
@@ -743,10 +786,13 @@ class SystemTrayApp:
         self.lock_item.connect("activate", self.power_control._confirm_action, self.power_control._lock_screen, tr('confirm_text_lock'))
         self.timer_item = Gtk.MenuItem(label=tr('settings'))
         self.timer_item.connect("activate", self.power_control._open_settings)
+
         self.main_separator = Gtk.SeparatorMenuItem()
         self.exit_separator = Gtk.SeparatorMenuItem()
+
         self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
         self.settings_item.connect("activate", self.show_settings)
+
         self.language_menu = Gtk.Menu()
         for code in ['ru', 'en', 'cn', 'de']:
             lang_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, LANGUAGES[code]['language_name'])
@@ -755,9 +801,12 @@ class SystemTrayApp:
             self.language_menu.append(lang_item)
         self.language_menu_item = Gtk.MenuItem(label=tr('language'))
         self.language_menu_item.set_submenu(self.language_menu)
+
         self.quit_item = Gtk.MenuItem(label=tr('exit_app'))
         self.quit_item.connect("activate", self.quit)
+
         self.update_menu_visibility()
+
         if any([
             self.visibility_settings.get('show_power_off', True),
             self.visibility_settings.get('show_reboot', True),
@@ -773,6 +822,7 @@ class SystemTrayApp:
                 self.menu.append(self.lock_item)
             if self.visibility_settings.get('show_timer', True):
                 self.menu.append(self.timer_item)
+
         self.menu.append(self.main_separator)
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
@@ -818,6 +868,7 @@ class SystemTrayApp:
             if child not in [self.main_separator, self.power_separator, self.exit_separator,
                              self.language_menu_item, self.settings_item, self.quit_item]:
                 self.menu.remove(child)
+
         if self.visibility_settings['mouse_clicks']:
             self.menu.prepend(self.mouse_item)
         if self.visibility_settings['keyboard_clicks']:
@@ -834,6 +885,7 @@ class SystemTrayApp:
             self.menu.prepend(self.ram_item)
         if self.visibility_settings['cpu']:
             self.menu.prepend(self.cpu_temp_item)
+
         self.menu.show_all()
 
     def show_settings(self, widget):
@@ -856,6 +908,7 @@ class SystemTrayApp:
             self.visibility_settings['show_lock'] = dialog.lock_check.get_active()
             self.visibility_settings['show_timer'] = dialog.timer_check.get_active()
             self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
+
             self.telegram_notifier.save_config(
                 dialog.token_entry.get_text().strip(),
                 dialog.chat_id_entry.get_text().strip(),
@@ -863,12 +916,14 @@ class SystemTrayApp:
                 dialog.interval_spin.get_value()
             )
             self.telegram_notifier.load_config()
+
             self.discord_notifier.save_config(
                 dialog.webhook_entry.get_text().strip(),
                 dialog.discord_enable_check.get_active(),
                 dialog.interval_spin.get_value()
             )
             self.discord_notifier.load_config()
+
             self.save_settings()
             self.create_menu()
         if isinstance(dialog, Gtk.Widget):
@@ -885,6 +940,7 @@ class SystemTrayApp:
             swap_used, swap_total = SystemUsage.get_swap_usage()
             net_recv_speed, net_sent_speed = SystemUsage.get_network_speed(self.prev_net_data)
             uptime = SystemUsage.get_uptime()
+
             GLib.idle_add(self._update_ui,
                           cpu_temp, cpu_usage,
                           ram_used, ram_total,
@@ -895,7 +951,6 @@ class SystemTrayApp:
                           keyboard_clicks, mouse_clicks)
 
             current_time = time.time()
-
             if self.telegram_notifier.enabled and current_time - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval:
                 self.send_telegram_notification(cpu_temp, cpu_usage, ram_used, ram_total,
                                                 disk_used, disk_total, swap_used, swap_total,
@@ -921,9 +976,10 @@ class SystemTrayApp:
                                 f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
                                 f"Uptime: {uptime} | "
                                 f"Keys: {keyboard_clicks} | "
-                                f"Clicks: {mouse_clicks}")
+                                f"Clicks: {mouse_clicks}\n")
                 except Exception as e:
                     print("Ошибка записи в лог:", e)
+
             return True
         except Exception as e:
             print(f"Ошибка в update_info: {e}")
@@ -934,7 +990,7 @@ class SystemTrayApp:
                                    net_recv_speed, net_sent_speed, uptime,
                                    keyboard_clicks, mouse_clicks):
         message = (
-            f"<b>Статус системы</b>\n\n"
+            f"<b>Статус системы</b>\n"
             f"<b>CPU:</b> {cpu_usage:.0f}% ({cpu_temp}°C)\n"
             f"<b>RAM:</b> {ram_used:.1f}/{ram_total:.1f} GB\n"
             f"<b>Swap:</b> {swap_used:.1f}/{swap_total:.1f} GB\n"
@@ -951,7 +1007,7 @@ class SystemTrayApp:
                                   net_recv_speed, net_sent_speed, uptime,
                                   keyboard_clicks, mouse_clicks):
         message = (
-            f"Статус системы\n\n"
+            f"Статус системы\n"
             f"CPU: {cpu_usage:.0f}% ({cpu_temp}°C)\n"
             f"RAM: {ram_used:.1f}/{ram_total:.1f} GB\n"
             f"Swap: {swap_used:.1f}/{swap_total:.1f} GB\n"
@@ -984,6 +1040,7 @@ class SystemTrayApp:
                 self.keyboard_item.set_label(f"{tr('keyboard_clicks')}: {keyboard_clicks}")
             if self.visibility_settings['mouse_clicks']:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks}")
+
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
                 tray_parts.append(f"  {tr('cpu_info')}: {cpu_usage:.0f}%")
@@ -995,26 +1052,33 @@ class SystemTrayApp:
             print(f"Ошибка в _update_ui: {e}")
 
     def quit(self, *args):
+        # Останавливаем слушателей
         if self.keyboard_listener:
             self.keyboard_listener.stop()
         if self.mouse_listener:
             self.mouse_listener.stop()
+
+        self.save_clicks()
+
         if hasattr(self.power_control, 'current_dialog') and self.power_control.current_dialog:
             if isinstance(self.power_control.current_dialog, Gtk.Widget):
                 self.power_control.current_dialog.destroy()
             self.power_control.current_dialog = None
+
         if hasattr(self.power_control, '_update_timer_id') and self.power_control._update_timer_id:
             GLib.source_remove(self.power_control._update_timer_id)
         if hasattr(self.power_control, '_notify_timer_id') and self.power_control._notify_timer_id:
             GLib.source_remove(self.power_control._notify_timer_id)
         if hasattr(self.power_control, '_action_timer_id') and self.power_control._action_timer_id:
             GLib.source_remove(self.power_control._action_timer_id)
+
         Gtk.main_quit()
         os._exit(0)
 
     def run(self):
         GLib.timeout_add_seconds(time_update, self.update_info)
         Gtk.main()
+
 
 if __name__ == "__main__":
     if not Gtk.init_check()[0]:
