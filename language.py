@@ -169,6 +169,12 @@ LANGUAGES = {
         'setting_telegram_error': "无法保存Telegram配置。",
         'telegram_notification': "Telegram 通知",
         'ok': "成功",
+
+        'discord_notification': 'Discord 通知',
+        'webhook_url': 'Webhook URL',
+        'check_discord': '检查',
+        'webhook_required': '请输入 Discord 的 Webhook URL',
+        'setting_discord_error': '保存 Discord 设置时出错'
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -219,8 +225,14 @@ LANGUAGES = {
         'test_message': "Testbenachrichtigung",
         'test_message_ok': "Testnachricht wurde erfolgreich gesendet.",
         'test_message_error': "Testnachricht konnte nicht gesendet werden. Bitte überprüfen Sie Ihre Angaben.",
-        'setting_telegram_error': "Telegram-Konfiguration konnte nicht gespeichert werden.",
-        'telegram_notification': "Telegram-Benachrichtigungen",
+        'setting_telegram_error': "Telegram Konfiguration konnte nicht gespeichert werden.",
+        'telegram_notification': "Telegram Benachrichtigungen",
         'ok': "Erfolg",
+
+        'discord_notification': 'Discord Benachrichtigungen',
+        'webhook_url': 'Webhook-URL',
+        'check_discord': 'Überprüfen',
+        'webhook_required': 'Bitte geben Sie die Discord Webhook-URL ein.',
+        'setting_discord_error': 'Fehler beim Speichern der Discord-Einstellungen.',
     }
 }
