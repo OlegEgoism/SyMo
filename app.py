@@ -200,7 +200,12 @@ class PowerControl:
         self.parent_window = None
 
     def set_parent_window(self, parent):
-        self.parent_window = parent if isinstance(parent, Gtk.Widget) else None
+        if parent is None:
+            self.parent_window = None
+        elif isinstance(parent, Gtk.Widget) and parent.get_mapped():
+            self.parent_window = parent
+        else:
+            self.parent_window = None
 
     def _confirm_action(self, widget, action_callback, message):
         if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
@@ -389,12 +394,20 @@ class PowerControl:
         return False
 
     def _show_message(self, title, message):
-        if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
+        # Уничтожаем предыдущий диалог, если он существует
+        if self.current_dialog:
             self.current_dialog.destroy()
             self.current_dialog = None
 
+        # Проверяем, что parent_window существует и отображается
+        parent = self.parent_window
+        if parent and isinstance(parent, Gtk.Widget) and parent.get_mapped():
+            transient_for = parent
+        else:
+            transient_for = None  # Если родитель недоступен — без привязки
+
         dialog = Gtk.MessageDialog(
-            transient_for=self.parent_window,
+            transient_for=transient_for,
             flags=0,
             message_type=Gtk.MessageType.INFO,
             buttons=Gtk.ButtonsType.OK,
@@ -574,7 +587,7 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.pack_start(self.interval_spin, True, True, 0)
         interval_box.set_margin_top(3)
         interval_box.set_margin_bottom(3)
-        interval_box.set_margin_end(190)
+        interval_box.set_margin_end(50)
         box.add(interval_box)
 
         discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -596,7 +609,7 @@ class SettingsDialog(Gtk.Dialog):
         webhook_label.set_xalign(0)
         self.webhook_entry = Gtk.Entry()
         self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/...")
-        self.webhook_entry.set_visibility(False)  # Скрыт по умолчанию
+        self.webhook_entry.set_visibility(False)
         webhook_box.pack_start(webhook_label, False, False, 0)
         webhook_box.pack_start(self.webhook_entry, True, True, 0)
         webhook_toggle = Gtk.ToggleButton(label="👁")
@@ -617,8 +630,8 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.pack_start(discord_interval_label, False, False, 0)
         discord_interval_box.pack_start(self.discord_interval_spin, True, True, 0)
         discord_interval_box.set_margin_top(3)
-        discord_interval_box.set_margin_bottom(3)
-        discord_interval_box.set_margin_end(190)
+        discord_interval_box.set_margin_bottom(30)
+        discord_interval_box.set_margin_end(50)
         box.add(discord_interval_box)
 
         try:
