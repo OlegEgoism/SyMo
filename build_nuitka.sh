@@ -9,6 +9,19 @@ VERSION="1.0.1"
 echo "🔥 Building SyMo with Nuitka compilation..."
 echo "This creates a native compiled executable with significant performance improvements"
 
+# Check and install system dependencies
+echo "🔧 Checking system dependencies..."
+if ! command -v patchelf &> /dev/null; then
+    echo "Installing patchelf (required for Nuitka standalone builds)..."
+    sudo apt update && sudo apt install -y patchelf
+fi
+
+# Check other build dependencies
+if ! command -v gcc &> /dev/null; then
+    echo "Installing build-essential..."
+    sudo apt install -y build-essential
+fi
+
 # Check if Nuitka is installed and install if needed
 if ! command -v nuitka3 &> /dev/null && ! command -v nuitka &> /dev/null; then
     echo "Installing Nuitka..."
