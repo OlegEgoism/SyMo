@@ -9,11 +9,31 @@ VERSION="1.0.1"
 echo "🔥 Building SyMo with Nuitka compilation..."
 echo "This creates a native compiled executable with significant performance improvements"
 
-# Check if Nuitka is installed
-if ! command -v nuitka3 &> /dev/null; then
+# Check if Nuitka is installed and install if needed
+if ! command -v nuitka3 &> /dev/null && ! command -v nuitka &> /dev/null; then
     echo "Installing Nuitka..."
     pip install nuitka
 fi
+
+# Determine which nuitka command to use
+NUITKA_CMD="nuitka"
+if command -v nuitka3 &> /dev/null; then
+    NUITKA_CMD="nuitka3"
+elif command -v nuitka &> /dev/null; then
+    NUITKA_CMD="nuitka"
+else
+    echo "❌ Failed to install Nuitka. Trying alternative installation..."
+    pip3 install nuitka
+    if command -v nuitka &> /dev/null; then
+        NUITKA_CMD="nuitka"
+    else
+        echo "❌ Could not install Nuitka. Please install manually:"
+        echo "  pip3 install nuitka"
+        exit 1
+    fi
+fi
+
+echo "Using Nuitka command: $NUITKA_CMD"
 
 # Clean previous builds
 rm -rf ${PACKAGE_NAME}.dist ${PACKAGE_NAME}.build ${PACKAGE_NAME}.onefile-build
@@ -22,7 +42,7 @@ rm -f ${PACKAGE_NAME} ${PACKAGE_NAME}.bin
 echo "🚀 Compiling Python to native executable..."
 
 # Nuitka compilation with optimizations
-nuitka3 --standalone \
+$NUITKA_CMD --standalone \
     --onefile \
     --enable-plugin=gi \
     --include-data-file=logo.png=logo.png \
