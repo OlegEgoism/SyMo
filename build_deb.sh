@@ -7,8 +7,7 @@ MAINTAINER="Your Name <olegpustovalov220@gmail.com>"
 DESCRIPTION="SyMo application with tray icon"
 DEPENDS="python3, python3-gi, python3-psutil, gir1.2-appindicator3-0.1, python3-pynput, python3-requests, xdg-utils"
 
-# === АВТОЗАПУСК ===
-# Варианты: system | user | none
+# Автозапуск
 AUTOSTART="${AUTOSTART:-system}"
 
 # Создаем временную директорию сборки
