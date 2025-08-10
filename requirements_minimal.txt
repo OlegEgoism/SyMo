@@ -1,8 +1,0 @@
-# Minimal requirements - only packages that will be bundled
-# System packages (python3-gi, gir1.2-*) are handled by apt dependencies
-psutil==5.9.8
-pynput==1.8.1  
-requests==2.31.0
-
-# pycairo and PyGObject are provided by system packages to reduce conflicts
-# They are complex packages with native extensions that work better from system packages
