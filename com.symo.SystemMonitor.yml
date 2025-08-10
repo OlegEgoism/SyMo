@@ -1,0 +1,169 @@
+# Flatpak manifest for SyMo System Monitor
+# Creates a modern sandboxed application with excellent desktop integration
+
+app-id: com.symo.SystemMonitor
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+command: symo
+
+finish-args:
+  # GUI access
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  
+  # System monitoring permissions
+  - --device=dri
+  - --system-talk-name=org.freedesktop.UPower
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --filesystem=/proc:ro
+  - --filesystem=/sys:ro
+  
+  # Desktop integration
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.portal.Desktop
+  
+  # System tray support
+  - --talk-name=org.kde.StatusNotifierItem
+  - --own-name=org.kde.StatusNotifierItem.*
+  
+  # Home directory for config files
+  - --persist=.system_monitor_settings.json
+  - --persist=.system_monitor_telegram.json
+  - --persist=.system_monitor_discord.json
+  - --persist=system_monitor_log.txt
+  
+  # Network access for notifications
+  - --share=network
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/doc
+  - /share/gtk-doc
+  - /share/man
+  - /share/pkgconfig
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: python3-psutil
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} "psutil==5.9.8" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/18/c7/8c6872f7372eb6a6b2e4708b88419fb46b857f7a2e1892966b851cc79fc9/psutil-5.9.8.tar.gz
+        sha256: 6be126e3225486dff286a8fb9a06246a5253f4c7c53b475ea5f5ac934e64194c
+
+  - name: python3-pynput
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} "pynput==1.8.1" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/a6/83/da2ce8e5af2b0686bfb2c6b9c6d63e16c6b9e3ab8c21bf42a31e7af1b0e4/pynput-1.8.1.tar.gz
+        sha256: 2d5bc7e3e0efeefe8bb5f5e22c9e8cdb8d50b9e8f1ad51c23e12b6e58e173b5b
+
+  - name: python3-requests
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} "requests==2.31.0" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/9d/be/10918a2eac4ae9f02f6cfe6414b7a155ccd8f7f9d4380d62fd5b955065c3/requests-2.31.0.tar.gz
+        sha256: 942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1
+
+  - name: symo
+    buildsystem: simple
+    build-commands:
+      # Install application files
+      - install -D app.py ${FLATPAK_DEST}/bin/symo-app
+      - install -D language.py ${FLATPAK_DEST}/lib/python3.11/site-packages/language.py
+      - install -D logo.png ${FLATPAK_DEST}/share/icons/hicolor/48x48/apps/com.symo.SystemMonitor.png
+      
+      # Create launcher script
+      - |
+        cat > ${FLATPAK_DEST}/bin/symo << 'EOF'
+        #!/bin/bash
+        export PYTHONPATH="${FLATPAK_DEST}/lib/python3.11/site-packages:$PYTHONPATH"
+        cd "${FLATPAK_DEST}/bin"
+        exec python3 symo-app "$@"
+        EOF
+      - chmod +x ${FLATPAK_DEST}/bin/symo
+      
+      # Desktop file
+      - |
+        cat > ${FLATPAK_DEST}/share/applications/com.symo.SystemMonitor.desktop << 'EOF'
+        [Desktop Entry]
+        Name=SyMo
+        Comment=System Monitor with Tray Icon
+        Exec=symo
+        Icon=com.symo.SystemMonitor
+        Terminal=false
+        Type=Application
+        Categories=System;Monitor;Utility;
+        StartupNotify=true
+        Keywords=monitor;system;tray;cpu;memory;disk;network;
+        X-GNOME-UsesNotifications=true
+        EOF
+      
+      # AppStream metadata
+      - mkdir -p ${FLATPAK_DEST}/share/metainfo
+      - |
+        cat > ${FLATPAK_DEST}/share/metainfo/com.symo.SystemMonitor.appdata.xml << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <component type="desktop">
+          <id>com.symo.SystemMonitor</id>
+          <metadata_license>CC0-1.0</metadata_license>
+          <project_license>MIT</project_license>
+          <name>SyMo</name>
+          <summary>System Monitor with Tray Icon</summary>
+          <description>
+            <p>
+              SyMo is a comprehensive system monitoring application that provides
+              real-time information about your system's performance directly in
+              your system tray.
+            </p>
+            <p>Features:</p>
+            <ul>
+              <li>Real-time CPU usage and temperature monitoring</li>
+              <li>RAM and swap memory usage tracking</li>
+              <li>Disk space monitoring</li>
+              <li>Network speed monitoring (upload/download)</li>
+              <li>System uptime tracking</li>
+              <li>Keyboard and mouse activity counting</li>
+              <li>Power management (shutdown, reboot, lock)</li>
+              <li>Telegram and Discord notifications</li>
+              <li>Multi-language support (Russian, English, Chinese, German)</li>
+            </ul>
+          </description>
+          <screenshots>
+            <screenshot type="default">
+              <caption>SyMo system tray interface</caption>
+              <image>https://example.com/screenshot.png</image>
+            </screenshot>
+          </screenshots>
+          <url type="homepage">https://github.com/user/symo</url>
+          <url type="bugtracker">https://github.com/user/symo/issues</url>
+          <developer_name>SyMo Team</developer_name>
+          <releases>
+            <release version="1.0.1" date="2025-01-01"/>
+          </releases>
+          <content_rating type="oars-1.1"/>
+        </component>
+        EOF
+        
+    sources:
+      - type: file
+        path: app.py
+      - type: file
+        path: language.py
+      - type: file
+        path: logo.png

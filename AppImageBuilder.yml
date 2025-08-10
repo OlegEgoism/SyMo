@@ -1,0 +1,99 @@
+# AppImage Builder configuration for SyMo
+# Creates a portable Linux application that runs anywhere
+version: 1
+
+script:
+  # Install Python dependencies
+  - pip3 install --user --prefix=/tmp/python psutil pynput requests
+  # Copy application files
+  - mkdir -p $APPDIR/usr/bin
+  - mkdir -p $APPDIR/usr/share/symo
+  - mkdir -p $APPDIR/usr/lib/python3/dist-packages
+  - cp app.py language.py logo.png $APPDIR/usr/share/symo/
+  - cp -r /tmp/python/lib/python*/site-packages/* $APPDIR/usr/lib/python3/dist-packages/
+  # Create launcher script
+  - |
+    cat > $APPDIR/usr/bin/symo << 'EOF'
+    #!/bin/bash
+    export PYTHONPATH="$APPDIR/usr/lib/python3/dist-packages:$PYTHONPATH"
+    cd "$APPDIR/usr/share/symo"
+    exec python3 app.py "$@"
+    EOF
+  - chmod +x $APPDIR/usr/bin/symo
+
+AppDir:
+  path: ./AppDir
+
+  app_info:
+    id: com.symo.SystemMonitor
+    name: SyMo
+    icon: logo
+    version: 1.0.1
+    exec: usr/bin/symo
+    exec_args: $@
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb http://archive.ubuntu.com/ubuntu/ focal main restricted universe multiverse'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3B4FE6ACC0B21F32'
+      
+    include:
+      # Core Python and GTK
+      - python3
+      - python3-gi
+      - python3-gi-cairo
+      - gir1.2-gtk-3.0
+      - gir1.2-glib-2.0
+      - gir1.2-appindicator3-0.1
+      # GTK theme and icon support
+      - adwaita-icon-theme
+      - gtk-update-icon-cache
+      # System monitoring libraries
+      - libpython3.8
+      # Required for system tray
+      - libayatana-appindicator3-1
+      
+    exclude:
+      # Exclude large unnecessary packages
+      - man-db
+      - manpages
+      - manpages-dev
+      - doc-base
+      - shared-mime-info
+      - desktop-file-utils
+      
+  files:
+    exclude:
+      # Exclude documentation and cache files
+      - usr/share/doc
+      - usr/share/man
+      - usr/share/locale
+      - var/cache
+      - var/lib/apt
+      # Exclude unused Python modules
+      - usr/lib/python3*/tkinter
+      - usr/lib/python3*/unittest
+      - usr/lib/python3*/test
+      - usr/lib/python3*/distutils
+      - usr/lib/python3*/lib2to3
+
+  runtime:
+    arch: x86_64
+    
+  test:
+    fedora:
+      image: appimagecrafters/tests-env:fedora-30
+      command: ./AppRun
+    debian:
+      image: appimagecrafters/tests-env:debian-stable
+      command: ./AppRun
+    arch:
+      image: appimagecrafters/tests-env:archlinux-latest  
+      command: ./AppRun
+    centos:
+      image: appimagecrafters/tests-env:centos-7
+      command: ./AppRun
+    ubuntu:
+      image: appimagecrafters/tests-env:ubuntu-xenial
+      command: ./AppRun
