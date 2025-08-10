@@ -69,10 +69,10 @@ $NUITKA_CMD --standalone \
 
 if [ $? -eq 0 ] && [ -d "build_standalone/app.dist" ]; then
     echo "✅ Standalone build successful!"
-    
+
     # Copy the standalone build to a cleaner name
     cp -r build_standalone/app.dist ${PACKAGE_NAME}-standalone
-    
+
     # Create a wrapper script for easier execution
     cat > ${PACKAGE_NAME}-run << 'EOF'
 #!/bin/bash
@@ -81,9 +81,9 @@ cd "$DIR/${PACKAGE_NAME}-standalone"
 exec ./app "$@"
 EOF
     chmod +x ${PACKAGE_NAME}-run
-    
+
     STANDALONE_SIZE=$(du -sh ${PACKAGE_NAME}-standalone | cut -f1)
-    
+
     echo "📦 Standalone build: ${PACKAGE_NAME}-standalone/"
     echo "🚀 Runner script: ${PACKAGE_NAME}-run"
     echo "💾 Total size: ${STANDALONE_SIZE}"
@@ -102,7 +102,7 @@ EOF
     echo "  tar -czf ${PACKAGE_NAME}-standalone.tar.gz ${PACKAGE_NAME}-standalone/ ${PACKAGE_NAME}-run"
     echo "  # Users extract and run:"
     echo "  tar -xzf ${PACKAGE_NAME}-standalone.tar.gz && ./${PACKAGE_NAME}-run"
-    
+
     # Try onefile build as well (might work with newer Nuitka)
     echo ""
     echo "🗜️ Attempting onefile build (experimental)..."
@@ -116,7 +116,7 @@ EOF
         --python-flag=no_site \
         --python-flag=-O \
         app.py
-    
+
     if [ -f "${PACKAGE_NAME}-onefile" ]; then
         ONEFILE_SIZE=$(du -h ${PACKAGE_NAME}-onefile | cut -f1)
         echo "✅ Onefile build also successful!"
@@ -131,10 +131,10 @@ EOF
     else
         echo "⚠️  Onefile build failed, but standalone version is ready!"
     fi
-    
+
     # Clean up build directories
     rm -rf build_standalone
-    
+
 else
     echo "❌ Compilation failed!"
     echo "This might be due to GTK/GObject complexity. Try PyInstaller as alternative:"

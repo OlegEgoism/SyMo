@@ -393,17 +393,15 @@ class PowerControl:
         return False
 
     def _show_message(self, title, message):
-        # Уничтожаем предыдущий диалог, если он существует
         if self.current_dialog:
             self.current_dialog.destroy()
             self.current_dialog = None
 
-        # Проверяем, что parent_window существует и отображается
         parent = self.parent_window
         if parent and isinstance(parent, Gtk.Widget) and parent.get_mapped():
             transient_for = parent
         else:
-            transient_for = None  # Если родитель недоступен — без привязки
+            transient_for = None
 
         dialog = Gtk.MessageDialog(
             transient_for=transient_for,
@@ -434,8 +432,6 @@ class SettingsDialog(Gtk.Dialog):
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.set_halign(Gtk.Align.END)
-        # pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("logo.png", 36, 36)
-        # header.pack_start(Gtk.Image.new_from_pixbuf(pixbuf), False, False, 0)
         link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
         link.set_halign(Gtk.Align.END)
         header.pack_start(link, False, False, 0)
@@ -526,7 +522,6 @@ class SettingsDialog(Gtk.Dialog):
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
 
-        # Telegram
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
         self.telegram_enable_check.set_margin_top(3)
@@ -1003,7 +998,6 @@ class SystemTrayApp:
 
             current_time = time.time()
 
-            # Telegram
             if (self.telegram_notifier.enabled and
                     current_time - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
                 self.send_telegram_notification(
@@ -1017,7 +1011,6 @@ class SystemTrayApp:
                 )
                 self.last_telegram_notification_time = current_time
 
-            # Discord
             if (self.discord_notifier.enabled and
                     current_time - self.last_discord_notification_time >= self.discord_notifier.notification_interval):
                 self.send_discord_notification(
