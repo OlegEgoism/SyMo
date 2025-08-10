@@ -58,8 +58,8 @@ echo "🚀 Compiling Python to native executable..."
 $NUITKA_CMD --standalone \
     --onefile \
     --enable-plugin=gi \
-    --include-data-file=logo.png=logo.png \
-    --include-data-file=language.py=language.py \
+    --include-data-files=logo.png=logo.png \
+    --include-data-files=language.py=language.py \
     --assume-yes-for-downloads \
     --remove-output \
     --output-filename=${PACKAGE_NAME}-compiled \
