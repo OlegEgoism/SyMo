@@ -1,4 +1,3 @@
-import re
 import gi
 import os
 import signal
@@ -433,14 +432,14 @@ class SettingsDialog(Gtk.Dialog):
         box = self.get_content_area()
         box.set_border_width(10)
 
-        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        header.set_halign(Gtk.Align.END)
-        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("logo.png", 36, 36)
-        header.pack_start(Gtk.Image.new_from_pixbuf(pixbuf), False, False, 0)
-        link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
-        link.set_halign(Gtk.Align.END)
-        header.pack_start(link, False, False, 0)
-        box.add(header)
+        # header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        # header.set_halign(Gtk.Align.END)
+        # pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size("logo.png", 36, 36)
+        # header.pack_start(Gtk.Image.new_from_pixbuf(pixbuf), False, False, 0)
+        # link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
+        # link.set_halign(Gtk.Align.END)
+        # header.pack_start(link, False, False, 0)
+        # box.add(header)
 
         self.tray_cpu_check = Gtk.CheckButton(label=tr('cpu_tray'))
         self.tray_cpu_check.set_active(self.visibility_settings.get('tray_cpu', True))
