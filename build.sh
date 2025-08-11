@@ -2,14 +2,14 @@
 
 # Nuitka Compilation Build Script for SyMo (Fixed Resources + Autostart + Icons)
 # - Standalone и Onefile сборки
-# - Автозапуск и ярлыки с иконкой logo.png (если есть)
+# - Один ярлык/автозапуск "SyMo" (без дубликата "SyMo (Onefile)")
 
 set -e
 
 PACKAGE_NAME="SyMo"
 VERSION="1.0.1"
 
-echo "🔥 Building ${PACKAGE_NAME} with Nuitka (resources, autostart, icons)..."
+echo "🔥 Building ${PACKAGE_NAME} with Nuitka (resources, autostart, single desktop entry)..."
 
 # ---------- Зависимости ----------
 echo "🔧 Checking system dependencies..."
@@ -38,15 +38,22 @@ else
 fi
 echo "Using Nuitka command: $NUITKA_CMD"
 
-# ---------- Очистка ----------
+# ---------- Пути меню/автозапуска ----------
+APP_MENU_DIR="$HOME/.local/share/applications"
+AUTOSTART_DIR="$HOME/.config/autostart"
+mkdir -p "$APP_MENU_DIR" "$AUTOSTART_DIR"
+
+DESKTOP_MAIN="${APP_MENU_DIR}/${PACKAGE_NAME}.desktop"
+DESKTOP_AUTOSTART="${AUTOSTART_DIR}/${PACKAGE_NAME}.desktop"
+# Старые возможные файлы с "(Onefile)"
+LEGACY_ONE_MAIN="${APP_MENU_DIR}/${PACKAGE_NAME}-onefile.desktop"
+LEGACY_ONE_AUTOSTART="${AUTOSTART_DIR}/${PACKAGE_NAME}-onefile.desktop"
+
+# ---------- Очистка артефактов сборки ----------
 rm -rf "${PACKAGE_NAME}.dist" "${PACKAGE_NAME}.build" "${PACKAGE_NAME}.onefile-build" \
        "build_standalone" "${PACKAGE_NAME}-standalone"
 rm -f  "${PACKAGE_NAME}" "${PACKAGE_NAME}.bin" "${PACKAGE_NAME}-compiled" \
        "${PACKAGE_NAME}-onefile" "${PACKAGE_NAME}-run"
-
-APP_MENU_DIR="$HOME/.local/share/applications"
-AUTOSTART_DIR="$HOME/.config/autostart"
-mkdir -p "$APP_MENU_DIR" "$AUTOSTART_DIR"
 
 # ---------- Утилиты ----------
 write_desktop_file() {
@@ -67,6 +74,7 @@ write_desktop_file() {
         fi
         echo "Terminal=false"
         echo "Categories=Utility;"
+        echo "TryExec=${exec_cmd%% *}"
         if [[ "$autostart" == "yes" ]]; then
             echo "X-GNOME-Autostart-enabled=true"
         fi
@@ -93,32 +101,18 @@ if [[ -d "build_standalone/app.dist" ]]; then
     cp -r "build_standalone/app.dist" "${PACKAGE_NAME}-standalone"
 
     # Раннер для удобного запуска standalone
-    cat > "${PACKAGE_NAME}-run" <<EOF
+    cat > "${PACKAGE_NAME}-run" <<'EOF'
 #!/bin/bash
 set -e
-DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-cd "\$DIR/${PACKAGE_NAME}-standalone"
-exec ./app "\$@"
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+cd "$DIR/SyMo-standalone"
+exec ./app "$@"
 EOF
     chmod +x "${PACKAGE_NAME}-run"
 
     STANDALONE_SIZE=$(du -sh "${PACKAGE_NAME}-standalone" | cut -f1)
     echo "📦 Standalone dir: ${PACKAGE_NAME}-standalone (size: ${STANDALONE_SIZE})"
     echo "▶️  Run: ./$(basename "${PACKAGE_NAME}-run")"
-
-    # .desktop + автозапуск для standalone
-    ABS_RUNNER_PATH="$(pwd)/${PACKAGE_NAME}-run"
-    ABS_ICON_STANDALONE="$(pwd)/${PACKAGE_NAME}-standalone/logo.png"  # если есть
-    DESKTOP_MAIN="${APP_MENU_DIR}/${PACKAGE_NAME}.desktop"
-    DESKTOP_AUTOSTART="${AUTOSTART_DIR}/${PACKAGE_NAME}.desktop"
-
-    write_desktop_file "$DESKTOP_MAIN" "${PACKAGE_NAME}" "$ABS_RUNNER_PATH" "$ABS_ICON_STANDALONE" "no"
-    write_desktop_file "$DESKTOP_AUTOSTART" "${PACKAGE_NAME}" "$ABS_RUNNER_PATH" "$ABS_ICON_STANDALONE" "yes"
-
-    echo "📋 Distribution tips:"
-    echo "  tar -czf ${PACKAGE_NAME}-standalone.tar.gz ${PACKAGE_NAME}-standalone/ ${PACKAGE_NAME}-run"
-    echo "  # end-user:"
-    echo "  tar -xzf ${PACKAGE_NAME}-standalone.tar.gz && ./${PACKAGE_NAME}-run"
 else
     echo "❌ Standalone compilation failed."
     echo "Try PyInstaller as alternative: ./build_pyinstaller.sh"
@@ -147,19 +141,42 @@ if [[ $ONEFILE_RC -eq 0 && -f "${PACKAGE_NAME}-onefile" ]]; then
     ONEFILE_SIZE=$(du -h "${PACKAGE_NAME}-onefile" | cut -f1)
     echo "✅ Onefile build successful (size: ${ONEFILE_SIZE})"
     echo "▶️  Run: ./$(basename "${PACKAGE_NAME}-onefile")"
-    echo "⚠️  Note: Onefile может иметь проблемы с загрузкой ресурсов; при сбоях используйте standalone."
-
-    # .desktop + автозапуск для onefile с иконкой logo.png (если в корне проекта есть)
-    ABS_ONEFILE_PATH="$(pwd)/${PACKAGE_NAME}-onefile"
-    ABS_ICON_ONEFILE="$(pwd)/logo.png"
-    DESKTOP_ONE_MAIN="${APP_MENU_DIR}/${PACKAGE_NAME}-onefile.desktop"
-    DESKTOP_ONE_AUTOSTART="${AUTOSTART_DIR}/${PACKAGE_NAME}-onefile.desktop"
-
-    write_desktop_file "$DESKTOP_ONE_MAIN" "${PACKAGE_NAME} (Onefile)" "$ABS_ONEFILE_PATH" "$ABS_ICON_ONEFILE" "no"
-    write_desktop_file "$DESKTOP_ONE_AUTOSTART" "${PACKAGE_NAME} (Onefile)" "$ABS_ONEFILE_PATH" "$ABS_ICON_ONEFILE" "yes"
 else
     echo "⚠️  Onefile build failed or skipped; standalone is ready."
 fi
+
+# ---------- ЕДИНЫЙ ярлык и автозапуск "SyMo" ----------
+# Логика выбора исполняемого файла для Exec:
+# 1) если есть onefile — используем его;
+# 2) иначе — используем раннер для standalone.
+ABS_ONEFILE_PATH="$(pwd)/${PACKAGE_NAME}-onefile"
+ABS_RUNNER_PATH="$(pwd)/${PACKAGE_NAME}-run"
+
+if [[ -f "$ABS_ONEFILE_PATH" ]]; then
+    FINAL_EXEC="$ABS_ONEFILE_PATH"
+    echo "🧭 Launcher target: onefile"
+else
+    FINAL_EXEC="$ABS_RUNNER_PATH"
+    echo "🧭 Launcher target: standalone runner"
+fi
+
+# Иконка: приоритет — из standalone, затем из корня проекта
+ICON_CANDIDATE1="$(pwd)/${PACKAGE_NAME}-standalone/logo.png"
+ICON_CANDIDATE2="$(pwd)/logo.png"
+if [[ -f "$ICON_CANDIDATE1" ]]; then
+    FINAL_ICON="$ICON_CANDIDATE1"
+elif [[ -f "$ICON_CANDIDATE2" ]]; then
+    FINAL_ICON="$ICON_CANDIDATE2"
+else
+    FINAL_ICON=""
+fi
+
+# Перед созданием — удаляем возможные старые файлы, чтобы не было дублей
+rm -f "$LEGACY_ONE_MAIN" "$LEGACY_ONE_AUTOSTART"
+
+# Создаём ровно ОДИН .desktop для меню и ОДИН для автозапуска — оба с именем "SyMo"
+write_desktop_file "$DESKTOP_MAIN" "${PACKAGE_NAME}" "$FINAL_EXEC" "$FINAL_ICON" "no"
+write_desktop_file "$DESKTOP_AUTOSTART" "${PACKAGE_NAME}" "$FINAL_EXEC" "$FINAL_ICON" "yes"
 
 # ---------- Финал ----------
 # Чистка временной директории standalone-сборки (оставляем итоговые артефакты)
@@ -167,6 +184,13 @@ rm -rf build_standalone
 
 echo ""
 echo "🎉 Done!"
-echo "• Standalone: ${PACKAGE_NAME}-standalone/ + ${PACKAGE_NAME}-run (+ ярлыки и автозапуск)"
-echo "• Onefile  : ${PACKAGE_NAME}-onefile (если собрался) (+ ярлыки и автозапуск)"
-echo "• Иконка   : logo.png будет использована в .desktop, если найдена."
+echo "• Standalone: ${PACKAGE_NAME}-standalone/ + ${PACKAGE_NAME}-run"
+echo "• Onefile  : ${PACKAGE_NAME}-onefile (если собрался)"
+echo "• Ярлык    : ${DESKTOP_MAIN} (единственный, Name=SyMo)"
+echo "• Автозапуск: ${DESKTOP_AUTOSTART} (единственный, Name=SyMo)"
+echo "• Иконка   : $( [[ -n "$FINAL_ICON" ]] && echo "$FINAL_ICON" || echo 'нет' )"
+echo ""
+echo "📋 Distribution tips:"
+echo "  tar -czf ${PACKAGE_NAME}-standalone.tar.gz ${PACKAGE_NAME}-standalone/ ${PACKAGE_NAME}-run"
+echo "  # end-user:"
+echo "  tar -xzf ${PACKAGE_NAME}-standalone.tar.gz && ./${PACKAGE_NAME}-run"
