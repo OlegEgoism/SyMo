@@ -41,6 +41,7 @@
 
 - Почта: olegpustovalov220@gmail.com
 - Благодарность за помощь: https://github.com/korneyka3000
+- Разработчики: https://github.com/korneyka3000, https://github.com/OlegEgoism
 
 <h3>Видео демонстрация</h3>
 
