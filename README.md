@@ -127,6 +127,7 @@ ls -l *SyMo-onefile
 Сборка приложения .deb
 </h2>
 
+
 <h3>💡 Запуск файла "build_deb.sh"</h3>
 ```bash
 chmod +x build_deb.sh
