@@ -140,6 +140,7 @@ sudo dpkg -i SyMo_1.0.1_all.deb
 ```
 
 <h3>💡 Удалить пакет (рекомендуемый способ)</h3>
+
 ```bash
 sudo apt remove symo
 ```
@@ -148,6 +149,7 @@ sudo apt purge SyMo
 ```
 
 <h3>💡 Убедится, что пакет удален</h3>
+
 ```bash
 which SyMo
 dpkg -l | grep SyMo
