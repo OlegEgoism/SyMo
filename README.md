@@ -1,6 +1,9 @@
+
 <h1 style="color: aqua">
 Приложение SyMo Ⓡ
 </h1>
+
+<img src="logo.png" width="10%" />
 
 <h2 style="color: chocolate">
 Описание и функционал приложения
