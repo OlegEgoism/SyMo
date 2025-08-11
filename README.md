@@ -47,11 +47,9 @@
 <h2 style="color: chocolate">Подключение Telegram и Discord</h2>
 
 <h3>Инструкция Telegram</h3>
-Для создания и получения информации о "Токене": 
-- https://web.telegram.org/k/#@BotFather
+Для создания и получения информации о "Токене": https://web.telegram.org/k/#@BotFather
 
-Для получения "ID чата":
-- https://web.telegram.org/k/#@getmyid_bot
+Для получения "ID чата": https://web.telegram.org/k/#@getmyid_bot
 
 <h3>Инструкция Discord</h3>
 - Открой Discord → выбери сервер.
