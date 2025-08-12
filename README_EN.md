@@ -1,4 +1,4 @@
-<p><strong>Язык:</strong> 🇬🇧 English | <a href="README.md"> 🇷🇺 Русский </a></p>
+<p><strong>Language:</strong> 🇬🇧 English | <a href="README.md"> 🇷🇺 Русский </a></p>
 
 <h1 style="color: aqua">
 SyMo Ⓡ Application
