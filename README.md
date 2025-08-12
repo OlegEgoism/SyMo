@@ -1,3 +1,4 @@
+<p><strong>Язык:</strong> 🇷🇺 Русский | <a href="README_EN.md"> 🇬🇧 English </a></p>
 
 <h1 style="color: aqua">
 Приложение SyMo Ⓡ
@@ -148,10 +149,11 @@ sudo apt remove symo
 sudo apt purge SyMo
 ```
 
-<h3>💡 Убедится, что пакет удален</h3>
+<h3>💡 Убедитесь, что пакет удален</h3>
 
 ```bash
 which SyMo
 dpkg -l | grep SyMo
 ```
 
+Сделано ❤ [OlegEgoism](https://github.com/OlegEgoism)
