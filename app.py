@@ -13,7 +13,7 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('GLib', '2.0')
 gi.require_version('AppIndicator3', '0.1')
 
-from gi.repository import Gtk, GLib, AppIndicator3, GdkPixbuf
+from gi.repository import Gtk, GLib, AppIndicator3
 
 current_lang = 'ru'
 time_update = 1
@@ -824,7 +824,7 @@ class SystemTrayApp:
         self.settings_item.connect("activate", self.show_settings)
 
         self.language_menu = Gtk.Menu()
-        for code in ['ru', 'en', 'cn', 'de']:
+        for code in ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'ar', 'fr']:
             lang_item = Gtk.RadioMenuItem.new_with_label_from_widget(None, LANGUAGES[code]['language_name'])
             lang_item.set_active(code == current_lang)
             lang_item.connect("activate", self._on_language_selected, code)
@@ -901,8 +901,7 @@ class SystemTrayApp:
     def update_menu_visibility(self):
         children = self.menu.get_children()
         for child in children:
-            if child not in [self.main_separator, self.power_separator, self.exit_separator,
-                             self.language_menu_item, self.settings_item, self.quit_item]:
+            if child not in [self.main_separator, self.power_separator, self.exit_separator, self.language_menu_item, self.settings_item, self.quit_item]:
                 self.menu.remove(child)
 
         if self.visibility_settings['mouse_clicks']:
