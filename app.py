@@ -15,7 +15,7 @@ gi.require_version('GLib', '2.0')
 gi.require_version('AppIndicator3', '0.1')
 from gi.repository import Gtk, GLib, AppIndicator3
 
-SUPPORTED_LANGS = ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'ar', 'fr']
+SUPPORTED_LANGS = ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'fr']
 
 
 def detect_system_language():
@@ -1085,6 +1085,7 @@ class SystemTrayApp:
             if self.visibility_settings['mouse_clicks']:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks}")
 
+            # Формируем основную часть информации
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
                 tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
@@ -1093,11 +1094,9 @@ class SystemTrayApp:
 
             tray_text = "  ".join(tray_parts)
 
-            indicators = []
+            # Добавляем индикатор уведомлений В НАЧАЛЕ, если включено Telegram или Discord
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
-                indicators.append("⤴")
-            if indicators:
-                tray_text += "  " + " ".join(indicators)
+                tray_text = "⤴  " + tray_text  # Значок в начале
 
             self.indicator.set_label(tray_text, "")
 
