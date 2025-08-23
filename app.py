@@ -290,7 +290,6 @@ class PowerControl:
         apply_button = Gtk.Button(label=tr('apply'))
         cancel_button = Gtk.Button(label=tr('cancel'))
         reset_button = Gtk.Button(label=tr('reset'))
-
         apply_button.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.OK))
         cancel_button.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.CANCEL))
 
@@ -323,14 +322,17 @@ class PowerControl:
                     dialog.destroy()
                 self.current_dialog = None
                 return
+
             self.scheduled_action = action
             self.remaining_seconds = minutes * 60
             if minutes > 1:
                 self._notify_timer_id = GLib.timeout_add_seconds((minutes - 1) * 60, self._notify_before_action, action)
             self._action_timer_id = GLib.timeout_add_seconds(self.remaining_seconds, self._delayed_action, action)
+
             if self._update_timer_id:
                 GLib.source_remove(self._update_timer_id)
             self._update_timer_id = GLib.timeout_add_seconds(1, self._update_indicator_label)
+
             self._show_message(tr('scheduled'), tr('action_in_time').format(action, minutes))
 
         if isinstance(dialog, Gtk.Widget):
@@ -723,7 +725,6 @@ class SettingsDialog(Gtk.Dialog):
 class SystemTrayApp:
     def __init__(self):
         global current_lang
-
         if not Gtk.init_check()[0]:
             Gtk.init([])
 
@@ -808,13 +809,10 @@ class SystemTrayApp:
         self.power_separator = Gtk.SeparatorMenuItem()
         self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
         self.power_off_item.connect("activate", self.power_control._confirm_action, self.power_control._shutdown, tr('confirm_text_power_off'))
-
         self.reboot_item = Gtk.MenuItem(label=tr('reboot'))
         self.reboot_item.connect("activate", self.power_control._confirm_action, self.power_control._reboot, tr('confirm_text_reboot'))
-
         self.lock_item = Gtk.MenuItem(label=tr('lock'))
         self.lock_item.connect("activate", self.power_control._confirm_action, self.power_control._lock_screen, tr('confirm_text_lock'))
-
         self.timer_item = Gtk.MenuItem(label=tr('settings'))
         self.timer_item.connect("activate", self.power_control._open_settings)
 
@@ -860,6 +858,7 @@ class SystemTrayApp:
         self.menu.append(self.settings_item)
         self.menu.append(self.exit_separator)
         self.menu.append(self.quit_item)
+
         self.menu.show_all()
         self.indicator.set_menu(self.menu)
 
@@ -1088,11 +1087,20 @@ class SystemTrayApp:
 
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
-                tray_parts.append(f"  {tr('cpu_info')}: {cpu_usage:.0f}%")
+                tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
             if self.visibility_settings.get('tray_ram', True):
                 tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
-            tray_text = "" + "  ".join(tray_parts)
+
+            tray_text = "  ".join(tray_parts)
+
+            indicators = []
+            if self.telegram_notifier.enabled or self.discord_notifier.enabled:
+                indicators.append("⤴")
+            if indicators:
+                tray_text += "  " + " ".join(indicators)
+
             self.indicator.set_label(tray_text, "")
+
         except Exception as e:
             print(f"Ошибка в _update_ui: {e}")
 
