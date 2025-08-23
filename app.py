@@ -1034,15 +1034,15 @@ class SystemTrayApp:
                                    net_recv_speed, net_sent_speed, uptime,
                                    keyboard_clicks, mouse_clicks):
         message = (
-            f"<b>Статус системы</b>\n"
-            f"<b>CPU:</b> {cpu_usage:.0f}% ({cpu_temp}°C)\n"
-            f"<b>RAM:</b> {ram_used:.1f}/{ram_total:.1f} GB\n"
-            f"<b>Swap:</b> {swap_used:.1f}/{swap_total:.1f} GB\n"
-            f"<b>Диск:</b> {disk_used:.1f}/{disk_total:.1f} GB\n"
-            f"<b>Сеть:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
-            f"<b>Время работы:</b> {uptime}\n"
-            f"<b>Клавиши:</b> {keyboard_clicks} нажатий\n"
-            f"<b>Мышь:</b> {mouse_clicks} кликов"
+            f"<b>{tr('system_status')}</b>\n"
+            f"<b>{tr('cpu')}:</b> {cpu_usage:.0f}% ({cpu_temp}{tr('temperature')})\n"
+            f"<b>{tr('ram')}:</b> {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
+            f"<b>{tr('swap')}:</b> {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
+            f"<b>{tr('disk')}:</b> {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
+            f"<b>{tr('network')}:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
+            f"<b>{tr('uptime')}:</b> {uptime}\n"
+            f"<b>{tr('keyboard')}:</b> {keyboard_clicks} {tr('presses')}\n"
+            f"<b>{tr('mouse')}:</b> {mouse_clicks} {tr('clicks')}"
         )
         self.telegram_notifier.send_message(message)
 
@@ -1051,15 +1051,15 @@ class SystemTrayApp:
                                   net_recv_speed, net_sent_speed, uptime,
                                   keyboard_clicks, mouse_clicks):
         message = (
-            f"**Статус системы**\n"
-            f"**CPU:** {cpu_usage:.0f}% ({cpu_temp}°C)\n"
-            f"**RAM:** {ram_used:.1f}/{ram_total:.1f} ГБ\n"
-            f"**Swap:** {swap_used:.1f}/{swap_total:.1f} ГБ\n"
-            f"**Диск:** {disk_used:.1f}/{disk_total:.1f} ГБ\n"
-            f"**Сеть:** ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} МБ/с\n"
-            f"**Время работы:** {uptime}\n"
-            f"**Клавиши:** {keyboard_clicks} нажатий\n"
-            f"**Мышь:** {mouse_clicks} кликов"
+            f"**{tr('system_status')}**\n"
+            f"**{tr('cpu')}**: {cpu_usage:.0f}% ({cpu_temp}{tr('temperature')})\n"
+            f"**{tr('ram')}**: {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
+            f"**{tr('swap')}**: {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
+            f"**{tr('disk')}**: {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
+            f"**{tr('network')}**: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
+            f"**{tr('uptime')}**: {uptime}\n"
+            f"**{tr('keyboard')}**: {keyboard_clicks} {tr('presses')}\n"
+            f"**{tr('mouse')}**: {mouse_clicks} {tr('clicks')}"
         )
         self.discord_notifier.send_message(message)
 
@@ -1085,19 +1085,14 @@ class SystemTrayApp:
             if self.visibility_settings['mouse_clicks']:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks}")
 
-            # Формируем основную часть информации
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
                 tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
             if self.visibility_settings.get('tray_ram', True):
                 tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
-
             tray_text = "  ".join(tray_parts)
-
-            # Добавляем индикатор уведомлений В НАЧАЛЕ, если включено Telegram или Discord
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
-                tray_text = "⤴  " + tray_text  # Значок в начале
-
+                tray_text = "⤴  " + tray_text
             self.indicator.set_label(tray_text, "")
 
         except Exception as e:
