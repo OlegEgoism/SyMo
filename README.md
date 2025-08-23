@@ -1,77 +1,80 @@
-<p><strong>Язык:</strong> 🇷🇺 Русский | <a href="README_EN.md"> 🇬🇧 English </a></p>
-
-<h1 style="color: aqua">
-Приложение SyMo Ⓡ
+<h1>
+"SyMo" Application
 </h1>
 
 <img src="logo.png" width="10%" />
 
 <h2 style="color: chocolate">
-Описание и функционал приложения
+Application Description and Features
 </h2> 
 
-<h3>Системный монитор</h3>
+<h3>System Monitor</h3>
 
-- Реальное время отображения:
-  - Загрузка CPU с температурой.
-  - Использование RAM и SWAP.
-  - Дисковое пространство.
-  - Скорость сети (входящий/исходящий трафик).
-  - Время работы системы.
-  - Счетчик нажатий клавиш и кликов мыши.
-- Настраиваемый интерфейс:
-  - Выбор отображаемых параметров.
-  - Настройка отображения в трее.
-  - Отправка уведомлений в Telegram и Discord по таймеру.
+- Real-time display:
+  - CPU load with temperature.
+  - RAM and SWAP usage.
+  - Disk space.
+  - Network speed (incoming/outgoing traffic).
+  - System uptime.
+  - Keyboard presses and mouse clicks counter.
+- Customizable interface:
+  - Select display parameters.
+  - Tray display settings.
+  - Send notifications to Telegram and Discord on timer.
 
-<h3>Управление питанием</h3>
+<h3>Power Management</h3>
 
-- Быстрые действия:
-  - Выключение компьютера.
-  - Перезагрузка компьютера.
-  - Блокировка экрана компьютера.
-- Таймерные команды:
-  - Отложенное выполнение действий.
-  - Уведомления перед выполнением.
+- Quick actions:
+  - Shut down computer.
+  - Restart computer.
+  - Lock computer screen.
+- Timer commands:
+  - Delayed action execution.
+  - Notifications before execution.
 
-<h3>Доступные языки интерфейса</h3>
+<h3>Available Interface Languages</h3>
 
-- Русский.
-- Английский.
-- Китайский.
-- Немецкий.
+- 🇷🇺 Russian.
+- 🇬🇧 English.
+- 🇨🇳 Chinese.
+- 🇩🇪 German.
+- 🇮🇹 Italian.
+- 🇪🇸 Spanish.
+- 🇹🇷 Turkish.
+- 🇸🇦 Arabic.
+- 🇫🇷 French.
 
-<h3>Обратная связь и поддержка</h3> 
+<h3>Feedback and Support</h3> 
 
-- Почта: olegpustovalov220@gmail.com
-- Благодарность за помощь: https://github.com/korneyka3000
-- Разработчики: https://github.com/korneyka3000, https://github.com/OlegEgoism
+- Email: olegpustovalov220@gmail.com
+- Special thanks for help: https://github.com/korneyka3000
+- Developers: https://github.com/korneyka3000, https://github.com/OlegEgoism
 
-<h3>Видео демонстрация</h3>
+<h3>Video Demonstration</h3>
 
-[![Видео на YouTube](https://img.youtube.com/vi/eNh-yalHPO0/0.jpg)](https://www.youtube.com/watch?v=eNh-yalHPO0)
-
-<h2 style="color: chocolate">
-Подключение Telegram и Discord
-</h2>
-
-<h3>Инструкция Telegram</h3>
-
-Для создания и получения информации о "Токене": https://web.telegram.org/k/#@BotFather
-
-Для получения "ID чата": https://web.telegram.org/k/#@getmyid_bot
-
-<h3>Инструкция Discord</h3>
-
-- Открой Discord → выбери сервер.
-- Перейди в Настройки сервера → Интеграции → Вебхуки.
-- Нажми "Создать Вебхук".
+[![YouTube Video](https://img.youtube.com/vi/eNh-yalHPO0/0.jpg)](https://www.youtube.com/watch?v=eNh-yalHPO0)
 
 <h2 style="color: chocolate">
-Запуск в режиме разработки
+Telegram and Discord Integration
 </h2>
 
-<h3>💡 Установка apt для Debian/Ubuntu (основные библиотеки)</h3>
+<h3>Telegram Instructions</h3>
+
+To create and get information about "Token": https://web.telegram.org/k/#@BotFather
+
+To get "Chat ID": https://web.telegram.org/k/#@getmyid_bot
+
+<h3>Discord Instructions</h3>
+
+- Open Discord → select your server.
+- Go to Server Settings → Integrations → Webhooks.
+- Click "Create Webhook".
+
+<h2 style="color: chocolate">
+Running in Development Mode
+</h2>
+
+<h3>💡 apt Installation for Debian/Ubuntu (core libraries)</h3>
 
 ```bash
 sudo apt update
@@ -79,7 +82,7 @@ sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-appindicator3
 sudo apt install -y build-essential libgirepository1.0-dev gir1.2-glib-2.0 python3-gi python3-gi-cairo gobject-introspection
 ```
 
-<h3>💡 Если буду проблемы при запуске</h3>
+<h3>💡 If there are problems with startup</h3>
 
 ```bash
 sudo apt update
@@ -91,56 +94,56 @@ sudo apt install gnome-shell-extension-appindicator
 pip install pygobject
 ```
 
-<h3>💡 Python-зависимости</h3>
+<h3>💡 Python-dependencies</h3>
 
 ```bash
 pip install -r requirements.txt
 ```
 
-<h3>💡 Запуск приложения</h3>
+<h3>💡 Launching the application</h3>
 
 ```bash
 python3 app.py
 ```
 
 <h2 style="color: chocolate">
-    Сборка в исполняемый файл 
-    <span style="color: red">(рекомендуемый вариант!)</span>
+    Assembling into an executable file
+    <span style="color: red">(recommended option!)</span>
 </h2>
 
-<h3>💡 Запуск файла "build.sh" (время выполнение сборки до 5 минут)</h3>
+<h3>💡 Launch file "build.sh" (assembly time up to 5 minutes)</h3>
 
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
 
-<h3>💡 Проверка созданного файла SyMo-onefile</h3>
+<h3>💡 Checking the created file SyMo-onefile</h3>
 
 ```bash
 ls -l *SyMo-onefile
 ```
 
-<h3>💡 После успешной сборки у вас появится иконка приложения "SyMo"</h3>
+<h3>💡 After successful assembly, you will have an application icon "SyMo"</h3>
 
 <h2 style="color: chocolate">
-Сборка приложения .deb
+Assembling the application .deb
 </h2>
 
-<h3>💡 Запуск файла "build_deb.sh"</h3>
+<h3>💡 Launch file "build_deb.sh"</h3>
 
 ```bash
 chmod +x build_deb.sh
 ./build_deb.sh
 ```
 
-<h3>💡 Установка после успешной сборки</h3>
+<h3>💡 Installation after successful build</h3>
 
 ```bash
 sudo dpkg -i SyMo_1.0.1_all.deb
 ```
 
-<h3>💡 Удалить пакет (рекомендуемый способ)</h3>
+<h3>💡 Remove package (recommended method)</h3>
 
 ```bash
 sudo apt remove symo
@@ -149,11 +152,11 @@ sudo apt remove symo
 sudo apt purge SyMo
 ```
 
-<h3>💡 Убедитесь, что пакет удален</h3>
+<h3>💡 Make sure the package is removed</h3>
 
 ```bash
 which SyMo
 dpkg -l | grep SyMo
 ```
 
-Сделано ❤ [OlegEgoism](https://github.com/OlegEgoism)
+Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
