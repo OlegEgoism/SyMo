@@ -1,5 +1,3 @@
 psutil==5.9.8
-pycairo==1.26.0
-PyGObject==3.48.2
 pynput==1.8.1
-requests==2.31.0
+requests==2.32.4

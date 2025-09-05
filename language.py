@@ -2,7 +2,7 @@ LANGUAGES = {
     'ru': {
         'cpu_tray': "ЦПУ в трее",
         'ram_tray': "ОЗУ в трее",
-        'cpu_info': "ЦПУ",
+        'cpu_info': " ЦПУ",
         'ram_loading': "ОЗУ",
         'swap_loading': "Подкачка",
         'disk_loading': "Диск",
@@ -76,7 +76,7 @@ LANGUAGES = {
     'en': {
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
-        'cpu_info': "CPU",
+        'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
         'disk_loading': "Disk",
@@ -150,7 +150,7 @@ LANGUAGES = {
     'cn': {
         'cpu_tray': "CPU在托盘",
         'ram_tray': "内存托盘显示",
-        'cpu_info': "处理器",
+        'cpu_info': " 处理器",
         'ram_loading': "内存",
         'swap_loading': "交换分区",
         'disk_loading': "磁盘",
@@ -224,7 +224,7 @@ LANGUAGES = {
     'de': {
         'cpu_tray': "CPU im Tray",
         'ram_tray': "RAM im Tray",
-        'cpu_info': "CPU",
+        'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Auslagerung",
         'disk_loading': "Festplatte",
@@ -298,7 +298,7 @@ LANGUAGES = {
     'it': {  # Итальянский
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
-        'cpu_info': "CPU",
+        'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
         'disk_loading': "Disco",
@@ -372,7 +372,7 @@ LANGUAGES = {
     'es': {  # Испанский
         'cpu_tray': "CPU en bandeja",
         'ram_tray': "RAM en bandeja",
-        'cpu_info': "CPU",
+        'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
         'disk_loading': "Disco",
@@ -446,7 +446,7 @@ LANGUAGES = {
     'tr': {  # Турецкий
         'cpu_tray': "Sistem çekmecesinde CPU",
         'ram_tray': "Sistem çekmecesinde RAM",
-        'cpu_info': "CPU",
+        'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Takas",
         'disk_loading': "Disk",
@@ -520,7 +520,7 @@ LANGUAGES = {
     'fr': {  # Французский
         'cpu_tray': "CPU dans la barre",
         'ram_tray': "RAM dans la barre",
-        'cpu_info': "CPU",
+        'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
         'disk_loading': "Disque",
