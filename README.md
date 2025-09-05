@@ -8,6 +8,8 @@
 Application Description and Features
 </h2> 
 
+Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
+
 <h3>System Monitor</h3>
 
 - Real-time display:
@@ -145,5 +147,3 @@ sudo dpkg -i SyMo_1.0.1_all.deb
 
 <h3>💡 Remove package (recommended method)</h3>
 To uninstall, use the file - uninstall-symo.sh
-
-Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
