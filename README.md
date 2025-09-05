@@ -11,26 +11,26 @@ Application Description and Features
 <h3>System Monitor</h3>
 
 - Real-time display:
-  - CPU load with temperature.
-  - RAM and SWAP usage.
-  - Disk space.
-  - Network speed (incoming/outgoing traffic).
-  - System uptime.
-  - Keyboard presses and mouse clicks counter.
+    - CPU load with temperature.
+    - RAM and SWAP usage.
+    - Disk space.
+    - Network speed (incoming/outgoing traffic).
+    - System uptime.
+    - Keyboard presses and mouse clicks counter.
 - Customizable interface:
-  - Select display parameters.
-  - Tray display settings.
-  - Send notifications to Telegram and Discord on timer.
+    - Select display parameters.
+    - Tray display settings.
+    - Send notifications to Telegram and Discord on timer.
 
 <h3>Power Management</h3>
 
 - Quick actions:
-  - Shut down computer.
-  - Restart computer.
-  - Lock computer screen.
+    - Shut down computer.
+    - Restart computer.
+    - Lock computer screen.
 - Timer commands:
-  - Delayed action execution.
-  - Notifications before execution.
+    - Delayed action execution.
+    - Notifications before execution.
 
 <h3>Available Interface Languages</h3>
 
@@ -44,7 +44,7 @@ Application Description and Features
 - 🇸🇦 Arabic.
 - 🇫🇷 French.
 
-<h3>Feedback and Support</h3> 
+<h3>Feedback and Support</h3>
 
 - Email: olegpustovalov220@gmail.com
 - Special thanks for help: https://github.com/korneyka3000
@@ -144,23 +144,6 @@ sudo dpkg -i SyMo_1.0.1_all.deb
 ```
 
 <h3>💡 Remove package (recommended method)</h3>
-
-```bash
-sudo apt remove symo
-```
-```bash
-sudo apt purge SyMo
-```
-
-<h3>💡 Make sure the package is removed</h3>
-
-```bash
-which SyMo
-dpkg -l | grep SyMo
-```
+To uninstall, use the file - uninstall-symo.sh
 
 Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
-
-
-
-pip install --upgrade pip setuptools wheel
