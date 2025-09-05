@@ -160,3 +160,7 @@ dpkg -l | grep SyMo
 ```
 
 Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
+
+
+
+pip install --upgrade pip setuptools wheel
