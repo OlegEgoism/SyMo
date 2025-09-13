@@ -74,6 +74,11 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Максимальный размер файла лога (МБ)',
+
+        'ping_network': 'Проверить ping',
+        'ping_running': 'Выполняется проверка сети…',
+        'ping_done': 'Проверка завершена для',
+        'ping_error': 'Ошибка при выполнении ping',
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -150,6 +155,11 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Maximum log file size (MB)',
+
+        'ping_network': 'Ping network',
+        'ping_running': 'Running network check…',
+        'ping_done': 'Ping finished for',
+        'ping_error': 'Error running ping',
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -226,6 +236,11 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': '日志文件的最大大小 (MB)',
+
+        'ping_network': '网络连通性测试（ping）',
+        'ping_running': '正在进行网络测试…',
+        'ping_done': '已完成测试：',
+        'ping_error': '执行 ping 时出错',
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -302,6 +317,12 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Maximale Protokolldateigröße (MB)',
+
+        'ping_network': 'Netzwerk prüfen (Ping)',
+        'show_ping': 'Ping-Schaltfläche im Tray anzeigen',
+        'ping_running': 'Netzwerkprüfung läuft…',
+        'ping_done': 'Prüfung abgeschlossen für',
+        'ping_error': 'Fehler beim Ausführen von Ping',
     },
     'it': {
         'cpu_tray': "CPU in tray",
@@ -378,6 +399,11 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Dimensione massima del file di log (MB)',
+
+        'ping_network': 'Verifica rete (ping)',
+        'ping_running': 'Verifica della rete in corso…',
+        'ping_done': 'Verifica completata per',
+        'ping_error': 'Errore durante l\'esecuzione di ping',
     },
     'es': {
         'cpu_tray': "CPU en bandeja",
@@ -454,6 +480,11 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Tamaño máximo del archivo de registro (MB)',
+
+        'ping_network': 'Probar red (ping)',
+        'ping_running': 'Comprobando la red…',
+        'ping_done': 'Comprobación finalizada para',
+        'ping_error': 'Error al ejecutar ping',
     },
     'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
@@ -530,6 +561,11 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Maksimum günlük dosyası boyutu (MB)',
+
+        'ping_network': 'Ağı kontrol et (ping)',
+        'ping_running': 'Ağ kontrolü yapılıyor…',
+        'ping_done': 'Kontrol tamamlandı:',
+        'ping_error': 'Ping çalıştırılırken hata oluştu',
     },
     'fr': {
         'cpu_tray': "CPU dans la barre",
@@ -606,5 +642,10 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Taille maximale du fichier journal (Mo)',
+
+        'ping_network': 'Vérifier le réseau (ping)',
+        'ping_running': 'Vérification du réseau en cours…',
+        'ping_done': 'Vérification terminée pour',
+        'ping_error': 'Erreur lors de l\'exécution du ping',
     }
 }
