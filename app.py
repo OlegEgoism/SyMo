@@ -36,12 +36,11 @@ SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".symo_settings.json")
 TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_telegram.json")
 DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json")
 
-MAX_LOG_SIZE = 5 * 1024 * 1024
 
-
-def _rotate_log_if_needed():
+def _rotate_log_if_needed(max_size_bytes: int):
+    """Простейшая ротация: если лог > max_size_bytes — переименовать в .1."""
     try:
-        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > MAX_LOG_SIZE:
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > max_size_bytes:
             bak = LOG_FILE + ".1"
             if os.path.exists(bak):
                 os.remove(bak)
@@ -111,6 +110,7 @@ class SystemUsage:
         net = psutil.net_io_counters()
         current_time = time.time()
         elapsed = current_time - prev_data['time']
+        # сброс/перезапуск интерфейса
         if net.bytes_recv < prev_data['recv'] or net.bytes_sent < prev_data['sent']:
             prev_data['recv'] = net.bytes_recv
             prev_data['sent'] = net.bytes_sent
@@ -334,6 +334,7 @@ class PowerControl:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=10)
         content.add(box)
 
+        # время таймера
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         time_label = Gtk.Label(label=tr('minutes')); time_label.set_xalign(0)
         adjustment = Gtk.Adjustment(value=1, lower=1, upper=1440, step_increment=1)
@@ -342,6 +343,7 @@ class PowerControl:
         time_box.pack_start(time_label, True, True, 0)
         time_box.pack_start(time_spin, False, False, 0)
 
+        # действие
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         action_label_w = Gtk.Label(label=tr('action')); action_label_w.set_xalign(0)
         action_combo = Gtk.ComboBoxText()
@@ -558,6 +560,7 @@ class SettingsDialog(Gtk.Dialog):
         sep3.set_margin_top(6); sep3.set_margin_bottom(6)
         box.add(sep3)
 
+        # --- Блок логирования ---
         logging_box = Gtk.Box(spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
@@ -570,6 +573,17 @@ class SettingsDialog(Gtk.Dialog):
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
 
+        # Новый контрол: максимальный размер лога (MB)
+        logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        logsize_label = Gtk.Label(label=tr('max_log_size_mb'))  # добавьте ключ в LANGUAGES при желании
+        logsize_label.set_xalign(0)
+        self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
+        self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 1000)))
+        logsize_box.pack_start(logsize_label, False, False, 0)
+        logsize_box.pack_start(self.logsize_spin, False, False, 0)
+        box.add(logsize_box)
+
+        # --- Telegram ---
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
         self.telegram_enable_check.set_margin_top(3); self.telegram_enable_check.set_margin_bottom(3)
@@ -610,6 +624,7 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.set_margin_top(3); interval_box.set_margin_bottom(3); interval_box.set_margin_end(50)
         box.add(interval_box)
 
+        # --- Discord ---
         discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
         self.discord_enable_check.set_margin_top(3); self.discord_enable_check.set_margin_bottom(3)
@@ -640,6 +655,7 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.set_margin_top(3); discord_interval_box.set_margin_bottom(30); discord_interval_box.set_margin_end(50)
         box.add(discord_interval_box)
 
+        # Загрузка ранее сохранённых конфигов
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
                 with open(TELEGRAM_CONFIG_FILE, "r") as f:
@@ -749,7 +765,6 @@ class SystemTrayApp:
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
         try:
             if os.path.exists(icon_path):
-                # Не у всех реализаций есть set_icon_full — страхуемся
                 if hasattr(self.indicator, "set_icon_full"):
                     self.indicator.set_icon_full(icon_path, "SyMo")
                 else:
@@ -905,7 +920,8 @@ class SystemTrayApp:
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True,
             'mouse_clicks': True, 'language': None, 'logging_enabled': True,
-            'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True
+            'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
+            'max_log_mb': 5
         }
         try:
             with open(self.settings_file, "r", encoding="utf-8") as f:
@@ -975,6 +991,9 @@ class SystemTrayApp:
                 self.visibility_settings['show_lock'] = dialog.lock_check.get_active()
                 self.visibility_settings['show_timer'] = dialog.timer_check.get_active()
                 self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
+
+                # Сохранение нового размера лога
+                self.visibility_settings['max_log_mb'] = int(dialog.logsize_spin.get_value())
 
                 tel_enabled_before = self.telegram_notifier.enabled
                 if self.telegram_notifier.save_config(
@@ -1060,7 +1079,10 @@ class SystemTrayApp:
                 self.last_discord_notification_time = current_time
 
             if self.visibility_settings.get('logging_enabled', True):
-                _rotate_log_if_needed()
+                # Используем значение из настроек
+                max_mb = int(self.visibility_settings.get('max_log_mb', 5))
+                max_mb = max(1, min(max_mb, 1024))  # границы безопасности
+                _rotate_log_if_needed(max_mb * 1024 * 1024)
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as f:
                         f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
