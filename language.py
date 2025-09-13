@@ -73,7 +73,7 @@ LANGUAGES = {
         'mbps': 'МБ/с',
         'temperature': '°C',
 
-        'max_log_size_mb': 'Максимальный размер файла лога (МБ)',
+        'max_log_size_mb': 'Максимальный размер лог файла (МБ)',
 
         'ping_network': 'Проверить ping',
         'ping_running': 'Выполняется проверка сети…',
