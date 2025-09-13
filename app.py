@@ -7,6 +7,7 @@ import time
 import requests
 import locale
 import threading
+import subprocess
 from enum import Enum
 from datetime import timedelta
 from pynput import keyboard, mouse
@@ -15,6 +16,7 @@ from language import LANGUAGES
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib
 
+# Совместимость: AppIndicator3 или AyatanaAppIndicator3
 try:
     gi.require_version('AppIndicator3', '0.1')
     from gi.repository import AppIndicator3 as AppInd
@@ -29,7 +31,7 @@ mouse_clicks = 0
 _clicks_lock = threading.Lock()
 
 current_lang = 'ru'
-time_update = 1
+time_update = 1  # период обновления, сек.
 
 LOG_FILE = os.path.join(os.path.expanduser("~"), ".symo_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".symo_settings.json")
@@ -38,7 +40,7 @@ DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json"
 
 
 def _rotate_log_if_needed(max_size_bytes: int):
-    """Простейшая ротация: если лог > max_size_bytes — переименовать в .1."""
+    """Простейшая ротация: если лог > max_size_bytes — переименовать в .1 (перезаписать .1 при наличии)."""
     try:
         if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > max_size_bytes:
             bak = LOG_FILE + ".1"
@@ -49,7 +51,8 @@ def _rotate_log_if_needed(max_size_bytes: int):
         print("Ошибка ротации лога:", e)
 
 
-def tr(key):
+def tr(key: str):
+    """Локализация: берём карту текущего языка, иначе EN; при отсутствии ключа возвращаем сам ключ."""
     lang_map = LANGUAGES.get(current_lang) or LANGUAGES.get('en', {})
     return lang_map.get(key, key)
 
@@ -110,7 +113,7 @@ class SystemUsage:
         net = psutil.net_io_counters()
         current_time = time.time()
         elapsed = current_time - prev_data['time']
-        # сброс/перезапуск интерфейса
+        # интерфейс мог сброситься
         if net.bytes_recv < prev_data['recv'] or net.bytes_sent < prev_data['sent']:
             prev_data['recv'] = net.bytes_recv
             prev_data['sent'] = net.bytes_sent
@@ -194,6 +197,7 @@ class TelegramNotifier:
 class DiscordNotifier:
     def __init__(self):
         self.webhook_url = None
+        the_enabled = False
         self.enabled = False
         self.notification_interval = 3600
         self.load_config()
@@ -334,7 +338,7 @@ class PowerControl:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=10)
         content.add(box)
 
-        # время таймера
+        # Время таймера
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         time_label = Gtk.Label(label=tr('minutes')); time_label.set_xalign(0)
         adjustment = Gtk.Adjustment(value=1, lower=1, upper=1440, step_increment=1)
@@ -343,7 +347,7 @@ class PowerControl:
         time_box.pack_start(time_label, True, True, 0)
         time_box.pack_start(time_spin, False, False, 0)
 
-        # действие
+        # Действие
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         action_label_w = Gtk.Label(label=tr('action')); action_label_w.set_xalign(0)
         action_combo = Gtk.ComboBoxText()
@@ -536,9 +540,9 @@ class SettingsDialog(Gtk.Dialog):
         self.mouse_check.set_active(self.visibility_settings.get('mouse_clicks', True))
         box.add(self.mouse_check)
 
-        sep2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep2.set_margin_top(6); sep2.set_margin_bottom(6)
-        box.add(sep2)
+        sep3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        sep3.set_margin_top(6); sep3.set_margin_bottom(6)
+        box.add(sep3)
 
         self.power_off_check = Gtk.CheckButton(label=tr('power_off'))
         self.power_off_check.set_active(self.visibility_settings.get('show_power_off', True))
@@ -556,9 +560,18 @@ class SettingsDialog(Gtk.Dialog):
         self.timer_check.set_active(self.visibility_settings.get('show_timer', True))
         box.add(self.timer_check)
 
-        sep3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep3.set_margin_top(6); sep3.set_margin_bottom(6)
-        box.add(sep3)
+        sep2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        sep2.set_margin_top(6); sep2.set_margin_bottom(6)
+        box.add(sep2)
+
+        # Переключатель видимости кнопки Ping в трее
+        self.ping_check = Gtk.CheckButton(label=tr('ping_network'))
+        self.ping_check.set_active(self.visibility_settings.get('ping_network', True))
+        box.add(self.ping_check)
+
+        sep4 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        sep4.set_margin_top(6); sep4.set_margin_bottom(6)
+        box.add(sep4)
 
         # --- Блок логирования ---
         logging_box = Gtk.Box(spacing=6)
@@ -573,9 +586,9 @@ class SettingsDialog(Gtk.Dialog):
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
 
-        # Новый контрол: максимальный размер лога (MB)
+        # Максимальный размер лога (MB)
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        logsize_label = Gtk.Label(label=tr('max_log_size_mb'))  # добавьте ключ в LANGUAGES при желании
+        logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
         logsize_label.set_xalign(0)
         self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
         self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 1000)))
@@ -655,7 +668,7 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.set_margin_top(3); discord_interval_box.set_margin_bottom(30); discord_interval_box.set_margin_end(50)
         box.add(discord_interval_box)
 
-        # Загрузка ранее сохранённых конфигов
+        # Загрузка конфигов
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
                 with open(TELEGRAM_CONFIG_FILE, "r") as f:
@@ -838,8 +851,32 @@ class SystemTrayApp:
             with _clicks_lock:
                 mouse_clicks += 1
 
+    # ---------- Ping ----------
+    def on_ping_click(self, *_):
+        """Обработчик пункта меню Ping — запускает ping в фоне и показывает результат."""
+        host = "8.8.8.8"  # можно вынести в настройки при желании
+        count = 4
+        timeout = 5  # сек общий лимит (через -w)
+
+        def worker():
+            GLib.idle_add(lambda: self._show_message(tr('ping_network'), tr('ping_running')))
+            cmd = ["ping", "-c", str(count), "-w", str(timeout), host]
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                ok = (proc.returncode == 0)
+                out = proc.stdout.strip() or proc.stderr.strip() or tr('ping_error')
+                title = tr('ok') if ok else tr('error')
+                msg = f"{tr('ping_done')} {host}\n\n{out}"
+            except Exception as e:
+                title = tr('error')
+                msg = f"{tr('ping_error')}: {e}"
+            GLib.idle_add(lambda: self._show_message(title, msg))
+
+        self._send_async(worker)
+
     def create_menu(self):
         self.menu = Gtk.Menu()
+        # Динамические элементы-индикаторы
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
         self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
         self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
@@ -849,6 +886,13 @@ class SystemTrayApp:
         self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
         self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
 
+        # Кнопка Ping и разделители вокруг неё (будут добавляться условно)
+        self.ping_item = Gtk.MenuItem(label=tr('ping_network'))
+        self.ping_item.connect("activate", self.on_ping_click)
+        self.ping_top_sep = Gtk.SeparatorMenuItem()
+        self.ping_bottom_sep = Gtk.SeparatorMenuItem()
+
+        # Блок кнопок питания/таймер
         self.power_separator = Gtk.SeparatorMenuItem()
         self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
         self.power_off_item.connect("activate", self.power_control._confirm_action, self.power_control._shutdown, tr('confirm_text_power_off'))
@@ -865,6 +909,7 @@ class SystemTrayApp:
         self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
         self.settings_item.connect("activate", self.show_settings)
 
+        # Меню выбора языка
         self.language_menu = Gtk.Menu()
         group_root = None
         for code in SUPPORTED_LANGS:
@@ -881,8 +926,10 @@ class SystemTrayApp:
         self.quit_item = Gtk.MenuItem(label=tr('exit_app'))
         self.quit_item.connect("activate", self.quit)
 
+        # Сначала обновим «индикаторы»
         self.update_menu_visibility()
 
+        # Блок питания/таймер (если включено хоть что-то)
         if any([
             self.visibility_settings.get('show_power_off', True),
             self.visibility_settings.get('show_reboot', True),
@@ -899,11 +946,21 @@ class SystemTrayApp:
             if self.visibility_settings.get('show_timer', True):
                 self.menu.append(self.timer_item)
 
+        # Хвост меню — сначала разделитель основного блока
         self.menu.append(self.main_separator)
+
+        # --- ПИНГ НАД ЯЗЫКОМ, С РАЗДЕЛИТЕЛЯМИ ВЕРХ/НИЗ ---
+        if self.visibility_settings.get('ping_network', True):
+            self.menu.append(self.ping_top_sep)
+            self.menu.append(self.ping_item)
+            self.menu.append(self.ping_bottom_sep)
+
+        # Далее язык, настройки и выход
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
         self.menu.append(self.exit_separator)
         self.menu.append(self.quit_item)
+
         self.menu.show_all()
         self.indicator.set_menu(self.menu)
 
@@ -921,7 +978,8 @@ class SystemTrayApp:
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True,
             'mouse_clicks': True, 'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
-            'max_log_mb': 5
+            'max_log_mb': 5,
+            'ping_network': True,
         }
         try:
             with open(self.settings_file, "r", encoding="utf-8") as f:
@@ -939,26 +997,47 @@ class SystemTrayApp:
             print("Ошибка сохранения настроек:", e)
 
     def update_menu_visibility(self):
-        children = self.menu.get_children()
-        for child in children:
-            if child not in [self.main_separator, self.power_separator, self.exit_separator, self.language_menu_item, self.settings_item, self.quit_item]:
-                self.menu.remove(child)
+        """Перестраиваем верхнюю, «индикаторную» часть меню с учётом чекбоксов."""
+        children = self.menu.get_children() if hasattr(self, 'menu') else []
+        # Сохраняем «хвост»: разделители и статические элементы
+        keep = [
+            getattr(self, 'main_separator', None),
+            getattr(self, 'power_separator', None),
+            getattr(self, 'exit_separator', None),
+            getattr(self, 'language_menu_item', None),
+            getattr(self, 'settings_item', None),
+            getattr(self, 'quit_item', None),
+        ]
 
-        if self.visibility_settings['mouse_clicks']:
+        # Если Ping включён — тоже сохраняем его и его разделители
+        if getattr(self, 'ping_item', None) and self.visibility_settings.get('ping_network', True):
+            keep.extend([self.ping_item, getattr(self, 'ping_top_sep', None), getattr(self, 'ping_bottom_sep', None)])
+
+        keep = [x for x in keep if x is not None]
+
+        for child in list(children):
+            if child not in keep:
+                try:
+                    self.menu.remove(child)
+                except Exception:
+                    pass
+
+        # Добавляем элементы-индикаторы по флагам
+        if self.visibility_settings.get('mouse_clicks', True):
             self.menu.prepend(self.mouse_item)
-        if self.visibility_settings['keyboard_clicks']:
+        if self.visibility_settings.get('keyboard_clicks', True):
             self.menu.prepend(self.keyboard_item)
-        if self.visibility_settings['uptime']:
+        if self.visibility_settings.get('uptime', True):
             self.menu.prepend(self.uptime_item)
-        if self.visibility_settings['net']:
+        if self.visibility_settings.get('net', True):
             self.menu.prepend(self.net_item)
-        if self.visibility_settings['disk']:
+        if self.visibility_settings.get('disk', True):
             self.menu.prepend(self.disk_item)
-        if self.visibility_settings['swap']:
+        if self.visibility_settings.get('swap', True):
             self.menu.prepend(self.swap_item)
-        if self.visibility_settings['ram']:
+        if self.visibility_settings.get('ram', True):
             self.menu.prepend(self.ram_item)
-        if self.visibility_settings['cpu']:
+        if self.visibility_settings.get('cpu', True):
             self.menu.prepend(self.cpu_temp_item)
 
         self.menu.show_all()
@@ -991,6 +1070,7 @@ class SystemTrayApp:
                 self.visibility_settings['show_lock'] = dialog.lock_check.get_active()
                 self.visibility_settings['show_timer'] = dialog.timer_check.get_active()
                 self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
+                self.visibility_settings['ping_network'] = dialog.ping_check.get_active()
 
                 # Сохранение нового размера лога
                 self.visibility_settings['max_log_mb'] = int(dialog.logsize_spin.get_value())
@@ -1134,6 +1214,20 @@ class SystemTrayApp:
             f"**{tr('mouse')}**: {mouse_clicks_val} {tr('clicks')}"
         )
         self.discord_notifier.send_message(message)
+
+    def _show_message(self, title: str, message: str):
+        """Показывает инфодиалог (в главном потоке)."""
+        parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
+        dialog = Gtk.MessageDialog(
+            transient_for=parent,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=message
+        )
+        dialog.set_title(title)
+        dialog.run()
+        dialog.destroy()
 
     def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
                    disk_used, disk_total, swap_used, swap_total,
