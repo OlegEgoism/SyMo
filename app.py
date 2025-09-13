@@ -16,7 +16,6 @@ from language import LANGUAGES
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib
 
-# Совместимость: AppIndicator3 или AyatanaAppIndicator3
 try:
     gi.require_version('AppIndicator3', '0.1')
     from gi.repository import AppIndicator3 as AppInd
@@ -31,7 +30,7 @@ mouse_clicks = 0
 _clicks_lock = threading.Lock()
 
 current_lang = 'ru'
-time_update = 1  # период обновления, сек.
+time_update = 1
 
 LOG_FILE = os.path.join(os.path.expanduser("~"), ".symo_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".symo_settings.json")
@@ -113,7 +112,6 @@ class SystemUsage:
         net = psutil.net_io_counters()
         current_time = time.time()
         elapsed = current_time - prev_data['time']
-        # интерфейс мог сброситься
         if net.bytes_recv < prev_data['recv'] or net.bytes_sent < prev_data['sent']:
             prev_data['recv'] = net.bytes_recv
             prev_data['sent'] = net.bytes_sent
@@ -338,7 +336,6 @@ class PowerControl:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=10)
         content.add(box)
 
-        # Время таймера
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         time_label = Gtk.Label(label=tr('minutes')); time_label.set_xalign(0)
         adjustment = Gtk.Adjustment(value=1, lower=1, upper=1440, step_increment=1)
@@ -347,7 +344,6 @@ class PowerControl:
         time_box.pack_start(time_label, True, True, 0)
         time_box.pack_start(time_spin, False, False, 0)
 
-        # Действие
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         action_label_w = Gtk.Label(label=tr('action')); action_label_w.set_xalign(0)
         action_combo = Gtk.ComboBoxText()
@@ -564,7 +560,6 @@ class SettingsDialog(Gtk.Dialog):
         sep2.set_margin_top(6); sep2.set_margin_bottom(6)
         box.add(sep2)
 
-        # Переключатель видимости кнопки Ping в трее
         self.ping_check = Gtk.CheckButton(label=tr('ping_network'))
         self.ping_check.set_active(self.visibility_settings.get('ping_network', True))
         box.add(self.ping_check)
@@ -573,7 +568,6 @@ class SettingsDialog(Gtk.Dialog):
         sep4.set_margin_top(6); sep4.set_margin_bottom(6)
         box.add(sep4)
 
-        # --- Блок логирования ---
         logging_box = Gtk.Box(spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
@@ -586,7 +580,6 @@ class SettingsDialog(Gtk.Dialog):
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
 
-        # Максимальный размер лога (MB)
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
         logsize_label.set_xalign(0)
@@ -600,7 +593,6 @@ class SettingsDialog(Gtk.Dialog):
         sep4.set_margin_top(6); sep4.set_margin_bottom(6)
         box.add(sep4)
 
-        # --- Telegram ---
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
         self.telegram_enable_check.set_margin_top(3); self.telegram_enable_check.set_margin_bottom(3)
@@ -641,7 +633,6 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.set_margin_top(3); interval_box.set_margin_bottom(3); interval_box.set_margin_end(50)
         box.add(interval_box)
 
-        # --- Discord ---
         discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
         self.discord_enable_check.set_margin_top(3); self.discord_enable_check.set_margin_bottom(3)
@@ -672,7 +663,6 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.set_margin_top(3); discord_interval_box.set_margin_bottom(30); discord_interval_box.set_margin_end(50)
         box.add(discord_interval_box)
 
-        # Загрузка конфигов
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
                 with open(TELEGRAM_CONFIG_FILE, "r") as f:
@@ -855,12 +845,11 @@ class SystemTrayApp:
             with _clicks_lock:
                 mouse_clicks += 1
 
-    # ---------- Ping ----------
     def on_ping_click(self, *_):
         """Обработчик пункта меню Ping — запускает ping в фоне и показывает результат."""
-        host = "8.8.8.8"  # можно вынести в настройки при желании
+        host = "8.8.8.8"
         count = 4
-        timeout = 5  # сек общий лимит (через -w)
+        timeout = 5
 
         def worker():
             GLib.idle_add(lambda: self._show_message(tr('ping_network'), tr('ping_running')))
@@ -880,7 +869,6 @@ class SystemTrayApp:
 
     def create_menu(self):
         self.menu = Gtk.Menu()
-        # Динамические элементы-индикаторы
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
         self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
         self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
@@ -890,13 +878,11 @@ class SystemTrayApp:
         self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
         self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
 
-        # Кнопка Ping и разделители вокруг неё (будут добавляться условно)
         self.ping_item = Gtk.MenuItem(label=tr('ping_network'))
         self.ping_item.connect("activate", self.on_ping_click)
         self.ping_top_sep = Gtk.SeparatorMenuItem()
         self.ping_bottom_sep = Gtk.SeparatorMenuItem()
 
-        # Блок кнопок питания/таймер
         self.power_separator = Gtk.SeparatorMenuItem()
         self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
         self.power_off_item.connect("activate", self.power_control._confirm_action, self.power_control._shutdown, tr('confirm_text_power_off'))
@@ -913,7 +899,6 @@ class SystemTrayApp:
         self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
         self.settings_item.connect("activate", self.show_settings)
 
-        # Меню выбора языка
         self.language_menu = Gtk.Menu()
         group_root = None
         for code in SUPPORTED_LANGS:
@@ -930,10 +915,8 @@ class SystemTrayApp:
         self.quit_item = Gtk.MenuItem(label=tr('exit_app'))
         self.quit_item.connect("activate", self.quit)
 
-        # Сначала обновим «индикаторы»
         self.update_menu_visibility()
 
-        # Блок питания/таймер (если включено хоть что-то)
         if any([
             self.visibility_settings.get('show_power_off', True),
             self.visibility_settings.get('show_reboot', True),
@@ -950,16 +933,13 @@ class SystemTrayApp:
             if self.visibility_settings.get('show_timer', True):
                 self.menu.append(self.timer_item)
 
-        # Хвост меню — сначала разделитель основного блока
         self.menu.append(self.main_separator)
 
-        # --- ПИНГ НАД ЯЗЫКОМ, С РАЗДЕЛИТЕЛЯМИ ВЕРХ/НИЗ ---
         if self.visibility_settings.get('ping_network', True):
             self.menu.append(self.ping_top_sep)
             self.menu.append(self.ping_item)
             self.menu.append(self.ping_bottom_sep)
 
-        # Далее язык, настройки и выход
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
         self.menu.append(self.exit_separator)
@@ -1003,7 +983,6 @@ class SystemTrayApp:
     def update_menu_visibility(self):
         """Перестраиваем верхнюю, «индикаторную» часть меню с учётом чекбоксов."""
         children = self.menu.get_children() if hasattr(self, 'menu') else []
-        # Сохраняем «хвост»: разделители и статические элементы
         keep = [
             getattr(self, 'main_separator', None),
             getattr(self, 'power_separator', None),
@@ -1013,7 +992,6 @@ class SystemTrayApp:
             getattr(self, 'quit_item', None),
         ]
 
-        # Если Ping включён — тоже сохраняем его и его разделители
         if getattr(self, 'ping_item', None) and self.visibility_settings.get('ping_network', True):
             keep.extend([self.ping_item, getattr(self, 'ping_top_sep', None), getattr(self, 'ping_bottom_sep', None)])
 
@@ -1026,7 +1004,6 @@ class SystemTrayApp:
                 except Exception:
                     pass
 
-        # Добавляем элементы-индикаторы по флагам
         if self.visibility_settings.get('mouse_clicks', True):
             self.menu.prepend(self.mouse_item)
         if self.visibility_settings.get('keyboard_clicks', True):
@@ -1076,7 +1053,6 @@ class SystemTrayApp:
                 self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
                 self.visibility_settings['ping_network'] = dialog.ping_check.get_active()
 
-                # Сохранение нового размера лога
                 self.visibility_settings['max_log_mb'] = int(dialog.logsize_spin.get_value())
 
                 tel_enabled_before = self.telegram_notifier.enabled
@@ -1163,9 +1139,8 @@ class SystemTrayApp:
                 self.last_discord_notification_time = current_time
 
             if self.visibility_settings.get('logging_enabled', True):
-                # Используем значение из настроек
                 max_mb = int(self.visibility_settings.get('max_log_mb', 5))
-                max_mb = max(1, min(max_mb, 1024))  # границы безопасности
+                max_mb = max(1, min(max_mb, 1024))
                 _rotate_log_if_needed(max_mb * 1024 * 1024)
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as f:
