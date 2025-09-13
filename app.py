@@ -596,6 +596,10 @@ class SettingsDialog(Gtk.Dialog):
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         box.add(logsize_box)
 
+        sep4 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        sep4.set_margin_top(6); sep4.set_margin_bottom(6)
+        box.add(sep4)
+
         # --- Telegram ---
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
