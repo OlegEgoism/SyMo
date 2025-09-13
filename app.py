@@ -1,6 +1,5 @@
 import gi
 import os
-import sys
 import signal
 import json
 import psutil
@@ -14,9 +13,14 @@ from pynput import keyboard, mouse
 from language import LANGUAGES
 
 gi.require_version('Gtk', '3.0')
-gi.require_version('GLib', '2.0')
-gi.require_version('AppIndicator3', '0.1')
-from gi.repository import Gtk, GLib, AppIndicator3
+from gi.repository import Gtk, GLib
+
+try:
+    gi.require_version('AppIndicator3', '0.1')
+    from gi.repository import AppIndicator3 as AppInd
+except (ValueError, ImportError):
+    gi.require_version('AyatanaAppIndicator3', '0.1')
+    from gi.repository import AyatanaAppIndicator3 as AppInd
 
 SUPPORTED_LANGS = ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'fr']
 
@@ -31,6 +35,19 @@ LOG_FILE = os.path.join(os.path.expanduser("~"), ".symo_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".symo_settings.json")
 TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_telegram.json")
 DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json")
+
+MAX_LOG_SIZE = 5 * 1024 * 1024
+
+
+def _rotate_log_if_needed():
+    try:
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > MAX_LOG_SIZE:
+            bak = LOG_FILE + ".1"
+            if os.path.exists(bak):
+                os.remove(bak)
+            os.rename(LOG_FILE, bak)
+    except Exception as e:
+        print("Ошибка ротации лога:", e)
 
 
 def tr(key):
@@ -57,7 +74,7 @@ class SystemUsage:
             temps = psutil.sensors_temperatures()
             if not temps:
                 return 0
-            preferred_keys = ('coretemp', 'k10temp', 'cpu-thermal', 'soc_thermal')
+            preferred_keys = ('coretemp', 'k10temp', 'cpu-thermal', 'soc_thermal', 'acpitz')
             for key in preferred_keys:
                 arr = temps.get(key)
                 if arr:
@@ -94,6 +111,11 @@ class SystemUsage:
         net = psutil.net_io_counters()
         current_time = time.time()
         elapsed = current_time - prev_data['time']
+        if net.bytes_recv < prev_data['recv'] or net.bytes_sent < prev_data['sent']:
+            prev_data['recv'] = net.bytes_recv
+            prev_data['sent'] = net.bytes_sent
+            prev_data['time'] = current_time
+            return 0.0, 0.0
         if elapsed <= 0:
             recv_speed = sent_speed = 0.0
         else:
@@ -107,7 +129,7 @@ class SystemUsage:
     @staticmethod
     def get_uptime():
         seconds = time.time() - psutil.boot_time()
-        return str(timedelta(seconds=seconds)).split(".")[0]
+        return str(timedelta(seconds=int(seconds)))
 
 
 class TelegramNotifier:
@@ -123,9 +145,9 @@ class TelegramNotifier:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
                 with open(TELEGRAM_CONFIG_FILE, "r") as f:
                     config = json.load(f)
-                    self.token = config.get('TELEGRAM_BOT_TOKEN')
-                    self.chat_id = config.get('TELEGRAM_CHAT_ID')
-                    self.enabled = config.get('enabled', False)
+                    self.token = (config.get('TELEGRAM_BOT_TOKEN') or '').strip() or None
+                    self.chat_id = (str(config.get('TELEGRAM_CHAT_ID') or '').strip() or None)
+                    self.enabled = bool(config.get('enabled', False))
                     self.notification_interval = int(config.get('notification_interval', 3600))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации Telegram: {e}")
@@ -143,6 +165,10 @@ class TelegramNotifier:
                     'enabled': self.enabled,
                     'notification_interval': self.notification_interval
                 }, f, indent=2)
+            try:
+                os.chmod(TELEGRAM_CONFIG_FILE, 0o600)
+            except Exception:
+                pass
             return True
         except Exception as e:
             print(f"Ошибка сохранения конфигурации Telegram: {e}")
@@ -158,7 +184,7 @@ class TelegramNotifier:
                 'text': message,
                 'parse_mode': 'HTML'
             }
-            response = requests.post(url, data=payload, timeout=10)
+            response = requests.post(url, data=payload, timeout=(3, 7))
             return response.status_code == 200
         except Exception as e:
             print(f"Ошибка отправки сообщения в Telegram: {e}")
@@ -178,7 +204,7 @@ class DiscordNotifier:
                 with open(DISCORD_CONFIG_FILE, "r") as f:
                     config = json.load(f)
                     self.webhook_url = (config.get('DISCORD_WEBHOOK_URL') or '').strip()
-                    self.enabled = config.get('enabled', False)
+                    self.enabled = bool(config.get('enabled', False))
                     self.notification_interval = int(config.get('notification_interval', 3600))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации Discord: {e}")
@@ -194,6 +220,10 @@ class DiscordNotifier:
                     'enabled': self.enabled,
                     'notification_interval': self.notification_interval
                 }, f, indent=2)
+            try:
+                os.chmod(DISCORD_CONFIG_FILE, 0o600)
+            except Exception:
+                pass
             return True
         except Exception as e:
             print(f"Ошибка сохранения конфигурации Discord: {e}")
@@ -204,7 +234,7 @@ class DiscordNotifier:
             return False
         try:
             payload = {"content": message, "username": "System Monitor"}
-            response = requests.post(self.webhook_url, json=payload, timeout=10)
+            response = requests.post(self.webhook_url, json=payload, timeout=(3, 7))
             return response.status_code in (200, 204)
         except Exception as e:
             print(f"Ошибка отправки сообщения в Discord: {e}")
@@ -271,13 +301,23 @@ class PowerControl:
         dialog.show()
 
     def _shutdown(self):
-        os.system("systemctl poweroff")
+        if os.system("loginctl poweroff") != 0:
+            os.system("systemctl poweroff")
 
     def _reboot(self):
-        os.system("systemctl reboot")
+        if os.system("loginctl reboot") != 0:
+            os.system("systemctl reboot")
 
     def _lock_screen(self):
-        os.system("loginctl lock-session")
+        cmds = [
+            "loginctl lock-session",
+            "gnome-screensaver-command -l",
+            "xdg-screensaver lock",
+            "dm-tool lock",
+        ]
+        for c in cmds:
+            if os.system(c) == 0:
+                return
 
     def _open_settings(self, *_):
         if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
@@ -389,7 +429,7 @@ class PowerControl:
         hours = self.remaining_seconds // 3600
         minutes = (self.remaining_seconds % 3600) // 60
         seconds = self.remaining_seconds % 60
-        label = f"  {action_label(self.scheduled_action)} {tr('action')} {hours:02d}:{minutes:02d}:{seconds:02d}"
+        label = f"  {action_label(self.scheduled_action)} — {hours:02d}:{minutes:02d}:{seconds:02d}"
         self.app.indicator.set_label(label, "")
         self.remaining_seconds -= 1
         return True
@@ -436,6 +476,8 @@ class PowerControl:
 class SettingsDialog(Gtk.Dialog):
     def __init__(self, parent, visibility):
         super().__init__(title=tr('settings_label'), transient_for=parent if isinstance(parent, Gtk.Widget) else None, flags=0)
+        self.set_modal(True)
+        self.set_destroy_with_parent(True)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL, tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
         box = self.get_content_area()
@@ -699,21 +741,25 @@ class SystemTrayApp:
         global current_lang
         current_lang = self.visibility_settings['language']
 
-        self.indicator = AppIndicator3.Indicator.new(
+        self.indicator = AppInd.Indicator.new(
             "SystemMonitor",
             "system-run-symbolic",
-            AppIndicator3.IndicatorCategory.SYSTEM_SERVICES
+            AppInd.IndicatorCategory.SYSTEM_SERVICES
         )
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
-        if os.path.exists(icon_path):
-            try:
-                self.indicator.set_icon_full(icon_path, "SyMo")
-            except Exception as e:
-                print(f"Не удалось установить иконку: {e}")
+        try:
+            if os.path.exists(icon_path):
+                # Не у всех реализаций есть set_icon_full — страхуемся
+                if hasattr(self.indicator, "set_icon_full"):
+                    self.indicator.set_icon_full(icon_path, "SyMo")
+                else:
+                    self.indicator.set_icon(icon_path)
+            else:
                 self.indicator.set_icon("system-run-symbolic")
-        else:
+        except Exception as e:
+            print(f"Не удалось установить иконку: {e}")
             self.indicator.set_icon("system-run-symbolic")
-        self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+        self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
 
         signal.signal(signal.SIGTERM, self.quit)
         signal.signal(signal.SIGINT, self.quit)
@@ -730,6 +776,7 @@ class SystemTrayApp:
 
         self.keyboard_listener = None
         self.mouse_listener = None
+        self._notify_no_global_hooks = False
         self.init_listeners()
 
         self.telegram_notifier = TelegramNotifier()
@@ -756,12 +803,14 @@ class SystemTrayApp:
         except Exception as e:
             print("Не удалось запустить keyboard listener:", e)
             self.keyboard_listener = None
+            self._notify_no_global_hooks = True
         try:
             self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
             self.mouse_listener.start()
         except Exception as e:
             print("Не удалось запустить mouse listener:", e)
             self.mouse_listener = None
+            self._notify_no_global_hooks = True
 
     def on_key_press(self, key):
         global keyboard_clicks
@@ -1011,6 +1060,7 @@ class SystemTrayApp:
                 self.last_discord_notification_time = current_time
 
             if self.visibility_settings.get('logging_enabled', True):
+                _rotate_log_if_needed()
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as f:
                         f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
@@ -1132,8 +1182,7 @@ class SystemTrayApp:
 
 
 if __name__ == "__main__":
-    if not Gtk.init_check()[0]:
-        Gtk.init([])
+    Gtk.init([])
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     app = SystemTrayApp()
     app.run()
