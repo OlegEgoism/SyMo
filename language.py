@@ -72,6 +72,8 @@ LANGUAGES = {
         'gb': 'ГБ',
         'mbps': 'МБ/с',
         'temperature': '°C',
+
+        'max_log_size_mb': 'Максимальный размер файла лога (МБ)',
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -146,6 +148,8 @@ LANGUAGES = {
         'gb': 'GB',
         'mbps': 'MB/s',
         'temperature': '°C',
+
+        'max_log_size_mb': 'Maximum log file size (MB)',
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -220,6 +224,8 @@ LANGUAGES = {
         'gb': 'GB',
         'mbps': 'MB/s',
         'temperature': '°C',
+
+        'max_log_size_mb': '日志文件的最大大小 (MB)',
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -294,8 +300,10 @@ LANGUAGES = {
         'gb': 'GB',
         'mbps': 'MB/s',
         'temperature': '°C',
+
+        'max_log_size_mb': 'Maximale Protokolldateigröße (MB)',
     },
-    'it': {  # Итальянский
+    'it': {
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
         'cpu_info': " CPU",
@@ -368,8 +376,10 @@ LANGUAGES = {
         'gb': 'GB',
         'mbps': 'MB/s',
         'temperature': '°C',
+
+        'max_log_size_mb': 'Dimensione massima del file di log (MB)',
     },
-    'es': {  # Испанский
+    'es': {
         'cpu_tray': "CPU en bandeja",
         'ram_tray': "RAM en bandeja",
         'cpu_info': " CPU",
@@ -442,8 +452,10 @@ LANGUAGES = {
         'gb': 'GB',
         'mbps': 'MB/s',
         'temperature': '°C',
+
+        'max_log_size_mb': 'Tamaño máximo del archivo de registro (MB)',
     },
-    'tr': {  # Турецкий
+    'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
         'ram_tray': "Sistem çekmecesinde RAM",
         'cpu_info': " CPU",
@@ -516,8 +528,10 @@ LANGUAGES = {
         'gb': 'GB',
         'mbps': 'MB/s',
         'temperature': '°C',
+
+        'max_log_size_mb': 'Maksimum günlük dosyası boyutu (MB)',
     },
-    'fr': {  # Французский
+    'fr': {
         'cpu_tray': "CPU dans la barre",
         'ram_tray': "RAM dans la barre",
         'cpu_info': " CPU",
@@ -590,5 +604,7 @@ LANGUAGES = {
         'gb': 'GB',
         'mbps': 'MB/s',
         'temperature': '°C',
+
+        'max_log_size_mb': 'Taille maximale du fichier journal (Mo)',
     }
 }
