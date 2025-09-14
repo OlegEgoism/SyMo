@@ -1,86 +1,142 @@
-import gi
+#!/usr/bin/env python3
+"""
+SyMo — System Monitor (Tray) • cleaned/organized version
+- Removed dead/duplicated code and variables
+- Consolidated dialogs and repeated helpers
+- Tidied imports, constants, and structure
+- Safer I/O and indicator updates
+"""
+
 import os
-import signal
 import json
-import psutil
 import time
-import requests
 import locale
+import signal
+import psutil
+import requests
 import threading
 import subprocess
 from enum import Enum
 from datetime import timedelta
-from pynput import keyboard, mouse
-from language import LANGUAGES
 
-gi.require_version('Gtk', '3.0')
+# UI deps
+import gi
+
+gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib
 
 try:
-    gi.require_version('AppIndicator3', '0.1')
+    gi.require_version("AppIndicator3", "0.1")
     from gi.repository import AppIndicator3 as AppInd
 except (ValueError, ImportError):
-    gi.require_version('AyatanaAppIndicator3', '0.1')
+    gi.require_version("AyatanaAppIndicator3", "0.1")
     from gi.repository import AyatanaAppIndicator3 as AppInd
 
-SUPPORTED_LANGS = ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'fr']
+# Input hooks (optional)
+try:
+    from pynput import keyboard, mouse
+except Exception:  # make hooks optional
+    keyboard = None
+    mouse = None
 
-keyboard_clicks = 0
-mouse_clicks = 0
-_clicks_lock = threading.Lock()
+# Localized strings source
+from language import LANGUAGES
 
-current_lang = 'ru'
-time_update = 1
+# ---------------------------
+# Constants & Defaults
+# ---------------------------
+SUPPORTED_LANGS = ["ru", "en", "cn", "de", "it", "es", "tr", "fr"]
 
 LOG_FILE = os.path.join(os.path.expanduser("~"), ".symo_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".symo_settings.json")
 TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_telegram.json")
 DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json")
 
+TIME_UPDATE_SECONDS = 1
 
-def _rotate_log_if_needed(max_size_bytes: int):
-    """Простейшая ротация: если лог > max_size_bytes — переименовать в .1 (перезаписать .1 при наличии)."""
-    try:
-        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > max_size_bytes:
-            bak = LOG_FILE + ".1"
-            if os.path.exists(bak):
-                os.remove(bak)
-            os.rename(LOG_FILE, bak)
-    except Exception as e:
-        print("Ошибка ротации лога:", e)
+DEFAULT_VISIBILITY = {
+    "cpu": True,
+    "ram": True,
+    "swap": True,
+    "disk": True,
+    "net": True,
+    "uptime": True,
+    "tray_cpu": True,
+    "tray_ram": True,
+    "keyboard_clicks": True,
+    "mouse_clicks": True,
+    "language": None,
+    "logging_enabled": True,
+    "show_power_off": True,
+    "show_reboot": True,
+    "show_lock": True,
+    "show_timer": True,
+    "max_log_mb": 5,
+    "ping_network": True,
+}
+
+# ---------------------------
+# Globals (kept minimal)
+# ---------------------------
+_clicks_lock = threading.Lock()
+keyboard_clicks = 0
+mouse_clicks = 0
+current_lang = "ru"
 
 
-def tr(key: str):
-    """Локализация: берём карту текущего языка, иначе EN; при отсутствии ключа возвращаем сам ключ."""
-    lang_map = LANGUAGES.get(current_lang) or LANGUAGES.get('en', {})
+# ---------------------------
+# Helpers
+# ---------------------------
+
+def tr(key: str) -> str:
+    """Get localized string for current language; fallback to EN; else key."""
+    lang_map = LANGUAGES.get(current_lang) or LANGUAGES.get("en", {})
     return lang_map.get(key, key)
 
 
-def detect_system_language():
+def detect_system_language() -> str:
     try:
-        env = os.environ.get('LANG', '')
+        env = os.environ.get("LANG", "")
         if env:
-            code = env.split('.')[0].split('_')[0].lower()
-            return code if code in SUPPORTED_LANGS else 'ru'
-        code = (locale.getlocale()[0] or '').split('_')[0].lower()
-        return code if code in SUPPORTED_LANGS else 'ru'
+            code = env.split(".")[0].split("_")[0].lower()
+            return code if code in SUPPORTED_LANGS else "ru"
+        code = (locale.getlocale()[0] or "").split("_")[0].lower()
+        return code if code in SUPPORTED_LANGS else "ru"
     except Exception:
-        return 'ru'
+        return "ru"
 
 
+def rotate_log_if_needed(max_size_bytes: int) -> None:
+    """Simple rotation: if log > max_size_bytes -> rename to .1 (overwrite old .1)."""
+    try:
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > max_size_bytes:
+            bak = LOG_FILE + ".1"
+            try:
+                if os.path.exists(bak):
+                    os.remove(bak)
+            except Exception:
+                pass
+            os.rename(LOG_FILE, bak)
+    except Exception as e:
+        print("Log rotation error:", e)
+
+
+# ---------------------------
+# System readings
+# ---------------------------
 class SystemUsage:
     @staticmethod
-    def get_cpu_temp():
+    def get_cpu_temp() -> int:
         try:
             temps = psutil.sensors_temperatures()
             if not temps:
                 return 0
-            preferred_keys = ('coretemp', 'k10temp', 'cpu-thermal', 'soc_thermal', 'acpitz')
+            preferred_keys = ("coretemp", "k10temp", "cpu-thermal", "soc_thermal", "acpitz")
             for key in preferred_keys:
                 arr = temps.get(key)
                 if arr:
                     for t in arr:
-                        if getattr(t, 'label', '').lower().startswith('package'):
+                        if getattr(t, "label", "").lower().startswith("package"):
                             return int(t.current)
                     return int(arr[0].current)
             first_list = next(iter(temps.values()))
@@ -89,50 +145,50 @@ class SystemUsage:
             return 0
 
     @staticmethod
-    def get_cpu_usage():
+    def get_cpu_usage() -> float:
         return psutil.cpu_percent()
 
     @staticmethod
     def get_ram_usage():
-        memory = psutil.virtual_memory()
-        return memory.used / (1024 ** 3), memory.total / (1024 ** 3)
+        m = psutil.virtual_memory()
+        return m.used / (1024 ** 3), m.total / (1024 ** 3)
 
     @staticmethod
     def get_swap_usage():
-        swap = psutil.swap_memory()
-        return swap.used / (1024 ** 3), swap.total / (1024 ** 3)
+        s = psutil.swap_memory()
+        return s.used / (1024 ** 3), s.total / (1024 ** 3)
 
     @staticmethod
     def get_disk_usage():
-        disk = psutil.disk_usage('/')
-        return disk.used / (1024 ** 3), disk.total / (1024 ** 3)
+        d = psutil.disk_usage("/")
+        return d.used / (1024 ** 3), d.total / (1024 ** 3)
 
     @staticmethod
-    def get_network_speed(prev_data):
+    def get_network_speed(prev):
         net = psutil.net_io_counters()
-        current_time = time.time()
-        elapsed = current_time - prev_data['time']
-        if net.bytes_recv < prev_data['recv'] or net.bytes_sent < prev_data['sent']:
-            prev_data['recv'] = net.bytes_recv
-            prev_data['sent'] = net.bytes_sent
-            prev_data['time'] = current_time
+        now = time.time()
+        elapsed = now - prev["time"]
+        # handle counters reset
+        if net.bytes_recv < prev["recv"] or net.bytes_sent < prev["sent"]:
+            prev.update({"recv": net.bytes_recv, "sent": net.bytes_sent, "time": now})
             return 0.0, 0.0
         if elapsed <= 0:
             recv_speed = sent_speed = 0.0
         else:
-            recv_speed = (net.bytes_recv - prev_data['recv']) / elapsed / 1024 / 1024
-            sent_speed = (net.bytes_sent - prev_data['sent']) / elapsed / 1024 / 1024
-        prev_data['recv'] = net.bytes_recv
-        prev_data['sent'] = net.bytes_sent
-        prev_data['time'] = current_time
+            recv_speed = (net.bytes_recv - prev["recv"]) / elapsed / 1024 / 1024
+            sent_speed = (net.bytes_sent - prev["sent"]) / elapsed / 1024 / 1024
+        prev.update({"recv": net.bytes_recv, "sent": net.bytes_sent, "time": now})
         return recv_speed, sent_speed
 
     @staticmethod
-    def get_uptime():
+    def get_uptime() -> str:
         seconds = time.time() - psutil.boot_time()
         return str(timedelta(seconds=int(seconds)))
 
 
+# ---------------------------
+# Notifiers
+# ---------------------------
 class TelegramNotifier:
     def __init__(self):
         self.token = None
@@ -144,51 +200,51 @@ class TelegramNotifier:
     def load_config(self):
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
-                with open(TELEGRAM_CONFIG_FILE, "r") as f:
-                    config = json.load(f)
-                    self.token = (config.get('TELEGRAM_BOT_TOKEN') or '').strip() or None
-                    self.chat_id = (str(config.get('TELEGRAM_CHAT_ID') or '').strip() or None)
-                    self.enabled = bool(config.get('enabled', False))
-                    self.notification_interval = int(config.get('notification_interval', 3600))
+                with open(TELEGRAM_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                self.token = (cfg.get("TELEGRAM_BOT_TOKEN") or "").strip() or None
+                self.chat_id = (str(cfg.get("TELEGRAM_CHAT_ID") or "").strip() or None)
+                self.enabled = bool(cfg.get("enabled", False))
+                self.notification_interval = int(cfg.get("notification_interval", 3600))
         except Exception as e:
-            print(f"Ошибка загрузки конфигурации Telegram: {e}")
+            print("Telegram config load error:", e)
 
-    def save_config(self, token, chat_id, enabled, interval):
+    def save_config(self, token, chat_id, enabled, interval) -> bool:
         try:
             self.token = token.strip() if token else None
             self.chat_id = chat_id.strip() if chat_id else None
             self.enabled = bool(enabled)
             self.notification_interval = int(interval)
-            with open(TELEGRAM_CONFIG_FILE, "w") as f:
-                json.dump({
-                    'TELEGRAM_BOT_TOKEN': self.token,
-                    'TELEGRAM_CHAT_ID': self.chat_id,
-                    'enabled': self.enabled,
-                    'notification_interval': self.notification_interval
-                }, f, indent=2)
+            with open(TELEGRAM_CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "TELEGRAM_BOT_TOKEN": self.token,
+                        "TELEGRAM_CHAT_ID": self.chat_id,
+                        "enabled": self.enabled,
+                        "notification_interval": self.notification_interval,
+                    },
+                    f,
+                    indent=2,
+                )
             try:
                 os.chmod(TELEGRAM_CONFIG_FILE, 0o600)
             except Exception:
                 pass
             return True
         except Exception as e:
-            print(f"Ошибка сохранения конфигурации Telegram: {e}")
+            print("Telegram config save error:", e)
             return False
 
-    def send_message(self, message):
-        if not self.enabled or not self.token or not self.chat_id:
+    def send_message(self, message: str) -> bool:
+        if not (self.enabled and self.token and self.chat_id):
             return False
         try:
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-            payload = {
-                'chat_id': self.chat_id,
-                'text': message,
-                'parse_mode': 'HTML'
-            }
-            response = requests.post(url, data=payload, timeout=(3, 7))
-            return response.status_code == 200
+            payload = {"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"}
+            r = requests.post(url, data=payload, timeout=(3, 7))
+            return r.status_code == 200
         except Exception as e:
-            print(f"Ошибка отправки сообщения в Telegram: {e}")
+            print("Telegram send error:", e)
             return False
 
 
@@ -202,46 +258,53 @@ class DiscordNotifier:
     def load_config(self):
         try:
             if os.path.exists(DISCORD_CONFIG_FILE):
-                with open(DISCORD_CONFIG_FILE, "r") as f:
-                    config = json.load(f)
-                    self.webhook_url = (config.get('DISCORD_WEBHOOK_URL') or '').strip()
-                    self.enabled = bool(config.get('enabled', False))
-                    self.notification_interval = int(config.get('notification_interval', 3600))
+                with open(DISCORD_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                self.webhook_url = (cfg.get("DISCORD_WEBHOOK_URL") or "").strip()
+                self.enabled = bool(cfg.get("enabled", False))
+                self.notification_interval = int(cfg.get("notification_interval", 3600))
         except Exception as e:
-            print(f"Ошибка загрузки конфигурации Discord: {e}")
+            print("Discord config load error:", e)
 
-    def save_config(self, webhook_url, enabled, interval):
+    def save_config(self, webhook_url, enabled, interval) -> bool:
         try:
-            self.webhook_url = (webhook_url or '').strip()
+            self.webhook_url = (webhook_url or "").strip()
             self.enabled = bool(enabled)
             self.notification_interval = int(interval)
-            with open(DISCORD_CONFIG_FILE, "w") as f:
-                json.dump({
-                    'DISCORD_WEBHOOK_URL': self.webhook_url,
-                    'enabled': self.enabled,
-                    'notification_interval': self.notification_interval
-                }, f, indent=2)
+            with open(DISCORD_CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "DISCORD_WEBHOOK_URL": self.webhook_url,
+                        "enabled": self.enabled,
+                        "notification_interval": self.notification_interval,
+                    },
+                    f,
+                    indent=2,
+                )
             try:
                 os.chmod(DISCORD_CONFIG_FILE, 0o600)
             except Exception:
                 pass
             return True
         except Exception as e:
-            print(f"Ошибка сохранения конфигурации Discord: {e}")
+            print("Discord config save error:", e)
             return False
 
-    def send_message(self, message):
-        if not self.enabled or not self.webhook_url:
+    def send_message(self, message: str) -> bool:
+        if not (self.enabled and self.webhook_url):
             return False
         try:
             payload = {"content": message, "username": "System Monitor"}
-            response = requests.post(self.webhook_url, json=payload, timeout=(3, 7))
-            return response.status_code in (200, 204)
+            r = requests.post(self.webhook_url, json=payload, timeout=(3, 7))
+            return r.status_code in (200, 204)
         except Exception as e:
-            print(f"Ошибка отправки сообщения в Discord: {e}")
+            print("Discord send error:", e)
             return False
 
 
+# ---------------------------
+# Power control
+# ---------------------------
 class Action(Enum):
     POWER_OFF = "power_off"
     REBOOT = "reboot"
@@ -249,13 +312,11 @@ class Action(Enum):
 
 
 def action_label(act: Action) -> str:
-    if act == Action.POWER_OFF:
-        return tr('power_off')
-    if act == Action.REBOOT:
-        return tr('reboot')
-    if act == Action.LOCK:
-        return tr('lock')
-    return str(act.value)
+    return {
+        Action.POWER_OFF: tr("power_off"),
+        Action.REBOOT: tr("reboot"),
+        Action.LOCK: tr("lock"),
+    }.get(act, act.value)
 
 
 class PowerControl:
@@ -270,36 +331,27 @@ class PowerControl:
         self.parent_window = None
 
     def set_parent_window(self, parent):
-        if parent is None:
-            self.parent_window = None
-        elif isinstance(parent, Gtk.Widget) and parent.get_mapped():
-            self.parent_window = parent
-        else:
-            self.parent_window = None
+        self.parent_window = parent if isinstance(parent, Gtk.Widget) and parent.get_mapped() else None
 
-    def _confirm_action(self, widget, action_callback, message):
-        if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
-            self.current_dialog.destroy()
-            self.current_dialog = None
-        dialog = Gtk.MessageDialog(
+    def _confirm_action(self, _widget, action_callback, message):
+        self._destroy_current_dialog()
+        dlg = Gtk.MessageDialog(
             transient_for=self.parent_window,
             flags=0,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.OK_CANCEL,
-            text=message or tr('confirm_title')
+            text=message or tr("confirm_title"),
         )
-        dialog.set_title(tr('confirm_title'))
-        self.current_dialog = dialog
+        dlg.set_title(tr("confirm_title"))
+        self.current_dialog = dlg
 
-        def on_response(d, response_id):
-            if response_id == Gtk.ResponseType.OK and action_callback:
+        def on_resp(d, rid):
+            if rid == Gtk.ResponseType.OK and action_callback:
                 action_callback()
-            if isinstance(d, Gtk.Widget):
-                d.destroy()
-            self.current_dialog = None
+            self._destroy_current_dialog()
 
-        dialog.connect("response", on_response)
-        dialog.show()
+        dlg.connect("response", on_resp)
+        dlg.show()
 
     def _shutdown(self):
         if os.system("loginctl poweroff") != 0:
@@ -310,128 +362,109 @@ class PowerControl:
             os.system("systemctl reboot")
 
     def _lock_screen(self):
-        cmds = [
+        for c in (
             "loginctl lock-session",
             "gnome-screensaver-command -l",
             "xdg-screensaver lock",
             "dm-tool lock",
-        ]
-        for c in cmds:
+        ):
             if os.system(c) == 0:
                 return
 
     def _open_settings(self, *_):
-        if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
-            self.current_dialog.destroy()
-            self.current_dialog = None
+        # Small dialog to schedule power/reboot/lock after N minutes
+        self._destroy_current_dialog()
 
-        dialog = Gtk.Dialog(
-            title=tr('settings'),
-            transient_for=self.parent_window,
-            flags=0
-        )
-        self.current_dialog = dialog
-        content = dialog.get_content_area()
+        dlg = Gtk.Dialog(title=tr("settings"), transient_for=self.parent_window, flags=0)
+        self.current_dialog = dlg
+        content = dlg.get_content_area()
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=10)
         content.add(box)
 
+        # time
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        time_label = Gtk.Label(label=tr('minutes')); time_label.set_xalign(0)
-        adjustment = Gtk.Adjustment(value=1, lower=1, upper=1440, step_increment=1)
-        time_spin = Gtk.SpinButton(); time_spin.set_adjustment(adjustment); time_spin.set_numeric(True)
-        time_spin.set_value(1); time_spin.set_size_request(150, -1)
-        time_box.pack_start(time_label, True, True, 0)
-        time_box.pack_start(time_spin, False, False, 0)
+        lbl_time = Gtk.Label(label=tr("minutes")); lbl_time.set_xalign(0)
+        sp = Gtk.SpinButton.new_with_range(1, 1440, 1)
+        sp.set_value(1)
+        time_box.pack_start(lbl_time, True, True, 0)
+        time_box.pack_start(sp, False, False, 0)
 
+        # action
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        action_label_w = Gtk.Label(label=tr('action')); action_label_w.set_xalign(0)
-        action_combo = Gtk.ComboBoxText()
-        action_combo.append(Action.POWER_OFF.value, action_label(Action.POWER_OFF))
-        action_combo.append(Action.REBOOT.value, action_label(Action.REBOOT))
-        action_combo.append(Action.LOCK.value, action_label(Action.LOCK))
-        action_combo.set_active(0)
-        action_combo.set_size_request(150, -1)
-        action_box.pack_start(action_label_w, True, True, 0)
-        action_box.pack_start(action_combo, False, False, 0)
+        lbl_act = Gtk.Label(label=tr("action")); lbl_act.set_xalign(0)
+        combo = Gtk.ComboBoxText()
+        combo.append(Action.POWER_OFF.value, action_label(Action.POWER_OFF))
+        combo.append(Action.REBOOT.value, action_label(Action.REBOOT))
+        combo.append(Action.LOCK.value, action_label(Action.LOCK))
+        combo.set_active(0)
+        action_box.pack_start(lbl_act, True, True, 0)
+        action_box.pack_start(combo, False, False, 0)
 
-        apply_button = Gtk.Button(label=tr('apply'))
-        cancel_button = Gtk.Button(label=tr('cancel'))
-        reset_button = Gtk.Button(label=tr('reset'))
+        # buttons
+        btn_apply = Gtk.Button(label=tr("apply"))
+        btn_cancel = Gtk.Button(label=tr("cancel"))
+        btn_reset = Gtk.Button(label=tr("reset"))
+        btn_apply.connect("clicked", lambda *_: dlg.response(Gtk.ResponseType.OK))
+        btn_cancel.connect("clicked", lambda *_: dlg.response(Gtk.ResponseType.CANCEL))
+        btn_reset.connect("clicked", self._reset_action_button)
 
-        apply_button.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.OK))
-        cancel_button.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.CANCEL))
-        reset_button.connect("clicked", lambda *_: self._reset_action_button())
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        btn_box.set_halign(Gtk.Align.END)
+        for b in (btn_reset, btn_cancel, btn_apply):
+            btn_box.pack_start(b, False, False, 0)
 
-        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        button_box.set_halign(Gtk.Align.END)
-        button_box.pack_start(reset_button, False, False, 0)
-        button_box.pack_start(cancel_button, False, False, 0)
-        button_box.pack_start(apply_button, False, False, 0)
-
+        # pack
         box.pack_start(time_box, False, False, 0)
         box.pack_start(action_box, False, False, 0)
-        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep.set_margin_top(6); sep.set_margin_bottom(6)
-        box.pack_start(sep, False, False, 0)
-        box.pack_start(button_box, False, False, 0)
+        box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 6)
+        box.pack_start(btn_box, False, False, 0)
 
-        dialog.show_all()
-        response = dialog.run()
+        dlg.show_all()
+        resp = dlg.run()
 
-        if response == Gtk.ResponseType.OK:
-            minutes = time_spin.get_value_as_int()
-            action_id = action_combo.get_active_id()
+        if resp == Gtk.ResponseType.OK:
+            minutes = sp.get_value_as_int()
+            act = Action(combo.get_active_id())
             if minutes <= 0:
-                self._show_message(tr('error'), tr('error_minutes_positive'))
-                if isinstance(dialog, Gtk.Widget):
-                    dialog.destroy()
-                self.current_dialog = None
+                self._info(tr("error"), tr("error_minutes_positive"))
+                self._destroy_current_dialog()
                 return
-            act = Action(action_id)
             self.scheduled_action = act
             self.remaining_seconds = minutes * 60
             if minutes > 1:
-                self._notify_timer_id = GLib.timeout_add_seconds(
-                    (minutes - 1) * 60, self._notify_before_action, act
-                )
-            self._action_timer_id = GLib.timeout_add_seconds(
-                self.remaining_seconds, self._delayed_action, act
-            )
+                self._notify_timer_id = GLib.timeout_add_seconds((minutes - 1) * 60, self._notify_before_action, act)
+            self._action_timer_id = GLib.timeout_add_seconds(self.remaining_seconds, self._delayed_action, act)
             if self._update_timer_id:
                 GLib.source_remove(self._update_timer_id)
             self._update_timer_id = GLib.timeout_add_seconds(1, self._update_indicator_label)
-            self._show_message(tr('scheduled'), tr('action_in_time').format(action_label(act), minutes))
+            self._info(tr("scheduled"), tr("action_in_time").format(action_label(act), minutes))
 
-        if isinstance(dialog, Gtk.Widget):
-            dialog.destroy()
-        self.current_dialog = None
+        self._destroy_current_dialog()
 
     def _reset_action_button(self, *_):
-        if self._update_timer_id:
-            GLib.source_remove(self._update_timer_id); self._update_timer_id = None
-        if self._notify_timer_id:
-            GLib.source_remove(self._notify_timer_id); self._notify_timer_id = None
-        if self._action_timer_id:
-            GLib.source_remove(self._action_timer_id); self._action_timer_id = None
+        for tid_attr in ("_update_timer_id", "_notify_timer_id", "_action_timer_id"):
+            tid = getattr(self, tid_attr)
+            if tid:
+                GLib.source_remove(tid)
+                setattr(self, tid_attr, None)
         self.scheduled_action = None
         self.remaining_seconds = 0
         self.app.indicator.set_label("", "")
-        self._show_message(tr('cancelled'), tr('cancelled_text'))
+        self._info(tr("cancelled"), tr("cancelled_text"))
 
     def _notify_before_action(self, act: Action):
         self._notify_timer_id = None
-        self._show_message(tr('notification'), tr('action_in_1_min').format(action_label(act)))
+        self._info(tr("notification"), tr("action_in_1_min").format(action_label(act)))
         return False
 
     def _update_indicator_label(self):
         if self.remaining_seconds <= 0:
             self.app.indicator.set_label("", "")
             return False
-        hours = self.remaining_seconds // 3600
-        minutes = (self.remaining_seconds % 3600) // 60
-        seconds = self.remaining_seconds % 60
-        label = f"  {action_label(self.scheduled_action)} — {hours:02d}:{minutes:02d}:{seconds:02d}"
-        self.app.indicator.set_label(label, "")
+        h = self.remaining_seconds // 3600
+        m = (self.remaining_seconds % 3600) // 60
+        s = self.remaining_seconds % 60
+        self.app.indicator.set_label(f"{action_label(self.scheduled_action)} — {h:02d}:{m:02d}:{s:02d}", "")
         self.remaining_seconds -= 1
         return True
 
@@ -441,333 +474,306 @@ class PowerControl:
         self.scheduled_action = None
         self.remaining_seconds = 0
         if self._update_timer_id:
-            GLib.source_remove(self._update_timer_id); self._update_timer_id = None
-        if act == Action.POWER_OFF:
-            self._shutdown()
-        elif act == Action.REBOOT:
-            self._reboot()
-        elif act == Action.LOCK:
-            self._lock_screen()
+            GLib.source_remove(self._update_timer_id)
+            self._update_timer_id = None
+        {Action.POWER_OFF: self._shutdown, Action.REBOOT: self._reboot, Action.LOCK: self._lock_screen}[act]()
         return False
 
-    def _show_message(self, title, message):
-        if self.current_dialog:
-            self.current_dialog.destroy()
-            self.current_dialog = None
+    # small helpers
+    def _info(self, title: str, message: str):
         parent = self.parent_window if (self.parent_window and self.parent_window.get_mapped()) else None
-        dialog = Gtk.MessageDialog(
-            transient_for=parent,
-            flags=0,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text=message
-        )
-        dialog.set_title(title)
-        self.current_dialog = dialog
+        dlg = Gtk.MessageDialog(transient_for=parent, flags=0, message_type=Gtk.MessageType.INFO,
+                                buttons=Gtk.ButtonsType.OK, text=message)
+        dlg.set_title(title)
+        dlg.run()
+        dlg.destroy()
 
-        def on_response(d, response_id):
-            if isinstance(d, Gtk.Widget):
-                d.destroy()
-            self.current_dialog = None
-
-        dialog.connect("response", on_response)
-        dialog.show()
+    def _destroy_current_dialog(self):
+        if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
+            self.current_dialog.destroy()
+        self.current_dialog = None
 
 
+# ---------------------------
+# Settings dialog
+# ---------------------------
 class SettingsDialog(Gtk.Dialog):
     def __init__(self, parent, visibility):
-        super().__init__(title=tr('settings_label'), transient_for=parent if isinstance(parent, Gtk.Widget) else None, flags=0)
+        super().__init__(title=tr("settings_label"), transient_for=parent if isinstance(parent, Gtk.Widget) else None, flags=0)
         self.set_modal(True)
         self.set_destroy_with_parent(True)
-        self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL, tr('apply_label'), Gtk.ResponseType.OK)
+        self.add_buttons(tr("cancel_label"), Gtk.ResponseType.CANCEL, tr("apply_label"), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
+
         box = self.get_content_area()
         box.set_border_width(10)
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.set_halign(Gtk.Align.END)
-        link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
-        link.set_halign(Gtk.Align.END)
-        header.pack_start(link, False, False, 0)
+        header.pack_start(Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ"), False, False, 0)
         box.add(header)
 
-        self.tray_cpu_check = Gtk.CheckButton(label=tr('cpu_tray'))
-        self.tray_cpu_check.set_active(self.visibility_settings.get('tray_cpu', True))
-        box.add(self.tray_cpu_check)
+        # Tray toggles
+        self.tray_cpu_check = self._add_check(box, "cpu_tray", default=True)
+        self.tray_ram_check = self._add_check(box, "ram_tray", default=True)
 
-        self.tray_ram_check = Gtk.CheckButton(label=tr('ram_tray'))
-        self.tray_ram_check.set_active(self.visibility_settings.get('tray_ram', True))
-        box.add(self.tray_ram_check)
+        box.add(self._sep())
 
-        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep.set_margin_top(6); sep.set_margin_bottom(6)
-        box.add(sep)
+        # Info toggles
+        self.cpu_check = self._add_check(box, "cpu_info", key="cpu")
+        self.ram_check = self._add_check(box, "ram_loading", key="ram")
+        self.swap_check = self._add_check(box, "swap_loading", key="swap")
+        self.disk_check = self._add_check(box, "disk_loading", key="disk")
+        self.net_check = self._add_check(box, "lan_speed", key="net")
+        self.uptime_check = self._add_check(box, "uptime_label", key="uptime")
+        self.keyboard_check = self._add_check(box, "keyboard_clicks", key="keyboard_clicks")
+        self.mouse_check = self._add_check(box, "mouse_clicks", key="mouse_clicks")
 
-        self.cpu_check = Gtk.CheckButton(label=tr('cpu_info'))
-        self.cpu_check.set_active(self.visibility_settings['cpu'])
-        box.add(self.cpu_check)
+        box.add(self._sep())
 
-        self.ram_check = Gtk.CheckButton(label=tr('ram_loading'))
-        self.ram_check.set_active(self.visibility_settings['ram'])
-        box.add(self.ram_check)
+        # Power toggles
+        self.power_off_check = self._add_check(box, "power_off", key="show_power_off")
+        self.reboot_check = self._add_check(box, "reboot", key="show_reboot")
+        self.lock_check = self._add_check(box, "lock", key="show_lock")
+        self.timer_check = self._add_check(box, "settings", key="show_timer")
 
-        self.swap_check = Gtk.CheckButton(label=tr('swap_loading'))
-        self.swap_check.set_active(self.visibility_settings['swap'])
-        box.add(self.swap_check)
+        box.add(self._sep())
 
-        self.disk_check = Gtk.CheckButton(label=tr('disk_loading'))
-        self.disk_check.set_active(self.visibility_settings['disk'])
-        box.add(self.disk_check)
+        # Ping
+        self.ping_check = self._add_check(box, "ping_network", key="ping_network")
 
-        self.net_check = Gtk.CheckButton(label=tr('lan_speed'))
-        self.net_check.set_active(self.visibility_settings['net'])
-        box.add(self.net_check)
+        box.add(self._sep())
 
-        self.uptime_check = Gtk.CheckButton(label=tr('uptime_label'))
-        self.uptime_check.set_active(self.visibility_settings['uptime'])
-        box.add(self.uptime_check)
-
-        self.keyboard_check = Gtk.CheckButton(label=tr('keyboard_clicks'))
-        self.keyboard_check.set_active(self.visibility_settings.get('keyboard_clicks', True))
-        box.add(self.keyboard_check)
-
-        self.mouse_check = Gtk.CheckButton(label=tr('mouse_clicks'))
-        self.mouse_check.set_active(self.visibility_settings.get('mouse_clicks', True))
-        box.add(self.mouse_check)
-
-        sep3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep3.set_margin_top(6); sep3.set_margin_bottom(6)
-        box.add(sep3)
-
-        self.power_off_check = Gtk.CheckButton(label=tr('power_off'))
-        self.power_off_check.set_active(self.visibility_settings.get('show_power_off', True))
-        box.add(self.power_off_check)
-
-        self.reboot_check = Gtk.CheckButton(label=tr('reboot'))
-        self.reboot_check.set_active(self.visibility_settings.get('show_reboot', True))
-        box.add(self.reboot_check)
-
-        self.lock_check = Gtk.CheckButton(label=tr('lock'))
-        self.lock_check.set_active(self.visibility_settings.get('show_lock', True))
-        box.add(self.lock_check)
-
-        self.timer_check = Gtk.CheckButton(label=tr('settings'))
-        self.timer_check.set_active(self.visibility_settings.get('show_timer', True))
-        box.add(self.timer_check)
-
-        sep2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep2.set_margin_top(6); sep2.set_margin_bottom(6)
-        box.add(sep2)
-
-        self.ping_check = Gtk.CheckButton(label=tr('ping_network'))
-        self.ping_check.set_active(self.visibility_settings.get('ping_network', True))
-        box.add(self.ping_check)
-
-        sep4 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep4.set_margin_top(6); sep4.set_margin_bottom(6)
-        box.add(sep4)
-
+        # Logging controls
         logging_box = Gtk.Box(spacing=6)
-        self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
-        self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
+        self.logging_check = Gtk.CheckButton(label=tr("enable_logging"))
+        self.logging_check.set_active(self.visibility_settings.get("logging_enabled", True))
         self.logging_check.set_margin_bottom(3)
         logging_box.pack_start(self.logging_check, False, False, 0)
 
-        self.download_button = Gtk.Button(label=tr('download_log'))
+        self.download_button = Gtk.Button(label=tr("download_log"))
         self.download_button.connect("clicked", self.download_log_file)
         self.download_button.set_margin_bottom(3)
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
 
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
-        logsize_label.set_xalign(0)
+        logsize_label = Gtk.Label(label=tr("max_log_size_mb")); logsize_label.set_xalign(0)
         self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
-        self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 1000)))
+        self.logsize_spin.set_value(int(self.visibility_settings.get("max_log_mb", 1000)))
         logsize_box.pack_start(logsize_label, False, False, 0)
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         box.add(logsize_box)
 
-        sep4 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep4.set_margin_top(6); sep4.set_margin_bottom(6)
-        box.add(sep4)
+        box.add(self._sep())
 
-        telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
-        self.telegram_enable_check.set_margin_top(3); self.telegram_enable_check.set_margin_bottom(3)
-        telegram_box.pack_start(self.telegram_enable_check, False, False, 0)
+        # Telegram
+        tele_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.telegram_enable_check = Gtk.CheckButton(label=tr("telegram_notification"))
+        tele_row.pack_start(self.telegram_enable_check, False, False, 0)
+        test_btn = Gtk.Button(label=tr("check_telegram"))
+        test_btn.set_halign(Gtk.Align.END)
+        test_btn.connect("clicked", self.test_telegram)
+        tele_row.pack_end(test_btn, False, False, 0)
+        box.add(tele_row)
 
-        test_button = Gtk.Button(label=tr('check_telegram'))
-        test_button.set_margin_top(3); test_button.set_margin_bottom(3)
-        test_button.set_halign(Gtk.Align.END)
-        test_button.connect("clicked", self.test_telegram)
-        telegram_box.pack_end(test_button, False, False, 0)
-        box.add(telegram_box)
-
-        token_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        token_label = Gtk.Label(label=tr('token_bot')); token_label.set_xalign(0)
-        self.token_entry = Gtk.Entry(); self.token_entry.set_placeholder_text("123...:ABC..."); self.token_entry.set_visibility(False)
-        token_box.pack_start(token_label, False, False, 0)
-        token_box.pack_start(self.token_entry, True, True, 0)
-        token_toggle = Gtk.ToggleButton(label="👁"); token_toggle.set_relief(Gtk.ReliefStyle.NONE)
-        token_toggle.connect("toggled", lambda btn: self.token_entry.set_visibility(btn.get_active()))
-        token_box.pack_end(token_toggle, False, False, 0)
-        box.add(token_box)
-
-        chat_id_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        chat_id_label = Gtk.Label(label=tr('id_chat')); chat_id_label.set_xalign(0)
-        self.chat_id_entry = Gtk.Entry(); self.chat_id_entry.set_placeholder_text("123456789"); self.chat_id_entry.set_visibility(False)
-        chat_id_box.pack_start(chat_id_label, False, False, 0)
-        chat_id_box.pack_start(self.chat_id_entry, True, True, 0)
-        chat_id_toggle = Gtk.ToggleButton(label="👁"); chat_id_toggle.set_relief(Gtk.ReliefStyle.NONE)
-        chat_id_toggle.connect("toggled", lambda btn: self.chat_id_entry.set_visibility(btn.get_active()))
-        chat_id_box.pack_end(chat_id_toggle, False, False, 0)
-        box.add(chat_id_box)
+        self.token_entry = self._secret_entry(box, tr("token_bot"), "123...:ABC...")
+        self.chat_id_entry = self._secret_entry(box, tr("id_chat"), "123456789")
 
         interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        interval_label = Gtk.Label(label=tr('time_send')); interval_label.set_xalign(0)
+        interval_label = Gtk.Label(label=tr("time_send")); interval_label.set_xalign(0)
         self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1); self.interval_spin.set_value(3600)
         interval_box.pack_start(interval_label, False, False, 0)
         interval_box.pack_start(self.interval_spin, True, True, 0)
         interval_box.set_margin_top(3); interval_box.set_margin_bottom(3); interval_box.set_margin_end(50)
         box.add(interval_box)
 
-        discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
-        self.discord_enable_check.set_margin_top(3); self.discord_enable_check.set_margin_bottom(3)
-        discord_box.pack_start(self.discord_enable_check, False, False, 0)
+        # Discord
+        disc_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.discord_enable_check = Gtk.CheckButton(label=tr("discord_notification"))
+        disc_row.pack_start(self.discord_enable_check, False, False, 0)
+        disc_test = Gtk.Button(label=tr("check_discord"))
+        disc_test.set_halign(Gtk.Align.END)
+        disc_test.connect("clicked", self.test_discord)
+        disc_row.pack_end(disc_test, False, False, 0)
+        box.add(disc_row)
 
-        self.discord_test_button = Gtk.Button(label=tr('check_discord'))
-        self.discord_test_button.set_margin_top(3); self.discord_test_button.set_margin_bottom(3)
-        self.discord_test_button.set_halign(Gtk.Align.END)
-        self.discord_test_button.connect("clicked", self.test_discord)
-        discord_box.pack_end(self.discord_test_button, False, False, 0)
-        box.add(discord_box)
+        self.webhook_entry = self._secret_entry(box, tr("webhook_url"), "https://discord.com/api/webhooks/...")
 
-        webhook_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        webhook_label = Gtk.Label(label=tr('webhook_url')); webhook_label.set_xalign(0)
-        self.webhook_entry = Gtk.Entry(); self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/..."); self.webhook_entry.set_visibility(False)
-        webhook_box.pack_start(webhook_label, False, False, 0)
-        webhook_box.pack_start(self.webhook_entry, True, True, 0)
-        webhook_toggle = Gtk.ToggleButton(label="👁"); webhook_toggle.set_relief(Gtk.ReliefStyle.NONE)
-        webhook_toggle.connect("toggled", lambda btn: self.webhook_entry.set_visibility(btn.get_active()))
-        webhook_box.pack_end(webhook_toggle, False, False, 0)
-        box.add(webhook_box)
-
-        discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        discord_interval_label = Gtk.Label(label=tr('time_send')); discord_interval_label.set_xalign(0)
+        disc_int_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        disc_int_label = Gtk.Label(label=tr("time_send")); disc_int_label.set_xalign(0)
         self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1); self.discord_interval_spin.set_value(3600)
-        discord_interval_box.pack_start(discord_interval_label, False, False, 0)
-        discord_interval_box.pack_start(self.discord_interval_spin, True, True, 0)
-        discord_interval_box.set_margin_top(3); discord_interval_box.set_margin_bottom(30); discord_interval_box.set_margin_end(50)
-        box.add(discord_interval_box)
+        disc_int_box.pack_start(disc_int_label, False, False, 0)
+        disc_int_box.pack_start(self.discord_interval_spin, True, True, 0)
+        disc_int_box.set_margin_top(3); disc_int_box.set_margin_bottom(30); disc_int_box.set_margin_end(50)
+        box.add(disc_int_box)
 
+        # preload configs
         try:
             if os.path.exists(TELEGRAM_CONFIG_FILE):
-                with open(TELEGRAM_CONFIG_FILE, "r") as f:
-                    config = json.load(f)
-                    self.token_entry.set_text(config.get('TELEGRAM_BOT_TOKEN', '') or '')
-                    self.chat_id_entry.set_text(str(config.get('TELEGRAM_CHAT_ID', '') or ''))
-                    self.telegram_enable_check.set_active(bool(config.get('enabled', False)))
-                    self.interval_spin.set_value(int(config.get('notification_interval', 3600)))
+                with open(TELEGRAM_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                self.token_entry.set_text(cfg.get("TELEGRAM_BOT_TOKEN", "") or "")
+                self.chat_id_entry.set_text(str(cfg.get("TELEGRAM_CHAT_ID", "") or ""))
+                self.telegram_enable_check.set_active(bool(cfg.get("enabled", False)))
+                self.interval_spin.set_value(int(cfg.get("notification_interval", 3600)))
         except Exception as e:
-            print(f"Ошибка загрузки конфигурации Telegram: {e}")
+            print("Telegram config preload error:", e)
 
         try:
             if os.path.exists(DISCORD_CONFIG_FILE):
-                with open(DISCORD_CONFIG_FILE, "r") as f:
-                    config = json.load(f)
-                    self.webhook_entry.set_text(config.get('DISCORD_WEBHOOK_URL', '') or '')
-                    self.discord_enable_check.set_active(bool(config.get('enabled', False)))
-                    self.discord_interval_spin.set_value(int(config.get('notification_interval', 3600)))
+                with open(DISCORD_CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                self.webhook_entry.set_text(cfg.get("DISCORD_WEBHOOK_URL", "") or "")
+                self.discord_enable_check.set_active(bool(cfg.get("enabled", False)))
+                self.discord_interval_spin.set_value(int(cfg.get("notification_interval", 3600)))
         except Exception as e:
-            print(f"Ошибка загрузки конфигурации Discord: {e}")
+            print("Discord config preload error:", e)
 
         self.show_all()
 
-    def test_telegram(self, widget):
+    # small UI builders
+    def _sep(self):
+        s = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        s.set_margin_top(6)
+        s.set_margin_bottom(6)
+        return s
+
+    def _add_check(self, box, label_key, key=None, default=None):
+        chk = Gtk.CheckButton(label=tr(label_key))
+        if key is None:
+            chk.set_active(self.visibility_settings.get(label_key, True if default is None else default))
+        else:
+            chk.set_active(self.visibility_settings.get(key, True if default is None else default))
+        box.add(chk)
+        return chk
+
+    def _secret_entry(self, box, label, placeholder):
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        lbl = Gtk.Label(label=label); lbl.set_xalign(0)
+        entry = Gtk.Entry(); entry.set_placeholder_text(placeholder); entry.set_visibility(False)
+        row.pack_start(lbl, False, False, 0)
+        row.pack_start(entry, True, True, 0)
+        toggle = Gtk.ToggleButton(label="👁"); toggle.set_relief(Gtk.ReliefStyle.NONE)
+        toggle.connect("toggled", lambda btn: entry.set_visibility(btn.get_active()))
+        row.pack_end(toggle, False, False, 0)
+        box.add(row)
+        return entry
+
+    # actions
+    def test_telegram(self, _w):
         token = self.token_entry.get_text().strip()
         chat_id = self.chat_id_entry.get_text().strip()
         enabled = self.telegram_enable_check.get_active()
         interval = int(self.interval_spin.get_value())
         if not token or not chat_id:
-            self._show_message(title=tr('error'), message=tr('bot_message'))
+            self._info(tr("error"), tr("bot_message"))
             return
         notifier = TelegramNotifier()
         if notifier.save_config(token, chat_id, enabled, interval):
-            test_message = tr('test_message')
-            ok = notifier.send_message(test_message)
-            self._show_message(title=tr('ok') if ok else tr('error'),
-                               message=tr('test_message_ok') if ok else tr('test_message_error'))
+            ok = notifier.send_message(tr("test_message"))
+            self._info(tr("ok") if ok else tr("error"), tr("test_message_ok") if ok else tr("test_message_error"))
         else:
-            self._show_message(title=tr('error'), message=tr('setting_telegram_error'))
+            self._info(tr("error"), tr("setting_telegram_error"))
 
-    def test_discord(self, widget):
+    def test_discord(self, _w):
         webhook_url = self.webhook_entry.get_text().strip()
         enabled = self.discord_enable_check.get_active()
         interval = int(self.discord_interval_spin.get_value())
         if not webhook_url:
-            self._show_message(title=tr('error'), message=tr('webhook_required'))
+            self._info(tr("error"), tr("webhook_required"))
             return
         notifier = DiscordNotifier()
         if notifier.save_config(webhook_url, enabled, interval):
-            test_message = tr('test_message')
-            ok = notifier.send_message(test_message)
-            self._show_message(title=tr('ok') if ok else tr('error'),
-                               message=tr('test_message_ok') if ok else tr('test_message_error'))
+            ok = notifier.send_message(tr("test_message"))
+            self._info(tr("ok") if ok else tr("error"), tr("test_message_ok") if ok else tr("test_message_error"))
         else:
-            self._show_message(title=tr('error'), message=tr('setting_discord_error'))
+            self._info(tr("error"), tr("setting_discord_error"))
 
-    def _show_message(self, title, message):
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            flags=0,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text=message
-        )
-        dialog.set_title(title)
-        dialog.run()
-        dialog.destroy()
+    def _info(self, title, message):
+        dlg = Gtk.MessageDialog(transient_for=self, flags=0, message_type=Gtk.MessageType.INFO,
+                                buttons=Gtk.ButtonsType.OK, text=message)
+        dlg.set_title(title)
+        dlg.run()
+        dlg.destroy()
 
-    def download_log_file(self, widget):
-        dialog = Gtk.FileChooserDialog(
-            title=tr('download_log'),
-            parent=self if isinstance(self, Gtk.Widget) and self.get_mapped() else None,
-            action=Gtk.FileChooserAction.SAVE
-        )
-        dialog.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL, tr('apply_label'), Gtk.ResponseType.OK)
-        dialog.set_current_name("info_log.txt")
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            dest_path = dialog.get_filename()
+    def download_log_file(self, _w):
+        dlg = Gtk.FileChooserDialog(title=tr("download_log"), parent=self if self.get_mapped() else None,
+                                    action=Gtk.FileChooserAction.SAVE)
+        dlg.add_buttons(tr("cancel_label"), Gtk.ResponseType.CANCEL, tr("apply_label"), Gtk.ResponseType.OK)
+        dlg.set_current_name("info_log.txt")
+        resp = dlg.run()
+        if resp == Gtk.ResponseType.OK:
+            dest = dlg.get_filename()
             try:
                 if not os.path.exists(LOG_FILE):
                     raise FileNotFoundError(LOG_FILE)
-                with open(LOG_FILE, "r", encoding="utf-8") as src, open(dest_path, "w", encoding="utf-8") as dst:
+                with open(LOG_FILE, "r", encoding="utf-8") as src, open(dest, "w", encoding="utf-8") as dst:
                     dst.write(src.read())
             except Exception as e:
-                print("Ошибка сохранения лога:", e)
-        if isinstance(dialog, Gtk.Widget):
-            dialog.destroy()
+                print("Save log error:", e)
+        dlg.destroy()
 
 
+# ---------------------------
+# Main App
+# ---------------------------
 class SystemTrayApp:
     def __init__(self):
         self.settings_file = SETTINGS_FILE
-        self.visibility_settings = self.load_settings()
-        if 'language' not in self.visibility_settings or not self.visibility_settings['language']:
-            detected_lang = detect_system_language()
-            self.visibility_settings['language'] = detected_lang
-            self.save_settings()
-        global current_lang
-        current_lang = self.visibility_settings['language']
+        self.visibility_settings = self._load_settings()
 
-        self.indicator = AppInd.Indicator.new(
-            "SystemMonitor",
-            "system-run-symbolic",
-            AppInd.IndicatorCategory.SYSTEM_SERVICES
-        )
+        # init language
+        global current_lang
+        if not self.visibility_settings.get("language"):
+            self.visibility_settings["language"] = detect_system_language()
+            self._save_settings()
+        current_lang = self.visibility_settings["language"]
+
+        # indicator
+        self.indicator = AppInd.Indicator.new("SystemMonitor", "system-run-symbolic", AppInd.IndicatorCategory.SYSTEM_SERVICES)
+        self._set_icon()
+        self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
+
+        # signals
+        signal.signal(signal.SIGTERM, self.quit)
+        signal.signal(signal.SIGINT, self.quit)
+
+        # power
+        self.power_control = PowerControl(self)
+        self.power_control.set_parent_window(None)
+
+        # menu
+        self._build_menu()
+
+        # net counters
+        io = psutil.net_io_counters()
+        self.prev_net_data = {"recv": io.bytes_recv, "sent": io.bytes_sent, "time": time.time()}
+
+        # hooks
+        self.keyboard_listener = None
+        self.mouse_listener = None
+        self._init_listeners()
+
+        # notifiers
+        self.telegram_notifier = TelegramNotifier()
+        self.discord_notifier = DiscordNotifier()
+        self.last_telegram_notification_time = 0
+        self.last_discord_notification_time = 0
+
+        # logging file ensure
+        if self.visibility_settings.get("logging_enabled", True) and not os.path.exists(LOG_FILE):
+            try:
+                with open(LOG_FILE, "w", encoding="utf-8"):
+                    pass
+            except Exception as e:
+                print("Cannot create log file:", e)
+
+        self.settings_dialog = None
+
+
+    # ---- init helpers
+    def _set_icon(self):
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
         try:
             if os.path.exists(icon_path):
@@ -778,95 +784,27 @@ class SystemTrayApp:
             else:
                 self.indicator.set_icon("system-run-symbolic")
         except Exception as e:
-            print(f"Не удалось установить иконку: {e}")
+            print("Icon setup failed:", e)
             self.indicator.set_icon("system-run-symbolic")
-        self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
 
-        signal.signal(signal.SIGTERM, self.quit)
-        signal.signal(signal.SIGINT, self.quit)
-
-        self.power_control = PowerControl(self)
-        self.power_control.set_parent_window(None)
-        self.create_menu()
-
-        self.prev_net_data = {
-            'recv': psutil.net_io_counters().bytes_recv,
-            'sent': psutil.net_io_counters().bytes_sent,
-            'time': time.time()
-        }
-
-        self.keyboard_listener = None
-        self.mouse_listener = None
-        self._notify_no_global_hooks = False
-        self.init_listeners()
-
-        self.telegram_notifier = TelegramNotifier()
-        self.discord_notifier = DiscordNotifier()
-        self.last_telegram_notification_time = 0
-        self.last_discord_notification_time = 0
-        self.settings_dialog = None
-
-        if self.visibility_settings.get('logging_enabled', True) and not os.path.exists(LOG_FILE):
+    def _init_listeners(self):
+        if keyboard is not None:
             try:
-                with open(LOG_FILE, "w", encoding="utf-8") as f:
-                    f.write("")
+                self.keyboard_listener = keyboard.Listener(on_press=self._on_key_press, daemon=True)
+                self.keyboard_listener.start()
             except Exception as e:
-                print("Не удалось создать файл лога:", e)
-
-    def _send_async(self, func, *args, **kwargs):
-        t = threading.Thread(target=func, args=args, kwargs=kwargs, daemon=True)
-        t.start()
-
-    def init_listeners(self):
-        try:
-            self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
-            self.keyboard_listener.start()
-        except Exception as e:
-            print("Не удалось запустить keyboard listener:", e)
-            self.keyboard_listener = None
-            self._notify_no_global_hooks = True
-        try:
-            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
-            self.mouse_listener.start()
-        except Exception as e:
-            print("Не удалось запустить mouse listener:", e)
-            self.mouse_listener = None
-            self._notify_no_global_hooks = True
-
-    def on_key_press(self, key):
-        global keyboard_clicks
-        with _clicks_lock:
-            keyboard_clicks += 1
-
-    def on_mouse_click(self, x, y, button, pressed):
-        global mouse_clicks
-        if pressed:
-            with _clicks_lock:
-                mouse_clicks += 1
-
-    def on_ping_click(self, *_):
-        host = "8.8.8.8"
-        count = 4
-        timeout = 5
-
-        def worker():
-            GLib.idle_add(lambda: self._show_message(tr('ping_network'), tr('ping_running')))
-            cmd = ["ping", "-c", str(count), "-w", str(timeout), host]
+                print("Keyboard listener error:", e)
+        if mouse is not None:
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True)
-                ok = (proc.returncode == 0)
-                out = proc.stdout.strip() or proc.stderr.strip() or tr('ping_error')
-                title = tr('ok') if ok else tr('error')
-                msg = f"{tr('ping_done')} {host}\n\n{out}"
+                self.mouse_listener = mouse.Listener(on_click=self._on_mouse_click, daemon=True)
+                self.mouse_listener.start()
             except Exception as e:
-                title = tr('error')
-                msg = f"{tr('ping_error')}: {e}"
-            GLib.idle_add(lambda: self._show_message(title, msg))
+                print("Mouse listener error:", e)
 
-        self._send_async(worker)
-
-    def create_menu(self):
+    # ---- menu & UI
+    def _build_menu(self):
         self.menu = Gtk.Menu()
+        # indicator items
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
         self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
         self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
@@ -876,64 +814,69 @@ class SystemTrayApp:
         self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
         self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
 
-        self.ping_item = Gtk.MenuItem(label=tr('ping_network'))
-        self.ping_item.connect("activate", self.on_ping_click)
+        # ping
+        self.ping_item = Gtk.MenuItem(label=tr("ping_network"))
+        self.ping_item.connect("activate", self._on_ping_click)
         self.ping_top_sep = Gtk.SeparatorMenuItem()
         self.ping_bottom_sep = Gtk.SeparatorMenuItem()
 
+        # power block
         self.power_separator = Gtk.SeparatorMenuItem()
-        self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
-        self.power_off_item.connect("activate", self.power_control._confirm_action, self.power_control._shutdown, tr('confirm_text_power_off'))
-        self.reboot_item = Gtk.MenuItem(label=tr('reboot'))
-        self.reboot_item.connect("activate", self.power_control._confirm_action, self.power_control._reboot, tr('confirm_text_reboot'))
-        self.lock_item = Gtk.MenuItem(label=tr('lock'))
-        self.lock_item.connect("activate", self.power_control._confirm_action, self.power_control._lock_screen, tr('confirm_text_lock'))
-        self.timer_item = Gtk.MenuItem(label=tr('settings'))
+        self.power_off_item = Gtk.MenuItem(label=tr("power_off"))
+        self.power_off_item.connect("activate", self.power_control._confirm_action, self.power_control._shutdown, tr("confirm_text_power_off"))
+        self.reboot_item = Gtk.MenuItem(label=tr("reboot"))
+        self.reboot_item.connect("activate", self.power_control._confirm_action, self.power_control._reboot, tr("confirm_text_reboot"))
+        self.lock_item = Gtk.MenuItem(label=tr("lock"))
+        self.lock_item.connect("activate", self.power_control._confirm_action, self.power_control._lock_screen, tr("confirm_text_lock"))
+        self.timer_item = Gtk.MenuItem(label=tr("settings"))
         self.timer_item.connect("activate", self.power_control._open_settings)
 
         self.main_separator = Gtk.SeparatorMenuItem()
         self.exit_separator = Gtk.SeparatorMenuItem()
 
-        self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
-        self.settings_item.connect("activate", self.show_settings)
+        self.settings_item = Gtk.MenuItem(label=tr("settings_label"))
+        self.settings_item.connect("activate", self._show_settings)
 
+        # language submenu
         self.language_menu = Gtk.Menu()
         group_root = None
         for code in SUPPORTED_LANGS:
-            label = (LANGUAGES.get(code) or LANGUAGES.get('en', {})).get('language_name', code)
+            label = (LANGUAGES.get(code) or LANGUAGES.get("en", {})).get("language_name", code)
             item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, label)
             if group_root is None:
                 group_root = item
             item.set_active(code == current_lang)
             item.connect("activate", self._on_language_selected, code)
             self.language_menu.append(item)
-        self.language_menu_item = Gtk.MenuItem(label=tr('language'))
+        self.language_menu_item = Gtk.MenuItem(label=tr("language"))
         self.language_menu_item.set_submenu(self.language_menu)
 
-        self.quit_item = Gtk.MenuItem(label=tr('exit_app'))
+        self.quit_item = Gtk.MenuItem(label=tr("exit_app"))
         self.quit_item.connect("activate", self.quit)
 
-        self.update_menu_visibility()
+        self._update_menu_visibility()
 
-        if any([
-            self.visibility_settings.get('show_power_off', True),
-            self.visibility_settings.get('show_reboot', True),
-            self.visibility_settings.get('show_lock', True),
-            self.visibility_settings.get('show_timer', True)
-        ]):
+        if any(
+            [
+                self.visibility_settings.get("show_power_off", True),
+                self.visibility_settings.get("show_reboot", True),
+                self.visibility_settings.get("show_lock", True),
+                self.visibility_settings.get("show_timer", True),
+            ]
+        ):
             self.menu.append(self.power_separator)
-            if self.visibility_settings.get('show_power_off', True):
+            if self.visibility_settings.get("show_power_off", True):
                 self.menu.append(self.power_off_item)
-            if self.visibility_settings.get('show_reboot', True):
+            if self.visibility_settings.get("show_reboot", True):
                 self.menu.append(self.reboot_item)
-            if self.visibility_settings.get('show_lock', True):
+            if self.visibility_settings.get("show_lock", True):
                 self.menu.append(self.lock_item)
-            if self.visibility_settings.get('show_timer', True):
+            if self.visibility_settings.get("show_timer", True):
                 self.menu.append(self.timer_item)
 
         self.menu.append(self.main_separator)
 
-        if self.visibility_settings.get('ping_network', True):
+        if self.visibility_settings.get("ping_network", True):
             self.menu.append(self.ping_top_sep)
             self.menu.append(self.ping_item)
             self.menu.append(self.ping_bottom_sep)
@@ -947,118 +890,127 @@ class SystemTrayApp:
         self.indicator.set_menu(self.menu)
 
     def _on_language_selected(self, widget, lang_code):
+        """Смена языка: сохраняем и пересобираем меню с локализованными подписями."""
         global current_lang
-        if widget.get_active() and current_lang != lang_code:
-            current_lang = lang_code
-            self.visibility_settings['language'] = current_lang
-            self.save_settings()
-            self.create_menu()
-
-    def load_settings(self):
-        default = {
-            'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
-            'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True,
-            'mouse_clicks': True, 'language': None, 'logging_enabled': True,
-            'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
-            'max_log_mb': 5,
-            'ping_network': True,
-        }
         try:
-            with open(self.settings_file, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                default.update(saved)
-        except Exception:
-            pass
-        return default
-
-    def save_settings(self):
-        try:
-            with open(self.settings_file, "w", encoding="utf-8") as f:
-                json.dump(self.visibility_settings, f, indent=4)
+            # Обрабатываем только тот RadioItem, который стал активным
+            if hasattr(widget, "get_active") and widget.get_active():
+                if lang_code != current_lang:
+                    current_lang = lang_code
+                    self.visibility_settings["language"] = current_lang
+                    self._save_settings()
+                    self._build_menu()  # пересборка меню для обновления всех надписей
         except Exception as e:
-            print("Ошибка сохранения настроек:", e)
+            print("language switch error:", e)
 
-    def update_menu_visibility(self):
-        """Перестраиваем верхнюю, «индикаторную» часть меню с учётом чекбоксов."""
-        children = self.menu.get_children() if hasattr(self, 'menu') else []
+    def _update_menu_visibility(self):
+        children = self.menu.get_children() if hasattr(self, "menu") else []
         keep = [
-            getattr(self, 'main_separator', None),
-            getattr(self, 'power_separator', None),
-            getattr(self, 'exit_separator', None),
-            getattr(self, 'language_menu_item', None),
-            getattr(self, 'settings_item', None),
-            getattr(self, 'quit_item', None),
+            getattr(self, "main_separator", None),
+            getattr(self, "power_separator", None),
+            getattr(self, "exit_separator", None),
+            getattr(self, "language_menu_item", None),
+            getattr(self, "settings_item", None),
+            getattr(self, "quit_item", None),
         ]
-
-        if getattr(self, 'ping_item', None) and self.visibility_settings.get('ping_network', True):
-            keep.extend([self.ping_item, getattr(self, 'ping_top_sep', None), getattr(self, 'ping_bottom_sep', None)])
-
+        if getattr(self, "ping_item", None) and self.visibility_settings.get("ping_network", True):
+            keep.extend([self.ping_item, getattr(self, "ping_top_sep", None), getattr(self, "ping_bottom_sep", None)])
         keep = [x for x in keep if x is not None]
 
-        for child in list(children):
-            if child not in keep:
+        for ch in list(children):
+            if ch not in keep:
                 try:
-                    self.menu.remove(child)
+                    self.menu.remove(ch)
                 except Exception:
                     pass
 
-        if self.visibility_settings.get('mouse_clicks', True):
-            self.menu.prepend(self.mouse_item)
-        if self.visibility_settings.get('keyboard_clicks', True):
-            self.menu.prepend(self.keyboard_item)
-        if self.visibility_settings.get('uptime', True):
-            self.menu.prepend(self.uptime_item)
-        if self.visibility_settings.get('net', True):
-            self.menu.prepend(self.net_item)
-        if self.visibility_settings.get('disk', True):
-            self.menu.prepend(self.disk_item)
-        if self.visibility_settings.get('swap', True):
-            self.menu.prepend(self.swap_item)
-        if self.visibility_settings.get('ram', True):
-            self.menu.prepend(self.ram_item)
-        if self.visibility_settings.get('cpu', True):
-            self.menu.prepend(self.cpu_temp_item)
+        # prepend in reverse order to keep desired order
+        def maybe_prepend(flag_key, item):
+            if self.visibility_settings.get(flag_key, True):
+                self.menu.prepend(item)
+
+        maybe_prepend("mouse_clicks", self.mouse_item)
+        maybe_prepend("keyboard_clicks", self.keyboard_item)
+        maybe_prepend("uptime", self.uptime_item)
+        maybe_prepend("net", self.net_item)
+        maybe_prepend("disk", self.disk_item)
+        maybe_prepend("swap", self.swap_item)
+        maybe_prepend("ram", self.ram_item)
+        maybe_prepend("cpu", self.cpu_temp_item)
 
         self.menu.show_all()
 
-    def show_settings(self, widget):
-        if self.settings_dialog is not None and self.settings_dialog.get_mapped():
+    # ---- actions
+    def _on_key_press(self, _key):
+        global keyboard_clicks
+        with _clicks_lock:
+            keyboard_clicks += 1
+
+    def _on_mouse_click(self, _x, _y, _button, pressed):
+        global mouse_clicks
+        if pressed:
+            with _clicks_lock:
+                mouse_clicks += 1
+
+    def _on_ping_click(self, *_):
+        host = "8.8.8.8"
+        count = 4
+        timeout = 5
+
+        def worker():
+            GLib.idle_add(lambda: self._info(tr("ping_network"), tr("ping_running")))
+            try:
+                proc = subprocess.run(["ping", "-c", str(count), "-w", str(timeout), host], capture_output=True, text=True)
+                ok = proc.returncode == 0
+                out = proc.stdout.strip() or proc.stderr.strip() or tr("ping_error")
+                title = tr("ok") if ok else tr("error")
+                msg = f"{tr('ping_done')} {host}\n\n{out}"
+            except Exception as e:
+                title = tr("error")
+                msg = f"{tr('ping_error')}: {e}"
+            GLib.idle_add(lambda: self._info(title, msg))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_settings(self, _w):
+        if getattr(self, "settings_dialog", None) and self.settings_dialog.get_mapped():
             self.settings_dialog.present()
             return
 
-        dialog = SettingsDialog(None, self.visibility_settings)
-        self.power_control.set_parent_window(dialog)
-        self.settings_dialog = dialog
+        dlg = SettingsDialog(None, self.visibility_settings)
+        self.power_control.set_parent_window(dlg)
+        self.settings_dialog = dlg
 
         try:
-            response = dialog.run()
+            resp = dlg.run()
+            if resp == Gtk.ResponseType.OK:
+                # sync toggles
+                vis = self.visibility_settings
+                vis["cpu"] = dlg.cpu_check.get_active()
+                vis["ram"] = dlg.ram_check.get_active()
+                vis["swap"] = dlg.swap_check.get_active()
+                vis["disk"] = dlg.disk_check.get_active()
+                vis["net"] = dlg.net_check.get_active()
+                vis["uptime"] = dlg.uptime_check.get_active()
+                vis["tray_cpu"] = dlg.tray_cpu_check.get_active()
+                vis["tray_ram"] = dlg.tray_ram_check.get_active()
+                vis["keyboard_clicks"] = dlg.keyboard_check.get_active()
+                vis["mouse_clicks"] = dlg.mouse_check.get_active()
+                vis["show_power_off"] = dlg.power_off_check.get_active()
+                vis["show_reboot"] = dlg.reboot_check.get_active()
+                vis["show_lock"] = dlg.lock_check.get_active()
+                vis["show_timer"] = dlg.timer_check.get_active()
+                vis["logging_enabled"] = dlg.logging_check.get_active()
+                vis["ping_network"] = dlg.ping_check.get_active()
+                vis["max_log_mb"] = int(dlg.logsize_spin.get_value())
 
-            if response == Gtk.ResponseType.OK:
-                self.visibility_settings['cpu'] = dialog.cpu_check.get_active()
-                self.visibility_settings['ram'] = dialog.ram_check.get_active()
-                self.visibility_settings['swap'] = dialog.swap_check.get_active()
-                self.visibility_settings['disk'] = dialog.disk_check.get_active()
-                self.visibility_settings['net'] = dialog.net_check.get_active()
-                self.visibility_settings['uptime'] = dialog.uptime_check.get_active()
-                self.visibility_settings['tray_cpu'] = dialog.tray_cpu_check.get_active()
-                self.visibility_settings['tray_ram'] = dialog.tray_ram_check.get_active()
-                self.visibility_settings['keyboard_clicks'] = dialog.keyboard_check.get_active()
-                self.visibility_settings['mouse_clicks'] = dialog.mouse_check.get_active()
-                self.visibility_settings['show_power_off'] = dialog.power_off_check.get_active()
-                self.visibility_settings['show_reboot'] = dialog.reboot_check.get_active()
-                self.visibility_settings['show_lock'] = dialog.lock_check.get_active()
-                self.visibility_settings['show_timer'] = dialog.timer_check.get_active()
-                self.visibility_settings['logging_enabled'] = dialog.logging_check.get_active()
-                self.visibility_settings['ping_network'] = dialog.ping_check.get_active()
-
-                self.visibility_settings['max_log_mb'] = int(dialog.logsize_spin.get_value())
-
+                # notifiers
                 tel_enabled_before = self.telegram_notifier.enabled
                 if self.telegram_notifier.save_config(
-                        dialog.token_entry.get_text().strip(),
-                        dialog.chat_id_entry.get_text().strip(),
-                        dialog.telegram_enable_check.get_active(),
-                        int(dialog.interval_spin.get_value())
+                    dlg.token_entry.get_text().strip(),
+                    dlg.chat_id_entry.get_text().strip(),
+                    dlg.telegram_enable_check.get_active(),
+                    int(dlg.interval_spin.get_value()),
                 ):
                     self.telegram_notifier.load_config()
                     if self.telegram_notifier.enabled and not tel_enabled_before:
@@ -1066,31 +1018,30 @@ class SystemTrayApp:
 
                 disc_enabled_before = self.discord_notifier.enabled
                 if self.discord_notifier.save_config(
-                        dialog.webhook_entry.get_text().strip(),
-                        dialog.discord_enable_check.get_active(),
-                        int(dialog.discord_interval_spin.get_value())
+                    dlg.webhook_entry.get_text().strip(),
+                    dlg.discord_enable_check.get_active(),
+                    int(dlg.discord_interval_spin.get_value()),
                 ):
                     self.discord_notifier.load_config()
                     if self.discord_notifier.enabled and not disc_enabled_before:
                         self.last_discord_notification_time = 0
 
-                self.save_settings()
-                self.create_menu()
-
+                self._save_settings()
+                self._build_menu()  # refresh labels in chosen language etc.
         finally:
             self.power_control.set_parent_window(None)
-            if self.settings_dialog is not None:
+            if getattr(self, "settings_dialog", None):
                 try:
                     self.settings_dialog.destroy()
                 except Exception:
                     pass
             self.settings_dialog = None
 
+    # ---- periodic update
     def update_info(self):
         try:
             with _clicks_lock:
-                kbd = keyboard_clicks
-                ms = mouse_clicks
+                kbd, ms = keyboard_clicks, mouse_clicks
 
             cpu_temp = SystemUsage.get_cpu_temp()
             cpu_usage = SystemUsage.get_cpu_usage()
@@ -1106,63 +1057,53 @@ class SystemTrayApp:
                 disk_used, disk_total,
                 swap_used, swap_total,
                 net_recv_speed, net_sent_speed,
-                uptime, kbd, ms
+                uptime, kbd, ms,
             )
 
-            current_time = time.time()
-            if (self.telegram_notifier.enabled and
-                    current_time - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
-                self._send_async(
-                    self.send_telegram_notification,
-                    cpu_temp, cpu_usage,
-                    ram_used, ram_total,
-                    disk_used, disk_total,
-                    swap_used, swap_total,
-                    net_recv_speed, net_sent_speed,
-                    uptime, kbd, ms
-                )
-                self.last_telegram_notification_time = current_time
+            now = time.time()
+            if self.telegram_notifier.enabled and now - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval:
+                threading.Thread(
+                    target=self._send_telegram,
+                    args=(cpu_temp, cpu_usage, ram_used, ram_total, disk_used, disk_total, swap_used, swap_total, net_recv_speed, net_sent_speed, uptime, kbd, ms),
+                    daemon=True,
+                ).start()
+                self.last_telegram_notification_time = now
 
-            if (self.discord_notifier.enabled and
-                    current_time - self.last_discord_notification_time >= self.discord_notifier.notification_interval):
-                self._send_async(
-                    self.send_discord_notification,
-                    cpu_temp, cpu_usage,
-                    ram_used, ram_total,
-                    disk_used, disk_total,
-                    swap_used, swap_total,
-                    net_recv_speed, net_sent_speed,
-                    uptime, kbd, ms
-                )
-                self.last_discord_notification_time = current_time
+            if self.discord_notifier.enabled and now - self.last_discord_notification_time >= self.discord_notifier.notification_interval:
+                threading.Thread(
+                    target=self._send_discord,
+                    args=(cpu_temp, cpu_usage, ram_used, ram_total, disk_used, disk_total, swap_used, swap_total, net_recv_speed, net_sent_speed, uptime, kbd, ms),
+                    daemon=True,
+                ).start()
+                self.last_discord_notification_time = now
 
-            if self.visibility_settings.get('logging_enabled', True):
-                max_mb = int(self.visibility_settings.get('max_log_mb', 5))
+            if self.visibility_settings.get("logging_enabled", True):
+                max_mb = int(self.visibility_settings.get("max_log_mb", 5))
                 max_mb = max(1, min(max_mb, 1024))
-                _rotate_log_if_needed(max_mb * 1024 * 1024)
+                rotate_log_if_needed(max_mb * 1024 * 1024)
                 try:
                     with open(LOG_FILE, "a", encoding="utf-8") as f:
-                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
-                                f"CPU: {cpu_usage:.0f}% {cpu_temp}°C | "
-                                f"RAM: {ram_used:.1f}/{ram_total:.1f} GB | "
-                                f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
-                                f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
-                                f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
-                                f"Uptime: {uptime} | "
-                                f"Keys: {kbd} | "
-                                f"Clicks: {ms}\n")
+                        f.write(
+                            f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
+                            f"CPU: {cpu_usage:.0f}% {cpu_temp}°C | "
+                            f"RAM: {ram_used:.1f}/{ram_total:.1f} GB | "
+                            f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
+                            f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
+                            f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
+                            f"Uptime: {uptime} | "
+                            f"Keys: {kbd} | "
+                            f"Clicks: {ms}\n"
+                        )
                 except Exception as e:
-                    print("Ошибка записи в лог:", e)
+                    print("Log write error:", e)
             return True
         except Exception as e:
-            print(f"Ошибка в update_info: {e}")
+            print("update_info error:", e)
             return True
 
-    def send_telegram_notification(self, cpu_temp, cpu_usage, ram_used, ram_total,
-                                   disk_used, disk_total, swap_used, swap_total,
-                                   net_recv_speed, net_sent_speed, uptime,
-                                   keyboard_clicks_val, mouse_clicks_val):
-        message = (
+    def _send_telegram(self, *args):
+        cpu_temp, cpu_usage, ram_used, ram_total, disk_used, disk_total, swap_used, swap_total, net_recv_speed, net_sent_speed, uptime, keyboard_clicks_val, mouse_clicks_val = args
+        msg = (
             f"<b>{tr('system_status')}</b>\n"
             f"<b>{tr('cpu')}:</b> {cpu_usage:.0f}% ({cpu_temp}{tr('temperature')})\n"
             f"<b>{tr('ram')}:</b> {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
@@ -1173,13 +1114,11 @@ class SystemTrayApp:
             f"<b>{tr('keyboard')}:</b> {keyboard_clicks_val} {tr('presses')}\n"
             f"<b>{tr('mouse')}:</b> {mouse_clicks_val} {tr('clicks')}"
         )
-        self.telegram_notifier.send_message(message)
+        self.telegram_notifier.send_message(msg)
 
-    def send_discord_notification(self, cpu_temp, cpu_usage, ram_used, ram_total,
-                                  disk_used, disk_total, swap_used, swap_total,
-                                  net_recv_speed, net_sent_speed, uptime,
-                                  keyboard_clicks_val, mouse_clicks_val):
-        message = (
+    def _send_discord(self, *args):
+        cpu_temp, cpu_usage, ram_used, ram_total, disk_used, disk_total, swap_used, swap_total, net_recv_speed, net_sent_speed, uptime, keyboard_clicks_val, mouse_clicks_val = args
+        msg = (
             f"**{tr('system_status')}**\n"
             f"**{tr('cpu')}**: {cpu_usage:.0f}% ({cpu_temp}{tr('temperature')})\n"
             f"**{tr('ram')}**: {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
@@ -1190,72 +1129,79 @@ class SystemTrayApp:
             f"**{tr('keyboard')}**: {keyboard_clicks_val} {tr('presses')}\n"
             f"**{tr('mouse')}**: {mouse_clicks_val} {tr('clicks')}"
         )
-        self.discord_notifier.send_message(message)
+        self.discord_notifier.send_message(msg)
 
-    def _show_message(self, title: str, message: str):
-        """Показывает инфодиалог (в главном потоке)."""
+    def _info(self, title: str, message: str):
         parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
-        dialog = Gtk.MessageDialog(
-            transient_for=parent,
-            flags=0,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text=message
-        )
-        dialog.set_title(title)
-        dialog.run()
-        dialog.destroy()
+        dlg = Gtk.MessageDialog(transient_for=parent, flags=0, message_type=Gtk.MessageType.INFO,
+                                buttons=Gtk.ButtonsType.OK, text=message)
+        dlg.set_title(title)
+        dlg.run()
+        dlg.destroy()
 
-    def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
-                   disk_used, disk_total, swap_used, swap_total,
-                   net_recv_speed, net_sent_speed, uptime,
-                   keyboard_clicks_val, mouse_clicks_val):
+    def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total, disk_used, disk_total, swap_used, swap_total, net_recv_speed, net_sent_speed, uptime, keyboard_clicks_val, mouse_clicks_val):
         try:
-            if self.visibility_settings['cpu']:
+            if self.visibility_settings["cpu"]:
                 self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
-            if self.visibility_settings['ram']:
+            if self.visibility_settings["ram"]:
                 self.ram_item.set_label(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
-            if self.visibility_settings['swap']:
+            if self.visibility_settings["swap"]:
                 self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
-            if self.visibility_settings['disk']:
+            if self.visibility_settings["disk"]:
                 self.disk_item.set_label(f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB")
-            if self.visibility_settings['net']:
+            if self.visibility_settings["net"]:
                 self.net_item.set_label(f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s")
-            if self.visibility_settings['uptime']:
+            if self.visibility_settings["uptime"]:
                 self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
-            if self.visibility_settings['keyboard_clicks']:
+            if self.visibility_settings["keyboard_clicks"]:
                 self.keyboard_item.set_label(f"{tr('keyboard_clicks')}: {keyboard_clicks_val}")
-            if self.visibility_settings['mouse_clicks']:
+            if self.visibility_settings["mouse_clicks"]:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
 
             tray_parts = []
-            if self.visibility_settings.get('tray_cpu', True):
+            if self.visibility_settings.get("tray_cpu", True):
                 tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
-            if self.visibility_settings.get('tray_ram', True):
+            if self.visibility_settings.get("tray_ram", True):
                 tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
             self.indicator.set_label(tray_text, "")
         except Exception as e:
-            print(f"Ошибка в _update_ui: {e}")
+            print("_update_ui error:", e)
 
+    # ---- settings persistence
+    def _load_settings(self):
+        vis = DEFAULT_VISIBILITY.copy()
+        try:
+            with open(self.settings_file, "r", encoding="utf-8") as f:
+                vis.update(json.load(f))
+        except Exception:
+            pass
+        return vis
+
+    def _save_settings(self):
+        try:
+            with open(self.settings_file, "w", encoding="utf-8") as f:
+                json.dump(self.visibility_settings, f, indent=4)
+        except Exception as e:
+            print("Settings save error:", e)
+
+    # ---- lifecycle
     def quit(self, *args):
-        if getattr(self.power_control, 'current_dialog', None):
-            if isinstance(self.power_control.current_dialog, Gtk.Widget):
-                self.power_control.current_dialog.destroy()
+        # timers from power control
+        for tid_attr in ("_update_timer_id", "_notify_timer_id", "_action_timer_id"):
+            tid = getattr(self.power_control, tid_attr, None)
+            if tid:
+                GLib.source_remove(tid)
+        # dialogs
+        if self.power_control.current_dialog and isinstance(self.power_control.current_dialog, Gtk.Widget):
+            self.power_control.current_dialog.destroy()
             self.power_control.current_dialog = None
-        if getattr(self.power_control, '_update_timer_id', None):
-            GLib.source_remove(self.power_control._update_timer_id)
-        if getattr(self.power_control, '_notify_timer_id', None):
-            GLib.source_remove(self.power_control._notify_timer_id)
-        if getattr(self.power_control, '_action_timer_id', None):
-            GLib.source_remove(self.power_control._action_timer_id)
-
         if self.settings_dialog is not None:
             self.settings_dialog.destroy()
             self.settings_dialog = None
-
+        # hooks
         try:
             if self.keyboard_listener:
                 self.keyboard_listener.stop()
@@ -1266,14 +1212,16 @@ class SystemTrayApp:
                 self.mouse_listener.stop()
         except Exception:
             pass
-
         Gtk.main_quit()
 
     def run(self):
-        GLib.timeout_add_seconds(time_update, self.update_info)
+        GLib.timeout_add_seconds(TIME_UPDATE_SECONDS, self.update_info)
         Gtk.main()
 
 
+# ---------------------------
+# Entrypoint
+# ---------------------------
 if __name__ == "__main__":
     Gtk.init([])
     signal.signal(signal.SIGINT, signal.SIG_DFL)
