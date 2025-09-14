@@ -514,8 +514,8 @@ class SettingsDialog(Gtk.Dialog):
         box.add(header)
 
         # Tray toggles
-        self.tray_cpu_check = self._add_check(box, "cpu_tray", default=True)
-        self.tray_ram_check = self._add_check(box, "ram_tray", default=True)
+        self.tray_cpu_check = self._add_check(box, "cpu_tray", key="tray_cpu", default=True)
+        self.tray_ram_check = self._add_check(box, "ram_tray", key="tray_ram", default=True)
 
         box.add(self._sep())
 
@@ -1176,6 +1176,11 @@ class SystemTrayApp:
         try:
             with open(self.settings_file, "r", encoding="utf-8") as f:
                 vis.update(json.load(f))
+            # миграция старых ключей, если встречаются
+            if "cpu_tray" in vis and "tray_cpu" not in vis:
+                vis["tray_cpu"] = bool(vis.pop("cpu_tray"))
+            if "ram_tray" in vis and "tray_ram" not in vis:
+                vis["tray_ram"] = bool(vis.pop("ram_tray"))
         except Exception:
             pass
         return vis
