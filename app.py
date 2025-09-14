@@ -195,7 +195,6 @@ class TelegramNotifier:
 class DiscordNotifier:
     def __init__(self):
         self.webhook_url = None
-        the_enabled = False
         self.enabled = False
         self.notification_interval = 3600
         self.load_config()
@@ -846,7 +845,6 @@ class SystemTrayApp:
                 mouse_clicks += 1
 
     def on_ping_click(self, *_):
-        """Обработчик пункта меню Ping — запускает ping в фоне и показывает результат."""
         host = "8.8.8.8"
         count = 4
         timeout = 5
