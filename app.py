@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-SyMo — System Monitor (Tray) • cleaned/organized version
-- Removed dead/duplicated code and variables
-- Consolidated dialogs and repeated helpers
-- Tidied imports, constants, and structure
-- Safer I/O and indicator updates
+SyMo — System Monitor (Tray) • graphs with hover tooltips
+- Realtime Cairo-графики: cpu_temp, cpu_usage, ram%, swap%
+- Наведение мышью: подсказка по ближайшей точке серии (маркер, гайдлайн, tooltip)
+- Пункт меню "Graphs" открывает окно графиков
 """
 
 import os
@@ -18,12 +17,11 @@ import threading
 import subprocess
 from enum import Enum
 from datetime import timedelta
-
-# UI deps
+from collections import deque
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gdk
 
 try:
     gi.require_version("AppIndicator3", "0.1")
@@ -32,19 +30,14 @@ except (ValueError, ImportError):
     gi.require_version("AyatanaAppIndicator3", "0.1")
     from gi.repository import AyatanaAppIndicator3 as AppInd
 
-# Input hooks (optional)
 try:
     from pynput import keyboard, mouse
 except Exception:  # make hooks optional
     keyboard = None
     mouse = None
 
-# Localized strings source
 from language import LANGUAGES
 
-# ---------------------------
-# Constants & Defaults
-# ---------------------------
 SUPPORTED_LANGS = ["ru", "en", "cn", "de", "it", "es", "tr", "fr"]
 
 LOG_FILE = os.path.join(os.path.expanduser("~"), ".symo_log.txt")
@@ -53,6 +46,17 @@ TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_telegram.jso
 DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json")
 
 TIME_UPDATE_SECONDS = 1
+
+# ===== Graph settings =====
+HISTORY_SECONDS = 300   # храним ~5 минут истории (1 точка/сек)
+GRAPH_REFRESH_MS = 500  # перерисовка окна графиков (мс)
+GRAPH_COLORS = {
+    "cpu_temp": (0.93, 0.36, 0.36),   # RGB 0..1
+    "cpu_usage": (0.23, 0.62, 0.95),
+    "ram":      (0.31, 0.78, 0.47),
+    "swap":     (0.60, 0.49, 0.80),
+}
+HOVER_RADIUS_PX = 8.0   # радиус попадания курсора для подсветки точки
 
 DEFAULT_VISIBILITY = {
     "cpu": True,
@@ -75,9 +79,6 @@ DEFAULT_VISIBILITY = {
     "ping_network": True,
 }
 
-# ---------------------------
-# Globals (kept minimal)
-# ---------------------------
 _clicks_lock = threading.Lock()
 keyboard_clicks = 0
 mouse_clicks = 0
@@ -184,6 +185,351 @@ class SystemUsage:
     def get_uptime() -> str:
         seconds = time.time() - psutil.boot_time()
         return str(timedelta(seconds=int(seconds)))
+
+
+# ---------------------------
+# Graph window (realtime with hover)
+# ---------------------------
+class TimeSeries:
+    """Простой буфер фиксированной длины (в точках). По 1 точке/сек держим HISTORY_SECONDS секунд."""
+    def __init__(self, capacity: int):
+        self.capacity = max(1, int(capacity))
+        self.data = deque(maxlen=self.capacity)
+
+    def add(self, value: float):
+        self.data.append(float(value))
+
+    def values(self):
+        return list(self.data)
+
+    def __len__(self):
+        return len(self.data)
+
+    def is_empty(self):
+        return len(self.data) == 0
+
+
+class GraphWindow(Gtk.Window):
+    """
+    Окно с realtime-графиком 4 рядов:
+      - cpu_temp (°C)
+      - cpu_usage (%)
+      - ram_usage (%)
+      - swap_usage (%)
+    Сетка, легенда, авто-масштаб по Y, hover-подсказки.
+    """
+    def __init__(self, app: "SystemTrayApp"):
+        super().__init__(title=tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs")
+        self.set_default_size(900, 360)
+        self.set_keep_above(False)
+        try:
+            self.set_position(Gtk.WindowPosition.CENTER)
+        except Exception:
+            pass
+
+        self.app = app
+        self.series = {
+            "cpu_temp": TimeSeries(HISTORY_SECONDS),
+            "cpu_usage": TimeSeries(HISTORY_SECONDS),
+            "ram": TimeSeries(HISTORY_SECONDS),
+            "swap": TimeSeries(HISTORY_SECONDS),
+        }
+
+        # для отображения подсказки
+        self.hover = None  # dict(series, idx, value, x, y, seconds_from_now)
+        self._last_mouse_xy = None
+
+        self.area = Gtk.DrawingArea()
+        # разрешаем события мыши
+        events = self.area.get_events()
+        self.area.set_events(events
+                             | Gdk.EventMask.POINTER_MOTION_MASK
+                             | Gdk.EventMask.LEAVE_NOTIFY_MASK
+                             | Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.area.connect("draw", self.on_draw)
+        self.area.connect("motion-notify-event", self.on_motion)
+        self.area.connect("leave-notify-event", self.on_leave)
+
+        self.add(self.area)
+
+        self._timer = GLib.timeout_add(GRAPH_REFRESH_MS, self._tick)
+        self.connect("delete-event", self._on_close)
+        self.show_all()
+
+    def _tick(self):
+        try:
+            self.area.queue_draw()
+        except Exception:
+            pass
+        return True
+
+    def _on_close(self, *_):
+        # Просто прячем окно; оставляем данные
+        if self._timer:
+            GLib.source_remove(self._timer)
+            self._timer = None
+        self.hide()
+        self._timer = GLib.timeout_add(GRAPH_REFRESH_MS, self._tick)
+        return True
+
+    def push_sample(self, cpu_temp, cpu_usage, ram_used, ram_total, swap_used, swap_total):
+        try:
+            ram_pct = (ram_used / max(1e-9, ram_total)) * 100.0
+            swap_pct = (swap_used / max(1e-9, swap_total)) * 100.0
+            self.series["cpu_temp"].add(cpu_temp or 0.0)
+            self.series["cpu_usage"].add(cpu_usage or 0.0)
+            self.series["ram"].add(ram_pct)
+            self.series["swap"].add(swap_pct)
+        except Exception as e:
+            print("push_sample error:", e)
+
+    # ===== Mouse handling =====
+    def on_motion(self, _widget, event):
+        self._last_mouse_xy = (event.x, event.y)
+        # Пересчитать попадание в ближайшую точку:
+        self._recompute_hover()
+        self.area.queue_draw()
+        return True
+
+    def on_leave(self, *_):
+        self._last_mouse_xy = None
+        self.hover = None
+        self.area.queue_draw()
+        return True
+
+    def _recompute_hover(self):
+        if not self._last_mouse_xy:
+            self.hover = None
+            return
+
+        x_mouse, y_mouse = self._last_mouse_xy
+        # Геометрия участка рисования — должна совпадать с on_draw
+        alloc = self.area.get_allocation()
+        W, H = float(alloc.width), float(alloc.height)
+        L, T, R, B = 50.0, 20.0, 15.0, 30.0
+        plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
+
+        # собрать все значения для авто-масштаба
+        all_vals = []
+        for s in self.series.values():
+            all_vals += s.values()
+        if not all_vals:
+            self.hover = None
+            return
+
+        ymin = min(all_vals)
+        ymax = max(all_vals)
+        if abs(ymax - ymin) < 1e-6:
+            ymin -= 1.0
+            ymax += 1.0
+        pad = 0.05 * (ymax - ymin)
+        ymin -= pad
+        ymax += pad
+
+        def xy_for(idx, val):
+            # x: равномерная сетка по секундам (последние HISTORY_SECONDS значений)
+            step = plot_w / max(1, HISTORY_SECONDS - 1)
+            x = L + idx * step
+            # y: масштабирование значений
+            y = T + (1.0 - (val - ymin) / (ymax - ymin)) * plot_h
+            return x, y
+
+        # ищем ближайшую точку среди всех серий
+        best = None
+        best_dist2 = (HOVER_RADIUS_PX + 1.0) ** 2  # квадрат расстояния
+        for key, ts in self.series.items():
+            vals = ts.values()[-HISTORY_SECONDS:]
+            for idx, v in enumerate(vals):
+                x, y = xy_for(idx, v)
+                # только внутри поля
+                if x < L or x > L + plot_w or y < T or y > T + plot_h:
+                    continue
+                dx = x - x_mouse
+                dy = y - y_mouse
+                d2 = dx*dx + dy*dy
+                if d2 <= best_dist2:
+                    best_dist2 = d2
+                    best = (key, idx, v, x, y, len(vals) - 1 - idx)  # seconds_from_now ~ индекс от конца
+
+        if best:
+            key, idx, v, x, y, sec_ago = best
+            self.hover = {
+                "series": key,
+                "idx": idx,
+                "value": v,
+                "x": x,
+                "y": y,
+                "sec_ago": sec_ago
+            }
+        else:
+            self.hover = None
+
+    # ===== Drawing =====
+    def on_draw(self, widget, cr):
+        alloc = widget.get_allocation()
+        W, H = float(alloc.width), float(alloc.height)
+        L, T, R, B = 50.0, 20.0, 15.0, 30.0
+
+        # фон
+        cr.set_source_rgb(0.1, 0.1, 0.12)
+        cr.rectangle(0, 0, W, H)
+        cr.fill()
+
+        # собрать данные
+        all_vals = []
+        for s in self.series.values():
+            all_vals += s.values()
+        if not all_vals:
+            return False
+
+        ymin = min(all_vals)
+        ymax = max(all_vals)
+        if abs(ymax - ymin) < 1e-6:
+            ymin -= 1.0
+            ymax += 1.0
+        pad = 0.05 * (ymax - ymin)
+        ymin -= pad
+        ymax += pad
+
+        plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
+
+        # сетка
+        cr.set_source_rgba(1, 1, 1, 0.08)
+        cr.set_line_width(1.0)
+        grid_lines = 5
+        for i in range(grid_lines + 1):
+            y = T + plot_h * (i / grid_lines)
+            cr.move_to(L, y)
+            cr.line_to(L + plot_w, y)
+            cr.stroke()
+
+        # оси
+        cr.set_source_rgba(1, 1, 1, 0.25)
+        cr.set_line_width(1.2)
+        cr.move_to(L, T)
+        cr.line_to(L, T + plot_h)
+        cr.stroke()
+        cr.move_to(L, T + plot_h)
+        cr.line_to(L + plot_w, T + plot_h)
+        cr.stroke()
+
+        # подписи Y
+        cr.select_font_face("Monospace", 0, 0)
+        cr.set_font_size(10)
+        labels = [ymin, (ymin + ymax) / 2.0, ymax]
+        for val in labels:
+            y = T + (1.0 - (val - ymin) / (ymax - ymin)) * plot_h
+            text = f"{val:.0f}"
+            cr.set_source_rgba(1, 1, 1, 0.7)
+            cr.move_to(6, y + 4)
+            cr.show_text(text)
+
+        def draw_series(vals, rgb_tuple):
+            if not vals:
+                return
+            step = plot_w / max(1, HISTORY_SECONDS - 1)
+            cr.set_source_rgba(*rgb_tuple, 0.95)
+            cr.set_line_width(1.8)
+            for idx, v in enumerate(vals[-HISTORY_SECONDS:]):
+                x = L + idx * step
+                y = T + (1.0 - (v - ymin) / (ymax - ymin)) * plot_h
+                if idx == 0:
+                    cr.move_to(x, y)
+                else:
+                    cr.line_to(x, y)
+            cr.stroke()
+
+        # линии
+        draw_series(self.series["cpu_temp"].values(), GRAPH_COLORS["cpu_temp"])
+        draw_series(self.series["cpu_usage"].values(), GRAPH_COLORS["cpu_usage"])
+        draw_series(self.series["ram"].values(),      GRAPH_COLORS["ram"])
+        draw_series(self.series["swap"].values(),     GRAPH_COLORS["swap"])
+
+        # легенда
+        legend_items = [
+            ("CPU (°C)", GRAPH_COLORS["cpu_temp"]),
+            ("CPU %", GRAPH_COLORS["cpu_usage"]),
+            ("RAM %", GRAPH_COLORS["ram"]),
+            ("SWAP %", GRAPH_COLORS["swap"]),
+        ]
+        x0, y0 = L + 8, T + 8
+        for i, (name, col) in enumerate(legend_items):
+            cr.set_source_rgba(*col, 0.95)
+            cr.rectangle(x0, y0 + i * 18 - 9, 14, 3)
+            cr.fill()
+            cr.set_source_rgba(1, 1, 1, 0.9)
+            cr.move_to(x0 + 20, y0 + i * 18)
+            cr.show_text(name)
+
+        # hover-подсказка
+        if self.hover:
+            s_key = self.hover["series"]
+            hx, hy = self.hover["x"], self.hover["y"]
+            val = self.hover["value"]
+            sec_ago = self.hover["sec_ago"]
+
+            # вертикальная направляющая
+            cr.set_source_rgba(1, 1, 1, 0.18)
+            cr.set_line_width(1.0)
+            cr.move_to(hx, T)
+            cr.line_to(hx, T + plot_h)
+            cr.stroke()
+
+            # маркер
+            col = GRAPH_COLORS.get(s_key, (1, 1, 1))
+            cr.set_source_rgba(*col, 1.0)
+            cr.arc(hx, hy, 3.5, 0, 6.28318)
+            cr.fill()
+
+            # текст подписи
+            # метка для серии и единицы измерения
+            series_name = {
+                "cpu_temp": "CPU temp",
+                "cpu_usage": "CPU",
+                "ram": "RAM",
+                "swap": "SWAP",
+            }.get(s_key, s_key)
+
+            unit = "°C" if s_key == "cpu_temp" else "%"
+            when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
+            text1 = f"{series_name}: {val:.1f}{unit}"
+            text2 = f"{when}"
+
+            # рисуем tooltip с подложкой
+            cr.select_font_face("Sans", 0, 0)
+            cr.set_font_size(11)
+
+            # измерим ширину текста приблизительно — через toy text API:
+            def text_extents(txt):
+                x_bearing, y_bearing, width, height, x_advance, y_advance = cr.text_extents(txt)
+                return width, height
+
+            w1, h1 = text_extents(text1)
+            w2, h2 = text_extents(text2)
+            pad = 6
+            box_w = max(w1, w2) + pad * 2
+            box_h = h1 + h2 + pad * 3
+
+            # позиционирование справа-сверху от точки, но внутри окна
+            bx = hx + 10
+            by = hy - (box_h + 10)
+            if bx + box_w > W - 10:
+                bx = hx - (box_w + 10)
+            if by < T + 5:
+                by = hy + 10
+
+            # фон/рамка
+            cr.set_source_rgba(0, 0, 0, 0.7)
+            cr.rectangle(bx, by, box_w, box_h)
+            cr.fill()
+
+            cr.set_source_rgba(1, 1, 1, 0.9)
+            cr.move_to(bx + pad, by + pad + h1)
+            cr.show_text(text1)
+            cr.move_to(bx + pad, by + pad*2 + h1 + h2)
+            cr.show_text(text2)
+
+        return False
 
 
 # ---------------------------
@@ -491,7 +837,7 @@ class PowerControl:
     def _destroy_current_dialog(self):
         if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
             self.current_dialog.destroy()
-        self.current_dialog = None
+            self.current_dialog = None
 
 
 # ---------------------------
@@ -744,6 +1090,7 @@ class SystemTrayApp:
         self.power_control.set_parent_window(None)
 
         # menu
+        self.graph_window = None
         self._build_menu()
 
         # net counters
@@ -770,7 +1117,6 @@ class SystemTrayApp:
                 print("Cannot create log file:", e)
 
         self.settings_dialog = None
-
 
     # ---- init helpers
     def _set_icon(self):
@@ -820,6 +1166,10 @@ class SystemTrayApp:
         self.ping_top_sep = Gtk.SeparatorMenuItem()
         self.ping_bottom_sep = Gtk.SeparatorMenuItem()
 
+        # graphs
+        self.graphs_item = Gtk.MenuItem(label=(tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs"))
+        self.graphs_item.connect("activate", self._open_graphs)
+
         # power block
         self.power_separator = Gtk.SeparatorMenuItem()
         self.power_off_item = Gtk.MenuItem(label=tr("power_off"))
@@ -855,6 +1205,9 @@ class SystemTrayApp:
         self.quit_item.connect("activate", self.quit)
 
         self._update_menu_visibility()
+
+        # вставляем графики
+        self.menu.append(self.graphs_item)
 
         if any(
             [
@@ -893,7 +1246,6 @@ class SystemTrayApp:
         """Смена языка: сохраняем и пересобираем меню с локализованными подписями."""
         global current_lang
         try:
-            # Обрабатываем только тот RadioItem, который стал активным
             if hasattr(widget, "get_active") and widget.get_active():
                 if lang_code != current_lang:
                     current_lang = lang_code
@@ -912,6 +1264,7 @@ class SystemTrayApp:
             getattr(self, "language_menu_item", None),
             getattr(self, "settings_item", None),
             getattr(self, "quit_item", None),
+            getattr(self, "graphs_item", None),
         ]
         if getattr(self, "ping_item", None) and self.visibility_settings.get("ping_network", True):
             keep.extend([self.ping_item, getattr(self, "ping_top_sep", None), getattr(self, "ping_bottom_sep", None)])
@@ -924,7 +1277,7 @@ class SystemTrayApp:
                 except Exception:
                     pass
 
-        # prepend in reverse order to keep desired order
+        # prepend в обратном порядке
         def maybe_prepend(flag_key, item):
             if self.visibility_settings.get(flag_key, True):
                 self.menu.prepend(item)
@@ -939,6 +1292,17 @@ class SystemTrayApp:
         maybe_prepend("cpu", self.cpu_temp_item)
 
         self.menu.show_all()
+
+    def _open_graphs(self, *_):
+        try:
+            if self.graph_window and self.graph_window.get_visible():
+                self.graph_window.present()
+                return
+            if not self.graph_window:
+                self.graph_window = GraphWindow(self)
+            self.graph_window.show_all()
+        except Exception as e:
+            print("open_graphs error:", e)
 
     # ---- actions
     def _on_key_press(self, _key):
@@ -1050,6 +1414,13 @@ class SystemTrayApp:
             swap_used, swap_total = SystemUsage.get_swap_usage()
             net_recv_speed, net_sent_speed = SystemUsage.get_network_speed(self.prev_net_data)
             uptime = SystemUsage.get_uptime()
+
+            # push to graphs
+            if getattr(self, "graph_window", None):
+                try:
+                    self.graph_window.push_sample(cpu_temp, cpu_usage, ram_used, ram_total, swap_used, swap_total)
+                except Exception as e:
+                    print("graph push error:", e)
 
             self._update_ui(
                 cpu_temp, cpu_usage,
@@ -1206,6 +1577,13 @@ class SystemTrayApp:
         if self.settings_dialog is not None:
             self.settings_dialog.destroy()
             self.settings_dialog = None
+        # graph window
+        if getattr(self, "graph_window", None):
+            try:
+                self.graph_window.destroy()
+            except Exception:
+                pass
+            self.graph_window = None
         # hooks
         try:
             if self.keyboard_listener:
