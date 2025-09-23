@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-SyMo — System Monitor (Tray) • graphs with hover tooltips
+SyMo — System Monitor (Tray) • graphs with left legend & hover info shifted by LEGEND_W
 - Realtime Cairo-графики: cpu_temp, cpu_usage, ram%, swap%
-- Наведение мышью: подсказка по ближайшей точке серии (маркер, гайдлайн, tooltip)
+- Легенда вынесена влево (отдельная колонка шириной LEGEND_W)
+- Наведение: маркер+гайдлайн на графике, а текстовая информация показывается в левой колонке (сдвиг на LEGEND_W)
 - Пункт меню "Graphs" открывает окно графиков
 """
 
@@ -48,15 +49,16 @@ DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json"
 TIME_UPDATE_SECONDS = 1
 
 # ===== Graph settings =====
-HISTORY_SECONDS = 300   # храним ~5 минут истории (1 точка/сек)
-GRAPH_REFRESH_MS = 500  # перерисовка окна графиков (мс)
+HISTORY_SECONDS = 300    # ~5 минут истории (1 точка/сек)
+GRAPH_REFRESH_MS = 500   # перерисовка окна графиков (мс)
+LEGEND_W = 60.0         # Ширина левой колонки под легенду инфо
 GRAPH_COLORS = {
     "cpu_temp": (0.93, 0.36, 0.36),   # RGB 0..1
     "cpu_usage": (0.23, 0.62, 0.95),
     "ram":      (0.31, 0.78, 0.47),
     "swap":     (0.60, 0.49, 0.80),
 }
-HOVER_RADIUS_PX = 8.0   # радиус попадания курсора для подсветки точки
+HOVER_RADIUS_PX = 8.0    # радиус попадания курсора для подсветки точки
 
 DEFAULT_VISIBILITY = {
     "cpu": True,
@@ -188,10 +190,10 @@ class SystemUsage:
 
 
 # ---------------------------
-# Graph window (realtime with hover)
+# Graph window (left legend + hover info in legend)
 # ---------------------------
 class TimeSeries:
-    """Простой буфер фиксированной длины (в точках). По 1 точке/сек держим HISTORY_SECONDS секунд."""
+    """Буфер фиксированной длины (в точках). По 1 точке/сек держим HISTORY_SECONDS секунд."""
     def __init__(self, capacity: int):
         self.capacity = max(1, int(capacity))
         self.data = deque(maxlen=self.capacity)
@@ -211,12 +213,12 @@ class TimeSeries:
 
 class GraphWindow(Gtk.Window):
     """
-    Окно с realtime-графиком 4 рядов:
+    График 4 рядов:
       - cpu_temp (°C)
       - cpu_usage (%)
       - ram_usage (%)
       - swap_usage (%)
-    Сетка, легенда, авто-масштаб по Y, hover-подсказки.
+    Сетка, легенда слева, авто-масштаб по Y, hover-подсказки выводятся в левой колонке.
     """
     def __init__(self, app: "SystemTrayApp"):
         super().__init__(title=tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs")
@@ -235,12 +237,11 @@ class GraphWindow(Gtk.Window):
             "swap": TimeSeries(HISTORY_SECONDS),
         }
 
-        # для отображения подсказки
-        self.hover = None  # dict(series, idx, value, x, y, seconds_from_now)
+        # состояние наведения
+        self.hover = None  # dict(series, idx, value, x, y, sec_ago)
         self._last_mouse_xy = None
 
         self.area = Gtk.DrawingArea()
-        # разрешаем события мыши
         events = self.area.get_events()
         self.area.set_events(events
                              | Gdk.EventMask.POINTER_MOTION_MASK
@@ -264,7 +265,6 @@ class GraphWindow(Gtk.Window):
         return True
 
     def _on_close(self, *_):
-        # Просто прячем окно; оставляем данные
         if self._timer:
             GLib.source_remove(self._timer)
             self._timer = None
@@ -286,7 +286,6 @@ class GraphWindow(Gtk.Window):
     # ===== Mouse handling =====
     def on_motion(self, _widget, event):
         self._last_mouse_xy = (event.x, event.y)
-        # Пересчитать попадание в ближайшую точку:
         self._recompute_hover()
         self.area.queue_draw()
         return True
@@ -303,13 +302,14 @@ class GraphWindow(Gtk.Window):
             return
 
         x_mouse, y_mouse = self._last_mouse_xy
-        # Геометрия участка рисования — должна совпадать с on_draw
+        # Геометрия должна совпадать с on_draw
         alloc = self.area.get_allocation()
         W, H = float(alloc.width), float(alloc.height)
-        L, T, R, B = 50.0, 20.0, 15.0, 30.0
+        # Отступы: слева выделена зона легенды шириной LEGEND_W
+        L, T, R, B = 50.0 + LEGEND_W, 20.0, 15.0, 30.0
         plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
 
-        # собрать все значения для авто-масштаба
+        # соберём значения
         all_vals = []
         for s in self.series.values():
             all_vals += s.values()
@@ -327,21 +327,18 @@ class GraphWindow(Gtk.Window):
         ymax += pad
 
         def xy_for(idx, val):
-            # x: равномерная сетка по секундам (последние HISTORY_SECONDS значений)
             step = plot_w / max(1, HISTORY_SECONDS - 1)
             x = L + idx * step
-            # y: масштабирование значений
             y = T + (1.0 - (val - ymin) / (ymax - ymin)) * plot_h
             return x, y
 
-        # ищем ближайшую точку среди всех серий
+        # ищем ближайшую точку к курсору во всех сериях
         best = None
-        best_dist2 = (HOVER_RADIUS_PX + 1.0) ** 2  # квадрат расстояния
+        best_dist2 = (HOVER_RADIUS_PX + 1.0) ** 2
         for key, ts in self.series.items():
             vals = ts.values()[-HISTORY_SECONDS:]
             for idx, v in enumerate(vals):
                 x, y = xy_for(idx, v)
-                # только внутри поля
                 if x < L or x > L + plot_w or y < T or y > T + plot_h:
                     continue
                 dx = x - x_mouse
@@ -349,7 +346,7 @@ class GraphWindow(Gtk.Window):
                 d2 = dx*dx + dy*dy
                 if d2 <= best_dist2:
                     best_dist2 = d2
-                    best = (key, idx, v, x, y, len(vals) - 1 - idx)  # seconds_from_now ~ индекс от конца
+                    best = (key, idx, v, x, y, len(vals) - 1 - idx)  # sec_ago
 
         if best:
             key, idx, v, x, y, sec_ago = best
@@ -368,14 +365,28 @@ class GraphWindow(Gtk.Window):
     def on_draw(self, widget, cr):
         alloc = widget.get_allocation()
         W, H = float(alloc.width), float(alloc.height)
-        L, T, R, B = 50.0, 20.0, 15.0, 30.0
+
+        # ЛЕВАЯ КОЛОНКА ПОД ЛЕГЕНДУ
+        legend_x = 0.0
+        legend_y = 0.0
+        legend_w = LEGEND_W
+        legend_h = H
+
+        # Область графика
+        L, T, R, B = 50.0 + LEGEND_W, 20.0, 15.0, 30.0
+        plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
 
         # фон
         cr.set_source_rgb(0.1, 0.1, 0.12)
         cr.rectangle(0, 0, W, H)
         cr.fill()
 
-        # собрать данные
+        # # тёмная подложка для легенды (слегка светлее/темнее)
+        # cr.set_source_rgb(0.09, 0.09, 0.11)
+        # cr.rectangle(legend_x, legend_y, legend_w, legend_h)
+        # cr.fill()
+
+        # собрать данные для масштаба
         all_vals = []
         for s in self.series.values():
             all_vals += s.values()
@@ -390,8 +401,6 @@ class GraphWindow(Gtk.Window):
         pad = 0.05 * (ymax - ymin)
         ymin -= pad
         ymax += pad
-
-        plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
 
         # сетка
         cr.set_source_rgba(1, 1, 1, 0.08)
@@ -413,17 +422,17 @@ class GraphWindow(Gtk.Window):
         cr.line_to(L + plot_w, T + plot_h)
         cr.stroke()
 
-        # подписи Y
+        # подписи Y (слева от графика, но справа от легенды)
         cr.select_font_face("Monospace", 0, 0)
         cr.set_font_size(10)
-        labels = [ymin, (ymin + ymax) / 2.0, ymax]
-        for val in labels:
+        for val in [ymin, (ymin + ymax) / 2.0, ymax]:
             y = T + (1.0 - (val - ymin) / (ymax - ymin)) * plot_h
             text = f"{val:.0f}"
             cr.set_source_rgba(1, 1, 1, 0.7)
-            cr.move_to(6, y + 4)
+            cr.move_to(L - 20, y + 4)
             cr.show_text(text)
 
+        # линии
         def draw_series(vals, rgb_tuple):
             if not vals:
                 return
@@ -439,36 +448,17 @@ class GraphWindow(Gtk.Window):
                     cr.line_to(x, y)
             cr.stroke()
 
-        # линии
         draw_series(self.series["cpu_temp"].values(), GRAPH_COLORS["cpu_temp"])
         draw_series(self.series["cpu_usage"].values(), GRAPH_COLORS["cpu_usage"])
         draw_series(self.series["ram"].values(),      GRAPH_COLORS["ram"])
         draw_series(self.series["swap"].values(),     GRAPH_COLORS["swap"])
 
-        # легенда
-        legend_items = [
-            ("CPU (°C)", GRAPH_COLORS["cpu_temp"]),
-            ("CPU %", GRAPH_COLORS["cpu_usage"]),
-            ("RAM %", GRAPH_COLORS["ram"]),
-            ("SWAP %", GRAPH_COLORS["swap"]),
-        ]
-        x0, y0 = L + 8, T + 8
-        for i, (name, col) in enumerate(legend_items):
-            cr.set_source_rgba(*col, 0.95)
-            cr.rectangle(x0, y0 + i * 18 - 9, 14, 3)
-            cr.fill()
-            cr.set_source_rgba(1, 1, 1, 0.9)
-            cr.move_to(x0 + 20, y0 + i * 18)
-            cr.show_text(name)
-
-        # hover-подсказка
+        # вертикальная направляющая и маркер, если наведено
         if self.hover:
-            s_key = self.hover["series"]
             hx, hy = self.hover["x"], self.hover["y"]
-            val = self.hover["value"]
-            sec_ago = self.hover["sec_ago"]
+            s_key = self.hover["series"]
 
-            # вертикальная направляющая
+            # гайдлайн
             cr.set_source_rgba(1, 1, 1, 0.18)
             cr.set_line_width(1.0)
             cr.move_to(hx, T)
@@ -481,53 +471,49 @@ class GraphWindow(Gtk.Window):
             cr.arc(hx, hy, 3.5, 0, 6.28318)
             cr.fill()
 
-            # текст подписи
-            # метка для серии и единицы измерения
-            series_name = {
-                "cpu_temp": "CPU temp",
-                "cpu_usage": "CPU",
-                "ram": "RAM",
-                "swap": "SWAP",
-            }.get(s_key, s_key)
+        # ЛЕГЕНДА СЛЕВА (и hover-информация тут же)
+        legend_items = [
+            ("CPU (°C)", GRAPH_COLORS["cpu_temp"], "cpu_temp", "°C"),
+            ("CPU %",    GRAPH_COLORS["cpu_usage"], "cpu_usage", "%"),
+            ("RAM %",    GRAPH_COLORS["ram"],       "ram", "%"),
+            ("SWAP %",   GRAPH_COLORS["swap"],      "swap", "%"),
+        ]
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(11)
+        base_x = 12.0
+        base_y = T + 20.0
+        row_h  = 22.0
 
-            unit = "°C" if s_key == "cpu_temp" else "%"
-            when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
-            text1 = f"{series_name}: {val:.1f}{unit}"
-            text2 = f"{when}"
+        # рисуем элементы
+        for i, (name, col, key, unit) in enumerate(legend_items):
+            y = base_y + i * row_h
 
-            # рисуем tooltip с подложкой
-            cr.select_font_face("Sans", 0, 0)
-            cr.set_font_size(11)
-
-            # измерим ширину текста приблизительно — через toy text API:
-            def text_extents(txt):
-                x_bearing, y_bearing, width, height, x_advance, y_advance = cr.text_extents(txt)
-                return width, height
-
-            w1, h1 = text_extents(text1)
-            w2, h2 = text_extents(text2)
-            pad = 6
-            box_w = max(w1, w2) + pad * 2
-            box_h = h1 + h2 + pad * 3
-
-            # позиционирование справа-сверху от точки, но внутри окна
-            bx = hx + 10
-            by = hy - (box_h + 10)
-            if bx + box_w > W - 10:
-                bx = hx - (box_w + 10)
-            if by < T + 5:
-                by = hy + 10
-
-            # фон/рамка
-            cr.set_source_rgba(0, 0, 0, 0.7)
-            cr.rectangle(bx, by, box_w, box_h)
+            # цветной квадратик
+            cr.set_source_rgba(*col, 0.95)
+            cr.rectangle(base_x, y - 9, 14, 14)
             cr.fill()
 
+            # подпись слева
             cr.set_source_rgba(1, 1, 1, 0.9)
-            cr.move_to(bx + pad, by + pad + h1)
-            cr.show_text(text1)
-            cr.move_to(bx + pad, by + pad*2 + h1 + h2)
-            cr.show_text(text2)
+            cr.move_to(base_x + 20, y + 2)
+            cr.show_text(name)
+
+            # если наведено на эту серию — справа от имени показываем значение и «когда»
+            if self.hover and self.hover["series"] == key:
+                val = self.hover["value"]
+                sec_ago = self.hover["sec_ago"]
+                when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
+                info = f"{val:.1f}{unit}  •  {when}"
+                # правее имени, но в пределах legend_w
+                cr.set_source_rgba(1, 1, 1, 0.75)
+                # вычислим x-координату так, чтобы не наезжать на край
+                # немного сдвинем вправо от имени
+                cr.move_to(base_x + 20 + 90, y + 2)  # грубая позиция
+                # Если хотите точнее — можно измерять ширину имени и от неё плясать
+
+                # Но лучше: рисовать во втором столбце легенды, выровняв по левому краю:
+                # Для этого вычислим x2 как base_x + LEGEND_W - margin_right - текст_ширина (но toy API проще оставить так).
+                cr.show_text(info)
 
         return False
 
@@ -837,7 +823,7 @@ class PowerControl:
     def _destroy_current_dialog(self):
         if self.current_dialog and isinstance(self.current_dialog, Gtk.Widget):
             self.current_dialog.destroy()
-            self.current_dialog = None
+        self.current_dialog = None
 
 
 # ---------------------------
