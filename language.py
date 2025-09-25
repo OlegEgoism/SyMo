@@ -79,6 +79,8 @@ LANGUAGES = {
         'ping_running': 'Выполняется проверка сети…',
         'ping_done': 'Проверка завершена для',
         'ping_error': 'Ошибка при выполнении ping',
+
+        'graphs': 'График',
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -160,6 +162,8 @@ LANGUAGES = {
         'ping_running': 'Running network check…',
         'ping_done': 'Ping finished for',
         'ping_error': 'Error running ping',
+
+        'graphs': 'Graphs',
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -241,6 +245,8 @@ LANGUAGES = {
         'ping_running': '正在进行网络测试…',
         'ping_done': '已完成测试：',
         'ping_error': '执行 ping 时出错',
+
+        'graphs': '图表',
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -323,6 +329,8 @@ LANGUAGES = {
         'ping_running': 'Netzwerkprüfung läuft…',
         'ping_done': 'Prüfung abgeschlossen für',
         'ping_error': 'Fehler beim Ausführen von Ping',
+
+        'graphs': 'Diagramme',
     },
     'it': {
         'cpu_tray': "CPU in tray",
@@ -404,6 +412,8 @@ LANGUAGES = {
         'ping_running': 'Verifica della rete in corso…',
         'ping_done': 'Verifica completata per',
         'ping_error': 'Errore durante l\'esecuzione di ping',
+
+        'graphs': 'Grafici',
     },
     'es': {
         'cpu_tray': "CPU en bandeja",
@@ -485,6 +495,8 @@ LANGUAGES = {
         'ping_running': 'Comprobando la red…',
         'ping_done': 'Comprobación finalizada para',
         'ping_error': 'Error al ejecutar ping',
+
+        'graphs': 'Gráficos',
     },
     'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
@@ -542,7 +554,7 @@ LANGUAGES = {
         'discord_notification': 'Discord Bildirimleri',
         'webhook_url': 'Webhook URL',
         'check_discord': 'Kontrol et',
-        'webhook_required': 'Discord webhook URL\'sini girin.',
+        'webhook_required': 'Discord webhook URL sini girin.',
         'setting_discord_error': 'Discord ayarları kaydedilirken hata.',
 
         'system_status': 'Sistem Durumu',
@@ -566,6 +578,8 @@ LANGUAGES = {
         'ping_running': 'Ağ kontrolü yapılıyor…',
         'ping_done': 'Kontrol tamamlandı:',
         'ping_error': 'Ping çalıştırılırken hata oluştu',
+
+        'graphs': 'Grafikler',
     },
     'fr': {
         'cpu_tray': "CPU dans la barre",
@@ -623,7 +637,7 @@ LANGUAGES = {
         'discord_notification': 'Notifications Discord',
         'webhook_url': 'URL Webhook',
         'check_discord': 'Vérifier',
-        'webhook_required': 'Entrez l\'URL webhook Discord.',
+        'webhook_required': 'Entrez URL webhook Discord.',
         'setting_discord_error': 'Erreur de sauvegarde des paramètres Discord.',
 
         'system_status': 'Sistem Durumu',
@@ -646,6 +660,8 @@ LANGUAGES = {
         'ping_network': 'Vérifier le réseau (ping)',
         'ping_running': 'Vérification du réseau en cours…',
         'ping_done': 'Vérification terminée pour',
-        'ping_error': 'Erreur lors de l\'exécution du ping',
+        'ping_error': 'Erreur lors de exécution du ping',
+
+        'graphs': 'Graphiques',
     }
 }

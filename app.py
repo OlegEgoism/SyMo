@@ -49,16 +49,16 @@ DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json"
 TIME_UPDATE_SECONDS = 1
 
 # ===== Graph settings =====
-HISTORY_SECONDS = 300    # ~5 минут истории (1 точка/сек)
-GRAPH_REFRESH_MS = 500   # перерисовка окна графиков (мс)
-LEGEND_W = 60.0         # Ширина левой колонки под легенду инфо
+HISTORY_SECONDS = 300  # ~5 минут истории (1 точка/сек)
+GRAPH_REFRESH_MS = 500  # перерисовка окна графиков (мс)
+LEGEND_W = 60.0  # Ширина левой колонки под легенду инфо
 GRAPH_COLORS = {
-    "cpu_temp": (0.93, 0.36, 0.36),   # RGB 0..1
+    "cpu_temp": (0.93, 0.36, 0.36),  # RGB 0..1
     "cpu_usage": (0.23, 0.62, 0.95),
-    "ram":      (0.31, 0.78, 0.47),
-    "swap":     (0.60, 0.49, 0.80),
+    "ram": (0.31, 0.78, 0.47),
+    "swap": (0.60, 0.49, 0.80),
 }
-HOVER_RADIUS_PX = 8.0    # радиус попадания курсора для подсветки точки
+HOVER_RADIUS_PX = 8.0  # радиус попадания курсора для подсветки точки
 
 DEFAULT_VISIBILITY = {
     "cpu": True,
@@ -194,6 +194,7 @@ class SystemUsage:
 # ---------------------------
 class TimeSeries:
     """Буфер фиксированной длины (в точках). По 1 точке/сек держим HISTORY_SECONDS секунд."""
+
     def __init__(self, capacity: int):
         self.capacity = max(1, int(capacity))
         self.data = deque(maxlen=self.capacity)
@@ -220,6 +221,7 @@ class GraphWindow(Gtk.Window):
       - swap_usage (%)
     Сетка, легенда слева, авто-масштаб по Y, hover-подсказки выводятся в левой колонке.
     """
+
     def __init__(self, app: "SystemTrayApp"):
         super().__init__(title=tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs")
         self.set_default_size(900, 360)
@@ -343,7 +345,7 @@ class GraphWindow(Gtk.Window):
                     continue
                 dx = x - x_mouse
                 dy = y - y_mouse
-                d2 = dx*dx + dy*dy
+                d2 = dx * dx + dy * dy
                 if d2 <= best_dist2:
                     best_dist2 = d2
                     best = (key, idx, v, x, y, len(vals) - 1 - idx)  # sec_ago
@@ -450,8 +452,8 @@ class GraphWindow(Gtk.Window):
 
         draw_series(self.series["cpu_temp"].values(), GRAPH_COLORS["cpu_temp"])
         draw_series(self.series["cpu_usage"].values(), GRAPH_COLORS["cpu_usage"])
-        draw_series(self.series["ram"].values(),      GRAPH_COLORS["ram"])
-        draw_series(self.series["swap"].values(),     GRAPH_COLORS["swap"])
+        draw_series(self.series["ram"].values(), GRAPH_COLORS["ram"])
+        draw_series(self.series["swap"].values(), GRAPH_COLORS["swap"])
 
         # вертикальная направляющая и маркер, если наведено
         if self.hover:
@@ -474,47 +476,49 @@ class GraphWindow(Gtk.Window):
         # ЛЕГЕНДА СЛЕВА (и hover-информация тут же)
         legend_items = [
             ("CPU (°C)", GRAPH_COLORS["cpu_temp"], "cpu_temp", "°C"),
-            ("CPU %",    GRAPH_COLORS["cpu_usage"], "cpu_usage", "%"),
-            ("RAM %",    GRAPH_COLORS["ram"],       "ram", "%"),
-            ("SWAP %",   GRAPH_COLORS["swap"],      "swap", "%"),
+            ("CPU %", GRAPH_COLORS["cpu_usage"], "cpu_usage", "%"),
+            ("RAM %", GRAPH_COLORS["ram"], "ram", "%"),
+            ("SWAP %", GRAPH_COLORS["swap"], "swap", "%"),
         ]
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(11)
         base_x = 12.0
         base_y = T + 20.0
-        row_h  = 22.0
-
-        # рисуем элементы
+        row_h = 22.0
+        # рисуем только цветные квадратики и названия
         for i, (name, col, key, unit) in enumerate(legend_items):
             y = base_y + i * row_h
-
             # цветной квадратик
             cr.set_source_rgba(*col, 0.95)
             cr.rectangle(base_x, y - 9, 14, 14)
             cr.fill()
-
             # подпись слева
             cr.set_source_rgba(1, 1, 1, 0.9)
             cr.move_to(base_x + 20, y + 2)
             cr.show_text(name)
 
-            # если наведено на эту серию — справа от имени показываем значение и «когда»
-            if self.hover and self.hover["series"] == key:
-                val = self.hover["value"]
-                sec_ago = self.hover["sec_ago"]
-                when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
-                info = f"{val:.1f}{unit}  •  {when}"
-                # правее имени, но в пределах legend_w
-                cr.set_source_rgba(1, 1, 1, 0.75)
-                # вычислим x-координату так, чтобы не наезжать на край
-                # немного сдвинем вправо от имени
-                cr.move_to(base_x + 20 + 90, y + 2)  # грубая позиция
-                # Если хотите точнее — можно измерять ширину имени и от неё плясать
+        # === HOVER INFO В НИЗУ ГРАФИКА ===
+        if self.hover:
+            hx, hy = self.hover["x"], self.hover["y"]
+            s_key = self.hover["series"]
+            val = self.hover["value"]
+            sec_ago = self.hover["sec_ago"]
+            when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
+            unit = {"cpu_temp": "°C", "cpu_usage": "%", "ram": "%", "swap": "%"}.get(s_key, "")
+            info_text = f"{val:.0f}{unit} • {when}"
 
-                # Но лучше: рисовать во втором столбце легенды, выровняв по левому краю:
-                # Для этого вычислим x2 как base_x + LEGEND_W - margin_right - текст_ширина (но toy API проще оставить так).
-                cr.show_text(info)
+            # Позиция: центр под графиком
+            text_extents = cr.text_extents(info_text)
+            text_width = text_extents.width
+            text_height = text_extents.height
 
+            # Центрируем текст по X относительно всей ширины окна
+            text_x = (W - text_width) / 2
+            text_y = H - B / 2  # чуть выше нижнего края
+
+            cr.set_source_rgba(1, 1, 1, 0.85)
+            cr.move_to(text_x, text_y)
+            cr.show_text(info_text)
         return False
 
 
@@ -695,10 +699,10 @@ class PowerControl:
 
     def _lock_screen(self):
         for c in (
-            "loginctl lock-session",
-            "gnome-screensaver-command -l",
-            "xdg-screensaver lock",
-            "dm-tool lock",
+                "loginctl lock-session",
+                "gnome-screensaver-command -l",
+                "xdg-screensaver lock",
+                "dm-tool lock",
         ):
             if os.system(c) == 0:
                 return
@@ -715,7 +719,8 @@ class PowerControl:
 
         # time
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        lbl_time = Gtk.Label(label=tr("minutes")); lbl_time.set_xalign(0)
+        lbl_time = Gtk.Label(label=tr("minutes"));
+        lbl_time.set_xalign(0)
         sp = Gtk.SpinButton.new_with_range(1, 1440, 1)
         sp.set_value(1)
         time_box.pack_start(lbl_time, True, True, 0)
@@ -723,7 +728,8 @@ class PowerControl:
 
         # action
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        lbl_act = Gtk.Label(label=tr("action")); lbl_act.set_xalign(0)
+        lbl_act = Gtk.Label(label=tr("action"));
+        lbl_act.set_xalign(0)
         combo = Gtk.ComboBoxText()
         combo.append(Action.POWER_OFF.value, action_label(Action.POWER_OFF))
         combo.append(Action.REBOOT.value, action_label(Action.REBOOT))
@@ -890,7 +896,8 @@ class SettingsDialog(Gtk.Dialog):
         box.add(logging_box)
 
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        logsize_label = Gtk.Label(label=tr("max_log_size_mb")); logsize_label.set_xalign(0)
+        logsize_label = Gtk.Label(label=tr("max_log_size_mb"));
+        logsize_label.set_xalign(0)
         self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
         self.logsize_spin.set_value(int(self.visibility_settings.get("max_log_mb", 1000)))
         logsize_box.pack_start(logsize_label, False, False, 0)
@@ -913,11 +920,15 @@ class SettingsDialog(Gtk.Dialog):
         self.chat_id_entry = self._secret_entry(box, tr("id_chat"), "123456789")
 
         interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        interval_label = Gtk.Label(label=tr("time_send")); interval_label.set_xalign(0)
-        self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1); self.interval_spin.set_value(3600)
+        interval_label = Gtk.Label(label=tr("time_send"));
+        interval_label.set_xalign(0)
+        self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1);
+        self.interval_spin.set_value(3600)
         interval_box.pack_start(interval_label, False, False, 0)
         interval_box.pack_start(self.interval_spin, True, True, 0)
-        interval_box.set_margin_top(3); interval_box.set_margin_bottom(3); interval_box.set_margin_end(50)
+        interval_box.set_margin_top(3);
+        interval_box.set_margin_bottom(3);
+        interval_box.set_margin_end(50)
         box.add(interval_box)
 
         # Discord
@@ -933,11 +944,15 @@ class SettingsDialog(Gtk.Dialog):
         self.webhook_entry = self._secret_entry(box, tr("webhook_url"), "https://discord.com/api/webhooks/...")
 
         disc_int_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        disc_int_label = Gtk.Label(label=tr("time_send")); disc_int_label.set_xalign(0)
-        self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1); self.discord_interval_spin.set_value(3600)
+        disc_int_label = Gtk.Label(label=tr("time_send"));
+        disc_int_label.set_xalign(0)
+        self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1);
+        self.discord_interval_spin.set_value(3600)
         disc_int_box.pack_start(disc_int_label, False, False, 0)
         disc_int_box.pack_start(self.discord_interval_spin, True, True, 0)
-        disc_int_box.set_margin_top(3); disc_int_box.set_margin_bottom(30); disc_int_box.set_margin_end(50)
+        disc_int_box.set_margin_top(3);
+        disc_int_box.set_margin_bottom(30);
+        disc_int_box.set_margin_end(50)
         box.add(disc_int_box)
 
         # preload configs
@@ -982,11 +997,15 @@ class SettingsDialog(Gtk.Dialog):
 
     def _secret_entry(self, box, label, placeholder):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        lbl = Gtk.Label(label=label); lbl.set_xalign(0)
-        entry = Gtk.Entry(); entry.set_placeholder_text(placeholder); entry.set_visibility(False)
+        lbl = Gtk.Label(label=label);
+        lbl.set_xalign(0)
+        entry = Gtk.Entry();
+        entry.set_placeholder_text(placeholder);
+        entry.set_visibility(False)
         row.pack_start(lbl, False, False, 0)
         row.pack_start(entry, True, True, 0)
-        toggle = Gtk.ToggleButton(label="👁"); toggle.set_relief(Gtk.ReliefStyle.NONE)
+        toggle = Gtk.ToggleButton(label="👁");
+        toggle.set_relief(Gtk.ReliefStyle.NONE)
         toggle.connect("toggled", lambda btn: entry.set_visibility(btn.get_active()))
         row.pack_end(toggle, False, False, 0)
         box.add(row)
@@ -1196,12 +1215,12 @@ class SystemTrayApp:
         self.menu.append(self.graphs_item)
 
         if any(
-            [
-                self.visibility_settings.get("show_power_off", True),
-                self.visibility_settings.get("show_reboot", True),
-                self.visibility_settings.get("show_lock", True),
-                self.visibility_settings.get("show_timer", True),
-            ]
+                [
+                    self.visibility_settings.get("show_power_off", True),
+                    self.visibility_settings.get("show_reboot", True),
+                    self.visibility_settings.get("show_lock", True),
+                    self.visibility_settings.get("show_timer", True),
+                ]
         ):
             self.menu.append(self.power_separator)
             if self.visibility_settings.get("show_power_off", True):
@@ -1357,10 +1376,10 @@ class SystemTrayApp:
                 # notifiers
                 tel_enabled_before = self.telegram_notifier.enabled
                 if self.telegram_notifier.save_config(
-                    dlg.token_entry.get_text().strip(),
-                    dlg.chat_id_entry.get_text().strip(),
-                    dlg.telegram_enable_check.get_active(),
-                    int(dlg.interval_spin.get_value()),
+                        dlg.token_entry.get_text().strip(),
+                        dlg.chat_id_entry.get_text().strip(),
+                        dlg.telegram_enable_check.get_active(),
+                        int(dlg.interval_spin.get_value()),
                 ):
                     self.telegram_notifier.load_config()
                     if self.telegram_notifier.enabled and not tel_enabled_before:
@@ -1368,9 +1387,9 @@ class SystemTrayApp:
 
                 disc_enabled_before = self.discord_notifier.enabled
                 if self.discord_notifier.save_config(
-                    dlg.webhook_entry.get_text().strip(),
-                    dlg.discord_enable_check.get_active(),
-                    int(dlg.discord_interval_spin.get_value()),
+                        dlg.webhook_entry.get_text().strip(),
+                        dlg.discord_enable_check.get_active(),
+                        int(dlg.discord_interval_spin.get_value()),
                 ):
                     self.discord_notifier.load_config()
                     if self.discord_notifier.enabled and not disc_enabled_before:
