@@ -485,21 +485,17 @@ class GraphWindow(Gtk.Window):
         base_x = 12.0
         base_y = T + 20.0
         row_h = 22.0
-        # рисуем только цветные квадратики и названия
         for i, (name, col, key, unit) in enumerate(legend_items):
             y = base_y + i * row_h
             # цветной квадратик
             cr.set_source_rgba(*col, 0.95)
             cr.rectangle(base_x, y - 9, 14, 14)
             cr.fill()
-            # подпись слева
             cr.set_source_rgba(1, 1, 1, 0.9)
             cr.move_to(base_x + 20, y + 2)
             cr.show_text(name)
 
-        # === HOVER INFO В НИЗУ ГРАФИКА ===
         if self.hover:
-            hx, hy = self.hover["x"], self.hover["y"]
             s_key = self.hover["series"]
             val = self.hover["value"]
             sec_ago = self.hover["sec_ago"]
@@ -507,14 +503,13 @@ class GraphWindow(Gtk.Window):
             unit = {"cpu_temp": "°C", "cpu_usage": "%", "ram": "%", "swap": "%"}.get(s_key, "")
             info_text = f"{val:.0f}{unit} • {when}"
 
-            # Позиция: центр под графиком
+            cr.set_font_size(14)  # увеличенный размер текста
             text_extents = cr.text_extents(info_text)
             text_width = text_extents.width
             text_height = text_extents.height
 
-            # Центрируем текст по X относительно всей ширины окна
             text_x = (W - text_width) / 2
-            text_y = H - B / 2  # чуть выше нижнего края
+            text_y = H - B / 2
 
             cr.set_source_rgba(1, 1, 1, 0.85)
             cr.move_to(text_x, text_y)
