@@ -77,6 +77,7 @@ DEFAULT_VISIBILITY = {
     "show_reboot": True,
     "show_lock": True,
     "show_timer": True,
+    "show_graphs": True,
     "max_log_mb": 5,
     "ping_network": True,
 }
@@ -259,6 +260,10 @@ class GraphWindow(Gtk.Window):
         self.connect("delete-event", self._on_close)
         self.show_all()
 
+    def update_title(self):
+        """Обновляет заголовок окна в соответствии с текущим языком."""
+        self.set_title(tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs")
+
     def _tick(self):
         try:
             self.area.queue_draw()
@@ -308,7 +313,7 @@ class GraphWindow(Gtk.Window):
         alloc = self.area.get_allocation()
         W, H = float(alloc.width), float(alloc.height)
         # Отступы: слева выделена зона легенды шириной LEGEND_W
-        L, T, R, B = 50.0 + LEGEND_W, 20.0, 15.0, 30.0
+        L, T, R, B = 80.0 + LEGEND_W, 20.0, 15.0, 30.0
         plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
 
         # соберём значения
@@ -375,18 +380,13 @@ class GraphWindow(Gtk.Window):
         legend_h = H
 
         # Область графика
-        L, T, R, B = 50.0 + LEGEND_W, 20.0, 15.0, 30.0
+        L, T, R, B = 80.0 + LEGEND_W, 20.0, 15.0, 30.0
         plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
 
         # фон
         cr.set_source_rgb(0.1, 0.1, 0.12)
         cr.rectangle(0, 0, W, H)
         cr.fill()
-
-        # # тёмная подложка для легенды (слегка светлее/темнее)
-        # cr.set_source_rgb(0.09, 0.09, 0.11)
-        # cr.rectangle(legend_x, legend_y, legend_w, legend_h)
-        # cr.fill()
 
         # собрать данные для масштаба
         all_vals = []
@@ -475,10 +475,10 @@ class GraphWindow(Gtk.Window):
 
         # ЛЕГЕНДА СЛЕВА (и hover-информация тут же)
         legend_items = [
-            ("CPU (°C)", GRAPH_COLORS["cpu_temp"], "cpu_temp", "°C"),
-            ("CPU %", GRAPH_COLORS["cpu_usage"], "cpu_usage", "%"),
-            ("RAM %", GRAPH_COLORS["ram"], "ram", "%"),
-            ("SWAP %", GRAPH_COLORS["swap"], "swap", "%"),
+            (tr("cpu") + " (°C)", GRAPH_COLORS["cpu_temp"], "cpu_temp", "°C"),
+            (tr("cpu") + " (%)", GRAPH_COLORS["cpu_usage"], "cpu_usage", "%"),
+            (tr("ram") + " (%)", GRAPH_COLORS["ram"], "ram", "%"),
+            (tr("swap") + " (%)", GRAPH_COLORS["swap"], "swap", "%"),
         ]
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(11)
@@ -613,7 +613,7 @@ class DiscordNotifier:
                     indent=2,
                 )
             try:
-                os.chmod(DISCORD_CONFIG_FILE, 0o600)
+                os.chmod(DISCORD_CONFIG_FILE, 0.600)
             except Exception:
                 pass
             return True
@@ -849,6 +849,11 @@ class SettingsDialog(Gtk.Dialog):
         # Tray toggles
         self.tray_cpu_check = self._add_check(box, "cpu_tray", key="tray_cpu", default=True)
         self.tray_ram_check = self._add_check(box, "ram_tray", key="tray_ram", default=True)
+
+        box.add(self._sep())
+
+        # UI / Menu toggles
+        self.graphs_check = self._add_check(box, "graphs", key="show_graphs", default=True)
 
         box.add(self._sep())
 
@@ -1206,8 +1211,9 @@ class SystemTrayApp:
 
         self._update_menu_visibility()
 
-        # вставляем графики
-        self.menu.append(self.graphs_item)
+        # вставляем графики (только если включены)
+        if self.visibility_settings.get("show_graphs", True):
+            self.menu.append(self.graphs_item)
 
         if any(
                 [
@@ -1252,6 +1258,11 @@ class SystemTrayApp:
                     self.visibility_settings["language"] = current_lang
                     self._save_settings()
                     self._build_menu()  # пересборка меню для обновления всех надписей
+
+                    # Обновить заголовок окна графиков, если оно открыто
+                    if self.graph_window and isinstance(self.graph_window, GraphWindow):
+                        self.graph_window.update_title()
+                        self.graph_window.queue_draw()  # перерисовка на случай локализации текста
         except Exception as e:
             print("language switch error:", e)
 
@@ -1264,8 +1275,11 @@ class SystemTrayApp:
             getattr(self, "language_menu_item", None),
             getattr(self, "settings_item", None),
             getattr(self, "quit_item", None),
-            getattr(self, "graphs_item", None),
         ]
+        # учитывать show_graphs при фиксации элементов, которые нельзя удалять
+        if self.visibility_settings.get("show_graphs", True):
+            keep.append(getattr(self, "graphs_item", None))
+
         if getattr(self, "ping_item", None) and self.visibility_settings.get("ping_network", True):
             keep.extend([self.ping_item, getattr(self, "ping_top_sep", None), getattr(self, "ping_bottom_sep", None)])
         keep = [x for x in keep if x is not None]
@@ -1367,6 +1381,7 @@ class SystemTrayApp:
                 vis["logging_enabled"] = dlg.logging_check.get_active()
                 vis["ping_network"] = dlg.ping_check.get_active()
                 vis["max_log_mb"] = int(dlg.logsize_spin.get_value())
+                vis["show_graphs"] = dlg.graphs_check.get_active()   # <-- NEW
 
                 # notifiers
                 tel_enabled_before = self.telegram_notifier.enabled

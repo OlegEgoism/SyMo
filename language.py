@@ -75,7 +75,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Максимальный размер лог файла (МБ)',
 
-        'ping_network': 'Проверить ping',
+        'ping_network': 'Пинг',
         'ping_running': 'Выполняется проверка сети…',
         'ping_done': 'Проверка завершена для',
         'ping_error': 'Ошибка при выполнении ping',
