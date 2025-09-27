@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 SyMo — System Monitor (Tray) • graphs with left legend & hover info shifted by LEGEND_W
-- Realtime Cairo-графики: cpu_temp, cpu_usage, ram%, swap%
+- Realtime Cairo-графики: cpu_temp, cpu_usage, ram%, swap%, disk%, net_recv, net_sent
 - Легенда вынесена влево (отдельная колонка шириной LEGEND_W)
 - Наведение: маркер+гайдлайн на графике, а текстовая информация показывается в левой колонке (сдвиг на LEGEND_W)
 - Пункт меню "Graphs" открывает окно графиков
@@ -57,6 +57,9 @@ GRAPH_COLORS = {
     "cpu_usage": (0.23, 0.62, 0.95),
     "ram": (0.31, 0.78, 0.47),
     "swap": (0.60, 0.49, 0.80),
+    "disk": (0.90, 0.90, 0.90),
+    "net_recv": (0.00, 0.75, 1.00),
+    "net_sent": (1.00, 0.65, 0.00),
 }
 HOVER_RADIUS_PX = 8.0  # радиус попадания курсора для подсветки точки
 
@@ -215,11 +218,14 @@ class TimeSeries:
 
 class GraphWindow(Gtk.Window):
     """
-    График 4 рядов:
+    График 7 рядов:
       - cpu_temp (°C)
       - cpu_usage (%)
       - ram_usage (%)
       - swap_usage (%)
+      - disk_usage (%)
+      - net_recv (MB/s)
+      - net_sent (MB/s)
     Сетка, легенда слева, авто-масштаб по Y, hover-подсказки выводятся в левой колонке.
     """
 
@@ -238,11 +244,15 @@ class GraphWindow(Gtk.Window):
             "cpu_usage": TimeSeries(HISTORY_SECONDS),
             "ram": TimeSeries(HISTORY_SECONDS),
             "swap": TimeSeries(HISTORY_SECONDS),
+            "disk": TimeSeries(HISTORY_SECONDS),
+            "net_recv": TimeSeries(HISTORY_SECONDS),
+            "net_sent": TimeSeries(HISTORY_SECONDS),
         }
 
         # состояние наведения
         self.hover = None  # dict(series, idx, value, x, y, sec_ago)
         self._last_mouse_xy = None
+        self._timer = None  # Инициализируем таймер как None
 
         self.area = Gtk.DrawingArea()
         events = self.area.get_events()
@@ -256,37 +266,61 @@ class GraphWindow(Gtk.Window):
 
         self.add(self.area)
 
-        self._timer = GLib.timeout_add(GRAPH_REFRESH_MS, self._tick)
-        self.connect("delete-event", self._on_close)
+        # Запускаем таймер только когда окно показано
+        self.connect("show", self._on_show)
+        self.connect("hide", self._on_hide)
+        self.connect("destroy", self._on_destroy)
+
         self.show_all()
+
+    def _on_show(self, *_):
+        """Запускаем таймер когда окно показывается"""
+        if self._timer is None:
+            self._timer = GLib.timeout_add(GRAPH_REFRESH_MS, self._tick)
+
+    def _on_hide(self, *_):
+        """Останавливаем таймер когда окно скрывается"""
+        if self._timer is not None:
+            GLib.source_remove(self._timer)
+            self._timer = None
+
+    def _on_destroy(self, *_):
+        """Останавливаем таймер при уничтожении окна"""
+        if self._timer is not None:
+            GLib.source_remove(self._timer)
+            self._timer = None
 
     def update_title(self):
         """Обновляет заголовок окна в соответствии с текущим языком."""
         self.set_title(tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs")
 
     def _tick(self):
+        """Таймер обновления графика"""
         try:
-            self.area.queue_draw()
+            if self.get_visible():  # Обновляем только если окно видимо
+                self.area.queue_draw()
+            return True  # Продолжаем таймер
         except Exception:
-            pass
-        return True
+            return False  # Останавливаем таймер при ошибке
 
-    def _on_close(self, *_):
-        if self._timer:
-            GLib.source_remove(self._timer)
-            self._timer = None
+    def _on_close(self, widget, event):
+        """Обработчик закрытия окна - скрываем вместо уничтожения"""
         self.hide()
-        self._timer = GLib.timeout_add(GRAPH_REFRESH_MS, self._tick)
-        return True
+        return True  # Предотвращаем уничтожение окна
 
-    def push_sample(self, cpu_temp, cpu_usage, ram_used, ram_total, swap_used, swap_total):
+    def push_sample(self, cpu_temp, cpu_usage, ram_used, ram_total, swap_used, swap_total, disk_used, disk_total, net_recv_speed, net_sent_speed):
         try:
             ram_pct = (ram_used / max(1e-9, ram_total)) * 100.0
             swap_pct = (swap_used / max(1e-9, swap_total)) * 100.0
+            disk_pct = (disk_used / max(1e-9, disk_total)) * 100.0
+
             self.series["cpu_temp"].add(cpu_temp or 0.0)
             self.series["cpu_usage"].add(cpu_usage or 0.0)
             self.series["ram"].add(ram_pct)
             self.series["swap"].add(swap_pct)
+            self.series["disk"].add(disk_pct)
+            self.series["net_recv"].add(net_recv_speed or 0.0)
+            self.series["net_sent"].add(net_sent_speed or 0.0)
         except Exception as e:
             print("push_sample error:", e)
 
@@ -313,7 +347,7 @@ class GraphWindow(Gtk.Window):
         alloc = self.area.get_allocation()
         W, H = float(alloc.width), float(alloc.height)
         # Отступы: слева выделена зона легенды шириной LEGEND_W
-        L, T, R, B = 80.0 + LEGEND_W, 20.0, 15.0, 30.0
+        L, T, R, B = 100.0 + LEGEND_W, 20.0, 15.0, 30.0
         plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
 
         # соберём значения
@@ -370,151 +404,197 @@ class GraphWindow(Gtk.Window):
 
     # ===== Drawing =====
     def on_draw(self, widget, cr):
-        alloc = widget.get_allocation()
-        W, H = float(alloc.width), float(alloc.height)
+        try:
+            alloc = widget.get_allocation()
+            W, H = float(alloc.width), float(alloc.height)
 
-        # ЛЕВАЯ КОЛОНКА ПОД ЛЕГЕНДУ
-        legend_x = 0.0
-        legend_y = 0.0
-        legend_w = LEGEND_W
-        legend_h = H
+            # ЛЕВАЯ КОЛОНКА ПОД ЛЕГЕНДУ
+            legend_x = 0.0
+            legend_y = 0.0
+            legend_w = LEGEND_W
+            legend_h = H
 
-        # Область графика
-        L, T, R, B = 80.0 + LEGEND_W, 20.0, 15.0, 30.0
-        plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
+            # Область графика
+            L, T, R, B = 100.0 + LEGEND_W, 20.0, 15.0, 30.0
+            plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
 
-        # фон
-        cr.set_source_rgb(0.1, 0.1, 0.12)
-        cr.rectangle(0, 0, W, H)
-        cr.fill()
+            # фон
+            cr.set_source_rgb(0.1, 0.1, 0.12)
+            cr.rectangle(0, 0, W, H)
+            cr.fill()
 
-        # собрать данные для масштаба
-        all_vals = []
-        for s in self.series.values():
-            all_vals += s.values()
-        if not all_vals:
-            return False
+            # собрать данные для масштаба
+            all_vals = []
+            for s in self.series.values():
+                all_vals += s.values()
+            if not all_vals:
+                return False
 
-        ymin = min(all_vals)
-        ymax = max(all_vals)
-        if abs(ymax - ymin) < 1e-6:
-            ymin -= 1.0
-            ymax += 1.0
-        pad = 0.05 * (ymax - ymin)
-        ymin -= pad
-        ymax += pad
+            ymin = min(all_vals)
+            ymax = max(all_vals)
+            if abs(ymax - ymin) < 1e-6:
+                ymin -= 1.0
+                ymax += 1.0
+            pad = 0.05 * (ymax - ymin)
+            ymin -= pad
+            ymax += pad
 
-        # сетка
-        cr.set_source_rgba(1, 1, 1, 0.08)
-        cr.set_line_width(1.0)
-        grid_lines = 5
-        for i in range(grid_lines + 1):
-            y = T + plot_h * (i / grid_lines)
-            cr.move_to(L, y)
-            cr.line_to(L + plot_w, y)
-            cr.stroke()
-
-        # оси
-        cr.set_source_rgba(1, 1, 1, 0.25)
-        cr.set_line_width(1.2)
-        cr.move_to(L, T)
-        cr.line_to(L, T + plot_h)
-        cr.stroke()
-        cr.move_to(L, T + plot_h)
-        cr.line_to(L + plot_w, T + plot_h)
-        cr.stroke()
-
-        # подписи Y (слева от графика, но справа от легенды)
-        cr.select_font_face("Monospace", 0, 0)
-        cr.set_font_size(10)
-        for val in [ymin, (ymin + ymax) / 2.0, ymax]:
-            y = T + (1.0 - (val - ymin) / (ymax - ymin)) * plot_h
-            text = f"{val:.0f}"
-            cr.set_source_rgba(1, 1, 1, 0.7)
-            cr.move_to(L - 20, y + 4)
-            cr.show_text(text)
-
-        # линии
-        def draw_series(vals, rgb_tuple):
-            if not vals:
-                return
-            step = plot_w / max(1, HISTORY_SECONDS - 1)
-            cr.set_source_rgba(*rgb_tuple, 0.95)
-            cr.set_line_width(1.8)
-            for idx, v in enumerate(vals[-HISTORY_SECONDS:]):
-                x = L + idx * step
-                y = T + (1.0 - (v - ymin) / (ymax - ymin)) * plot_h
-                if idx == 0:
-                    cr.move_to(x, y)
-                else:
-                    cr.line_to(x, y)
-            cr.stroke()
-
-        draw_series(self.series["cpu_temp"].values(), GRAPH_COLORS["cpu_temp"])
-        draw_series(self.series["cpu_usage"].values(), GRAPH_COLORS["cpu_usage"])
-        draw_series(self.series["ram"].values(), GRAPH_COLORS["ram"])
-        draw_series(self.series["swap"].values(), GRAPH_COLORS["swap"])
-
-        # вертикальная направляющая и маркер, если наведено
-        if self.hover:
-            hx, hy = self.hover["x"], self.hover["y"]
-            s_key = self.hover["series"]
-
-            # гайдлайн
-            cr.set_source_rgba(1, 1, 1, 0.18)
+            # сетка
+            cr.set_source_rgba(1, 1, 1, 0.08)
             cr.set_line_width(1.0)
-            cr.move_to(hx, T)
-            cr.line_to(hx, T + plot_h)
+            grid_lines = 5
+            for i in range(grid_lines + 1):
+                y = T + plot_h * (i / grid_lines)
+                cr.move_to(L, y)
+                cr.line_to(L + plot_w, y)
+                cr.stroke()
+
+            # оси
+            cr.set_source_rgba(1, 1, 1, 0.25)
+            cr.set_line_width(1.2)
+            cr.move_to(L, T)
+            cr.line_to(L, T + plot_h)
+            cr.stroke()
+            cr.move_to(L, T + plot_h)
+            cr.line_to(L + plot_w, T + plot_h)
             cr.stroke()
 
-            # маркер
-            col = GRAPH_COLORS.get(s_key, (1, 1, 1))
-            cr.set_source_rgba(*col, 1.0)
-            cr.arc(hx, hy, 3.5, 0, 6.28318)
-            cr.fill()
+            # подписи Y (слева от графика, но справа от легенды)
+            cr.select_font_face("Monospace", 0, 0)
+            cr.set_font_size(10)
+            for val in [ymin, (ymin + ymax) / 2.0, ymax]:
+                y = T + (1.0 - (val - ymin) / (ymax - ymin)) * plot_h
+                # Форматирование в зависимости от типа данных
+                if val < 1:  # для сетевых скоростей (обычно меньше 1 MB/s)
+                    text = f"{val:.1f}"
+                else:
+                    text = f"{val:.0f}"
+                cr.set_source_rgba(1, 1, 1, 0.7)
+                cr.move_to(L - 20, y + 4)
+                cr.show_text(text)
 
-        # ЛЕГЕНДА СЛЕВА (и hover-информация тут же)
-        legend_items = [
-            (tr("cpu") + " (°C)", GRAPH_COLORS["cpu_temp"], "cpu_temp", "°C"),
-            (tr("cpu") + " (%)", GRAPH_COLORS["cpu_usage"], "cpu_usage", "%"),
-            (tr("ram") + " (%)", GRAPH_COLORS["ram"], "ram", "%"),
-            (tr("swap") + " (%)", GRAPH_COLORS["swap"], "swap", "%"),
-        ]
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(11)
-        base_x = 12.0
-        base_y = T + 20.0
-        row_h = 22.0
-        for i, (name, col, key, unit) in enumerate(legend_items):
-            y = base_y + i * row_h
-            # цветной квадратик
-            cr.set_source_rgba(*col, 0.95)
-            cr.rectangle(base_x, y - 9, 14, 14)
-            cr.fill()
-            cr.set_source_rgba(1, 1, 1, 0.9)
-            cr.move_to(base_x + 20, y + 2)
-            cr.show_text(name)
+            # линии
+            def draw_series(vals, rgb_tuple):
+                if not vals:
+                    return
+                step = plot_w / max(1, HISTORY_SECONDS - 1)
+                cr.set_source_rgba(*rgb_tuple, 0.95)
+                cr.set_line_width(1.8)
+                for idx, v in enumerate(vals[-HISTORY_SECONDS:]):
+                    x = L + idx * step
+                    y = T + (1.0 - (v - ymin) / (ymax - ymin)) * plot_h
+                    if idx == 0:
+                        cr.move_to(x, y)
+                    else:
+                        cr.line_to(x, y)
+                cr.stroke()
 
-        if self.hover:
-            s_key = self.hover["series"]
-            val = self.hover["value"]
-            sec_ago = self.hover["sec_ago"]
-            when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
-            unit = {"cpu_temp": "°C", "cpu_usage": "%", "ram": "%", "swap": "%"}.get(s_key, "")
-            info_text = f"{val:.0f}{unit} • {when}"
+            draw_series(self.series["cpu_temp"].values(), GRAPH_COLORS["cpu_temp"])
+            draw_series(self.series["cpu_usage"].values(), GRAPH_COLORS["cpu_usage"])
+            draw_series(self.series["ram"].values(), GRAPH_COLORS["ram"])
+            draw_series(self.series["swap"].values(), GRAPH_COLORS["swap"])
+            draw_series(self.series["disk"].values(), GRAPH_COLORS["disk"])
+            draw_series(self.series["net_recv"].values(), GRAPH_COLORS["net_recv"])
+            draw_series(self.series["net_sent"].values(), GRAPH_COLORS["net_sent"])
 
-            cr.set_font_size(14)  # увеличенный размер текста
-            text_extents = cr.text_extents(info_text)
-            text_width = text_extents.width
-            text_height = text_extents.height
+            # вертикальная направляющая и маркер, если наведено
+            if self.hover:
+                hx, hy = self.hover["x"], self.hover["y"]
+                s_key = self.hover["series"]
 
-            text_x = (W - text_width) / 2
-            text_y = H - B / 2
+                # гайдлайн
+                cr.set_source_rgba(1, 1, 1, 0.18)
+                cr.set_line_width(1.0)
+                cr.move_to(hx, T)
+                cr.line_to(hx, T + plot_h)
+                cr.stroke()
 
-            cr.set_source_rgba(1, 1, 1, 0.85)
-            cr.move_to(text_x, text_y)
-            cr.show_text(info_text)
-        return False
+                # маркер
+                col = GRAPH_COLORS.get(s_key, (1, 1, 1))
+                cr.set_source_rgba(*col, 1.0)
+                cr.arc(hx, hy, 3.5, 0, 6.28318)
+                cr.fill()
+
+            # ЛЕГЕНДА СЛЕВА (и hover-информация тут же)
+            legend_items = [
+                (tr("cpu"), GRAPH_COLORS["cpu_temp"], "cpu_temp", "°C"),
+                (tr("cpu"), GRAPH_COLORS["cpu_usage"], "cpu_usage", "%"),
+                (tr("ram"), GRAPH_COLORS["ram"], "ram", "%"),
+                (tr("swap"), GRAPH_COLORS["swap"], "swap", "%"),
+                (tr("disk"), GRAPH_COLORS["disk"], "disk", "%"),
+                (tr("network") + " ↓", GRAPH_COLORS["net_recv"], "net_recv", "MB/s"),
+                (tr("network") + " ↑", GRAPH_COLORS["net_sent"], "net_sent", "MB/s"),
+            ]
+            cr.select_font_face("Sans", 0, 0)
+            cr.set_font_size(11)
+            base_x = 12.0
+            base_y = T + 20.0
+            row_h = 22.0
+            for i, (name, col, key, unit) in enumerate(legend_items):
+                y = base_y + i * row_h
+                # цветной квадратик
+                cr.set_source_rgba(*col, 0.95)
+                cr.rectangle(base_x, y - 9, 14, 14)
+                cr.fill()
+                cr.set_source_rgba(1, 1, 1, 0.9)
+                cr.move_to(base_x + 20, y + 2)
+                cr.show_text(name)
+
+            if self.hover:
+                s_key = self.hover["series"]
+                val = self.hover["value"]
+                sec_ago = self.hover["sec_ago"]
+                when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
+
+                # Определяем единицы измерения и форматирование
+                unit_map = {
+                    "cpu_temp": "°C",
+                    "cpu_usage": "%",
+                    "ram": "%",
+                    "swap": "%",
+                    "disk": "%",
+                    "net_recv": "MB/s",
+                    "net_sent": "MB/s"
+                }
+                unit = unit_map.get(s_key, "")
+
+                # Форматирование значения
+                if s_key in ["net_recv", "net_sent"]:  # сетевые скорости - 2 знака после запятой
+                    formatted_val = f"{val:.2f}"
+                elif s_key in ["cpu_usage", "ram", "swap", "disk"]:  # проценты - 1 знак
+                    formatted_val = f"{val:.1f}"
+                else:  # температура - целое число
+                    formatted_val = f"{val:.0f}"
+
+                # Определяем название метрики для отображения
+                metric_name_map = {
+                    "cpu_temp": tr("cpu") + " (°C)",
+                    "cpu_usage": tr("cpu") + " (%)",
+                    "ram": tr("ram") + " (%)",
+                    "swap": tr("swap") + " (%)",
+                    "disk": tr("disk") + " (%)",
+                    "net_recv": tr("network") + " ↓",
+                    "net_sent": tr("network") + " ↑"
+                }
+                metric_name = metric_name_map.get(s_key, s_key)
+
+                info_text = f"{metric_name}: {formatted_val}{unit} • {when}"
+
+                cr.set_font_size(14)
+                text_extents = cr.text_extents(info_text)
+                text_width = text_extents.width
+                text_height = text_extents.height
+
+                text_x = (W - text_width) / 2
+                text_y = H - B / 2
+
+                cr.set_source_rgba(1, 1, 1, 0.85)
+                cr.move_to(text_x, text_y)
+                cr.show_text(info_text)
+            return False
+        except Exception as e:
+            print("Drawing error:", e)
+            return False
 
 
 # ---------------------------
@@ -1314,9 +1394,17 @@ class SystemTrayApp:
                 return
             if not self.graph_window:
                 self.graph_window = GraphWindow(self)
+                # Подключаем обработчик закрытия окна
+                self.graph_window.connect("delete-event", self._on_graph_window_close)
             self.graph_window.show_all()
         except Exception as e:
             print("open_graphs error:", e)
+
+    def _on_graph_window_close(self, widget, event):
+        """Обработчик закрытия окна графиков - скрываем вместо уничтожения"""
+        if self.graph_window:
+            self.graph_window.hide()
+        return True  # Предотвращаем уничтожение окна
 
     # ---- actions
     def _on_key_press(self, _key):
@@ -1381,7 +1469,7 @@ class SystemTrayApp:
                 vis["logging_enabled"] = dlg.logging_check.get_active()
                 vis["ping_network"] = dlg.ping_check.get_active()
                 vis["max_log_mb"] = int(dlg.logsize_spin.get_value())
-                vis["show_graphs"] = dlg.graphs_check.get_active()   # <-- NEW
+                vis["show_graphs"] = dlg.graphs_check.get_active()
 
                 # notifiers
                 tel_enabled_before = self.telegram_notifier.enabled
@@ -1433,7 +1521,7 @@ class SystemTrayApp:
             # push to graphs
             if getattr(self, "graph_window", None):
                 try:
-                    self.graph_window.push_sample(cpu_temp, cpu_usage, ram_used, ram_total, swap_used, swap_total)
+                    self.graph_window.push_sample(cpu_temp, cpu_usage, ram_used, ram_total, swap_used, swap_total, disk_used, disk_total, net_recv_speed, net_sent_speed)
                 except Exception as e:
                     print("graph push error:", e)
 
@@ -1592,13 +1680,17 @@ class SystemTrayApp:
         if self.settings_dialog is not None:
             self.settings_dialog.destroy()
             self.settings_dialog = None
-        # graph window
+        # graph window - правильно уничтожаем
         if getattr(self, "graph_window", None):
             try:
+                # Удаляем обработчики и уничтожаем окно
+                if hasattr(self.graph_window, 'disconnect_by_func'):
+                    self.graph_window.disconnect_by_func(self._on_graph_window_close)
                 self.graph_window.destroy()
-            except Exception:
-                pass
-            self.graph_window = None
+            except Exception as e:
+                print("Error destroying graph window:", e)
+            finally:
+                self.graph_window = None
         # hooks
         try:
             if self.keyboard_listener:
@@ -1612,8 +1704,12 @@ class SystemTrayApp:
             pass
         Gtk.main_quit()
 
+    # ---- main run method
     def run(self):
+        """Запуск основного цикла приложения"""
+        # Запускаем периодическое обновление информации
         GLib.timeout_add_seconds(TIME_UPDATE_SECONDS, self.update_info)
+        # Запускаем главный цикл GTK
         Gtk.main()
 
 
