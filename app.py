@@ -6,7 +6,6 @@ SyMo — System Monitor (Tray) • graphs with left legend & hover info shifted 
 - Наведение: маркер+гайдлайн на графике, а текстовая информация показывается в левой колонке (сдвиг на LEGEND_W)
 - Пункт меню "Graphs" открывает окно графиков
 """
-
 import os
 import json
 import time
@@ -20,34 +19,26 @@ from enum import Enum
 from datetime import timedelta
 from collections import deque
 import gi
-
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib, Gdk
-
 try:
     gi.require_version("AppIndicator3", "0.1")
     from gi.repository import AppIndicator3 as AppInd
 except (ValueError, ImportError):
     gi.require_version("AyatanaAppIndicator3", "0.1")
     from gi.repository import AyatanaAppIndicator3 as AppInd
-
 try:
     from pynput import keyboard, mouse
 except Exception:  # make hooks optional
     keyboard = None
     mouse = None
-
 from language import LANGUAGES
-
 SUPPORTED_LANGS = ["ru", "en", "cn", "de", "it", "es", "tr", "fr"]
-
 LOG_FILE = os.path.join(os.path.expanduser("~"), ".symo_log.txt")
 SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".symo_settings.json")
 TELEGRAM_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_telegram.json")
 DISCORD_CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".symo_discord.json")
-
 TIME_UPDATE_SECONDS = 1
-
 # ===== Graph settings =====
 HISTORY_SECONDS = 300  # ~5 минут истории (1 точка/сек)
 GRAPH_REFRESH_MS = 500  # перерисовка окна графиков (мс)
@@ -63,6 +54,7 @@ GRAPH_COLORS = {
 }
 HOVER_RADIUS_PX = 8.0  # радиус попадания курсора для подсветки точки
 
+# === ДОБАВЛЕНО: autostart в DEFAULT_VISIBILITY ===
 DEFAULT_VISIBILITY = {
     "cpu": True,
     "ram": True,
@@ -83,23 +75,20 @@ DEFAULT_VISIBILITY = {
     "show_graphs": True,
     "max_log_mb": 5,
     "ping_network": True,
+    "autostart": False,  # <--- ВКЛЮЧЕНИЕ АВТОЗАПУСКА
 }
 
 _clicks_lock = threading.Lock()
 keyboard_clicks = 0
 mouse_clicks = 0
 current_lang = "ru"
-
-
 # ---------------------------
 # Helpers
 # ---------------------------
-
 def tr(key: str) -> str:
     """Get localized string for current language; fallback to EN; else key."""
     lang_map = LANGUAGES.get(current_lang) or LANGUAGES.get("en", {})
     return lang_map.get(key, key)
-
 
 def detect_system_language() -> str:
     try:
@@ -111,7 +100,6 @@ def detect_system_language() -> str:
         return code if code in SUPPORTED_LANGS else "ru"
     except Exception:
         return "ru"
-
 
 def rotate_log_if_needed(max_size_bytes: int) -> None:
     """Simple rotation: if log > max_size_bytes -> rename to .1 (overwrite old .1)."""
@@ -126,7 +114,6 @@ def rotate_log_if_needed(max_size_bytes: int) -> None:
             os.rename(LOG_FILE, bak)
     except Exception as e:
         print("Log rotation error:", e)
-
 
 # ---------------------------
 # System readings
@@ -192,29 +179,22 @@ class SystemUsage:
         seconds = time.time() - psutil.boot_time()
         return str(timedelta(seconds=int(seconds)))
 
-
 # ---------------------------
 # Graph window (left legend + hover info in legend)
 # ---------------------------
 class TimeSeries:
     """Буфер фиксированной длины (в точках). По 1 точке/сек держим HISTORY_SECONDS секунд."""
-
     def __init__(self, capacity: int):
         self.capacity = max(1, int(capacity))
         self.data = deque(maxlen=self.capacity)
-
     def add(self, value: float):
         self.data.append(float(value))
-
     def values(self):
         return list(self.data)
-
     def __len__(self):
         return len(self.data)
-
     def is_empty(self):
         return len(self.data) == 0
-
 
 class GraphWindow(Gtk.Window):
     """
@@ -228,7 +208,6 @@ class GraphWindow(Gtk.Window):
       - net_sent (MB/s)
     Сетка, легенда слева, авто-масштаб по Y, hover-подсказки выводятся в левой колонке.
     """
-
     def __init__(self, app: "SystemTrayApp"):
         super().__init__(title=tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs")
         self.set_default_size(900, 360)
@@ -237,7 +216,6 @@ class GraphWindow(Gtk.Window):
             self.set_position(Gtk.WindowPosition.CENTER)
         except Exception:
             pass
-
         self.app = app
         self.series = {
             "cpu_temp": TimeSeries(HISTORY_SECONDS),
@@ -248,12 +226,10 @@ class GraphWindow(Gtk.Window):
             "net_recv": TimeSeries(HISTORY_SECONDS),
             "net_sent": TimeSeries(HISTORY_SECONDS),
         }
-
         # состояние наведения
         self.hover = None  # dict(series, idx, value, x, y, sec_ago)
         self._last_mouse_xy = None
         self._timer = None  # Инициализируем таймер как None
-
         self.area = Gtk.DrawingArea()
         events = self.area.get_events()
         self.area.set_events(events
@@ -263,14 +239,11 @@ class GraphWindow(Gtk.Window):
         self.area.connect("draw", self.on_draw)
         self.area.connect("motion-notify-event", self.on_motion)
         self.area.connect("leave-notify-event", self.on_leave)
-
         self.add(self.area)
-
         # Запускаем таймер только когда окно показано
         self.connect("show", self._on_show)
         self.connect("hide", self._on_hide)
         self.connect("destroy", self._on_destroy)
-
         self.show_all()
 
     def _on_show(self, *_):
@@ -313,7 +286,6 @@ class GraphWindow(Gtk.Window):
             ram_pct = (ram_used / max(1e-9, ram_total)) * 100.0
             swap_pct = (swap_used / max(1e-9, swap_total)) * 100.0
             disk_pct = (disk_used / max(1e-9, disk_total)) * 100.0
-
             self.series["cpu_temp"].add(cpu_temp or 0.0)
             self.series["cpu_usage"].add(cpu_usage or 0.0)
             self.series["ram"].add(ram_pct)
@@ -341,7 +313,6 @@ class GraphWindow(Gtk.Window):
         if not self._last_mouse_xy:
             self.hover = None
             return
-
         x_mouse, y_mouse = self._last_mouse_xy
         # Геометрия должна совпадать с on_draw
         alloc = self.area.get_allocation()
@@ -349,7 +320,6 @@ class GraphWindow(Gtk.Window):
         # Отступы: слева выделена зона легенды шириной LEGEND_W
         L, T, R, B = 100.0 + LEGEND_W, 20.0, 15.0, 30.0
         plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
-
         # соберём значения
         all_vals = []
         for s in self.series.values():
@@ -357,7 +327,6 @@ class GraphWindow(Gtk.Window):
         if not all_vals:
             self.hover = None
             return
-
         ymin = min(all_vals)
         ymax = max(all_vals)
         if abs(ymax - ymin) < 1e-6:
@@ -388,7 +357,6 @@ class GraphWindow(Gtk.Window):
                 if d2 <= best_dist2:
                     best_dist2 = d2
                     best = (key, idx, v, x, y, len(vals) - 1 - idx)  # sec_ago
-
         if best:
             key, idx, v, x, y, sec_ago = best
             self.hover = {
@@ -407,29 +375,24 @@ class GraphWindow(Gtk.Window):
         try:
             alloc = widget.get_allocation()
             W, H = float(alloc.width), float(alloc.height)
-
             # ЛЕВАЯ КОЛОНКА ПОД ЛЕГЕНДУ
             legend_x = 0.0
             legend_y = 0.0
             legend_w = LEGEND_W
             legend_h = H
-
             # Область графика
             L, T, R, B = 100.0 + LEGEND_W, 20.0, 15.0, 30.0
             plot_w, plot_h = max(1.0, W - L - R), max(1.0, H - T - B)
-
             # фон
             cr.set_source_rgb(0.1, 0.1, 0.12)
             cr.rectangle(0, 0, W, H)
             cr.fill()
-
             # собрать данные для масштаба
             all_vals = []
             for s in self.series.values():
                 all_vals += s.values()
             if not all_vals:
                 return False
-
             ymin = min(all_vals)
             ymax = max(all_vals)
             if abs(ymax - ymin) < 1e-6:
@@ -438,7 +401,6 @@ class GraphWindow(Gtk.Window):
             pad = 0.05 * (ymax - ymin)
             ymin -= pad
             ymax += pad
-
             # сетка
             cr.set_source_rgba(1, 1, 1, 0.08)
             cr.set_line_width(1.0)
@@ -448,7 +410,6 @@ class GraphWindow(Gtk.Window):
                 cr.move_to(L, y)
                 cr.line_to(L + plot_w, y)
                 cr.stroke()
-
             # оси
             cr.set_source_rgba(1, 1, 1, 0.25)
             cr.set_line_width(1.2)
@@ -458,7 +419,6 @@ class GraphWindow(Gtk.Window):
             cr.move_to(L, T + plot_h)
             cr.line_to(L + plot_w, T + plot_h)
             cr.stroke()
-
             # подписи Y (слева от графика, но справа от легенды)
             cr.select_font_face("Monospace", 0, 0)
             cr.set_font_size(10)
@@ -472,7 +432,6 @@ class GraphWindow(Gtk.Window):
                 cr.set_source_rgba(1, 1, 1, 0.7)
                 cr.move_to(L - 20, y + 4)
                 cr.show_text(text)
-
             # линии
             def draw_series(vals, rgb_tuple):
                 if not vals:
@@ -488,7 +447,6 @@ class GraphWindow(Gtk.Window):
                     else:
                         cr.line_to(x, y)
                 cr.stroke()
-
             draw_series(self.series["cpu_temp"].values(), GRAPH_COLORS["cpu_temp"])
             draw_series(self.series["cpu_usage"].values(), GRAPH_COLORS["cpu_usage"])
             draw_series(self.series["ram"].values(), GRAPH_COLORS["ram"])
@@ -496,25 +454,21 @@ class GraphWindow(Gtk.Window):
             draw_series(self.series["disk"].values(), GRAPH_COLORS["disk"])
             draw_series(self.series["net_recv"].values(), GRAPH_COLORS["net_recv"])
             draw_series(self.series["net_sent"].values(), GRAPH_COLORS["net_sent"])
-
             # вертикальная направляющая и маркер, если наведено
             if self.hover:
                 hx, hy = self.hover["x"], self.hover["y"]
                 s_key = self.hover["series"]
-
                 # гайдлайн
                 cr.set_source_rgba(1, 1, 1, 0.18)
                 cr.set_line_width(1.0)
                 cr.move_to(hx, T)
                 cr.line_to(hx, T + plot_h)
                 cr.stroke()
-
                 # маркер
                 col = GRAPH_COLORS.get(s_key, (1, 1, 1))
                 cr.set_source_rgba(*col, 1.0)
                 cr.arc(hx, hy, 3.5, 0, 6.28318)
                 cr.fill()
-
             # ЛЕГЕНДА СЛЕВА (и hover-информация тут же)
             legend_items = [
                 (tr("cpu"), GRAPH_COLORS["cpu_temp"], "cpu_temp", "°C"),
@@ -539,13 +493,11 @@ class GraphWindow(Gtk.Window):
                 cr.set_source_rgba(1, 1, 1, 0.9)
                 cr.move_to(base_x + 20, y + 2)
                 cr.show_text(name)
-
             if self.hover:
                 s_key = self.hover["series"]
                 val = self.hover["value"]
                 sec_ago = self.hover["sec_ago"]
                 when = f"{sec_ago}s ago" if sec_ago > 0 else "now"
-
                 # Определяем единицы измерения и форматирование
                 unit_map = {
                     "cpu_temp": "°C",
@@ -557,7 +509,6 @@ class GraphWindow(Gtk.Window):
                     "net_sent": "MB/s"
                 }
                 unit = unit_map.get(s_key, "")
-
                 # Форматирование значения
                 if s_key in ["net_recv", "net_sent"]:  # сетевые скорости - 2 знака после запятой
                     formatted_val = f"{val:.2f}"
@@ -565,7 +516,6 @@ class GraphWindow(Gtk.Window):
                     formatted_val = f"{val:.1f}"
                 else:  # температура - целое число
                     formatted_val = f"{val:.0f}"
-
                 # Определяем название метрики для отображения
                 metric_name_map = {
                     "cpu_temp": tr("cpu") + " (°C)",
@@ -577,17 +527,13 @@ class GraphWindow(Gtk.Window):
                     "net_sent": tr("network") + " ↑"
                 }
                 metric_name = metric_name_map.get(s_key, s_key)
-
                 info_text = f"{metric_name}: {formatted_val}{unit} • {when}"
-
                 cr.set_font_size(14)
                 text_extents = cr.text_extents(info_text)
                 text_width = text_extents.width
                 text_height = text_extents.height
-
                 text_x = (W - text_width) / 2
                 text_y = H - B / 2
-
                 cr.set_source_rgba(1, 1, 1, 0.85)
                 cr.move_to(text_x, text_y)
                 cr.show_text(info_text)
@@ -595,7 +541,6 @@ class GraphWindow(Gtk.Window):
         except Exception as e:
             print("Drawing error:", e)
             return False
-
 
 # ---------------------------
 # Notifiers
@@ -658,7 +603,6 @@ class TelegramNotifier:
             print("Telegram send error:", e)
             return False
 
-
 class DiscordNotifier:
     def __init__(self):
         self.webhook_url = None
@@ -693,7 +637,7 @@ class DiscordNotifier:
                     indent=2,
                 )
             try:
-                os.chmod(DISCORD_CONFIG_FILE, 0.600)
+                os.chmod(DISCORD_CONFIG_FILE, 0o600)
             except Exception:
                 pass
             return True
@@ -712,7 +656,6 @@ class DiscordNotifier:
             print("Discord send error:", e)
             return False
 
-
 # ---------------------------
 # Power control
 # ---------------------------
@@ -721,14 +664,12 @@ class Action(Enum):
     REBOOT = "reboot"
     LOCK = "lock"
 
-
 def action_label(act: Action) -> str:
     return {
         Action.POWER_OFF: tr("power_off"),
         Action.REBOOT: tr("reboot"),
         Action.LOCK: tr("lock"),
     }.get(act, act.value)
-
 
 class PowerControl:
     def __init__(self, app):
@@ -755,12 +696,10 @@ class PowerControl:
         )
         dlg.set_title(tr("confirm_title"))
         self.current_dialog = dlg
-
         def on_resp(d, rid):
             if rid == Gtk.ResponseType.OK and action_callback:
                 action_callback()
             self._destroy_current_dialog()
-
         dlg.connect("response", on_resp)
         dlg.show()
 
@@ -785,13 +724,11 @@ class PowerControl:
     def _open_settings(self, *_):
         # Small dialog to schedule power/reboot/lock after N minutes
         self._destroy_current_dialog()
-
         dlg = Gtk.Dialog(title=tr("settings"), transient_for=self.parent_window, flags=0)
         self.current_dialog = dlg
         content = dlg.get_content_area()
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=10)
         content.add(box)
-
         # time
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         lbl_time = Gtk.Label(label=tr("minutes"));
@@ -800,7 +737,6 @@ class PowerControl:
         sp.set_value(1)
         time_box.pack_start(lbl_time, True, True, 0)
         time_box.pack_start(sp, False, False, 0)
-
         # action
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         lbl_act = Gtk.Label(label=tr("action"));
@@ -812,7 +748,6 @@ class PowerControl:
         combo.set_active(0)
         action_box.pack_start(lbl_act, True, True, 0)
         action_box.pack_start(combo, False, False, 0)
-
         # buttons
         btn_apply = Gtk.Button(label=tr("apply"))
         btn_cancel = Gtk.Button(label=tr("cancel"))
@@ -820,21 +755,17 @@ class PowerControl:
         btn_apply.connect("clicked", lambda *_: dlg.response(Gtk.ResponseType.OK))
         btn_cancel.connect("clicked", lambda *_: dlg.response(Gtk.ResponseType.CANCEL))
         btn_reset.connect("clicked", self._reset_action_button)
-
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         btn_box.set_halign(Gtk.Align.END)
         for b in (btn_reset, btn_cancel, btn_apply):
             btn_box.pack_start(b, False, False, 0)
-
         # pack
         box.pack_start(time_box, False, False, 0)
         box.pack_start(action_box, False, False, 0)
         box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 6)
         box.pack_start(btn_box, False, False, 0)
-
         dlg.show_all()
         resp = dlg.run()
-
         if resp == Gtk.ResponseType.OK:
             minutes = sp.get_value_as_int()
             act = Action(combo.get_active_id())
@@ -851,7 +782,6 @@ class PowerControl:
                 GLib.source_remove(self._update_timer_id)
             self._update_timer_id = GLib.timeout_add_seconds(1, self._update_indicator_label)
             self._info(tr("scheduled"), tr("action_in_time").format(action_label(act), minutes))
-
         self._destroy_current_dialog()
 
     def _reset_action_button(self, *_):
@@ -906,7 +836,6 @@ class PowerControl:
             self.current_dialog.destroy()
         self.current_dialog = None
 
-
 # ---------------------------
 # Settings dialog
 # ---------------------------
@@ -917,26 +846,19 @@ class SettingsDialog(Gtk.Dialog):
         self.set_destroy_with_parent(True)
         self.add_buttons(tr("cancel_label"), Gtk.ResponseType.CANCEL, tr("apply_label"), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
-
         box = self.get_content_area()
         box.set_border_width(10)
-
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.set_halign(Gtk.Align.END)
         header.pack_start(Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ"), False, False, 0)
         box.add(header)
-
         # Tray toggles
         self.tray_cpu_check = self._add_check(box, "cpu_tray", key="tray_cpu", default=True)
         self.tray_ram_check = self._add_check(box, "ram_tray", key="tray_ram", default=True)
-
         box.add(self._sep())
-
         # UI / Menu toggles
         self.graphs_check = self._add_check(box, "graphs", key="show_graphs", default=True)
-
         box.add(self._sep())
-
         # Info toggles
         self.cpu_check = self._add_check(box, "cpu_info", key="cpu")
         self.ram_check = self._add_check(box, "ram_loading", key="ram")
@@ -946,35 +868,27 @@ class SettingsDialog(Gtk.Dialog):
         self.uptime_check = self._add_check(box, "uptime_label", key="uptime")
         self.keyboard_check = self._add_check(box, "keyboard_clicks", key="keyboard_clicks")
         self.mouse_check = self._add_check(box, "mouse_clicks", key="mouse_clicks")
-
         box.add(self._sep())
-
         # Power toggles
         self.power_off_check = self._add_check(box, "power_off", key="show_power_off")
         self.reboot_check = self._add_check(box, "reboot", key="show_reboot")
         self.lock_check = self._add_check(box, "lock", key="show_lock")
         self.timer_check = self._add_check(box, "settings", key="show_timer")
-
         box.add(self._sep())
-
         # Ping
         self.ping_check = self._add_check(box, "ping_network", key="ping_network")
-
         box.add(self._sep())
-
         # Logging controls
         logging_box = Gtk.Box(spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr("enable_logging"))
         self.logging_check.set_active(self.visibility_settings.get("logging_enabled", True))
         self.logging_check.set_margin_bottom(3)
         logging_box.pack_start(self.logging_check, False, False, 0)
-
         self.download_button = Gtk.Button(label=tr("download_log"))
         self.download_button.connect("clicked", self.download_log_file)
         self.download_button.set_margin_bottom(3)
         logging_box.pack_end(self.download_button, False, False, 0)
         box.add(logging_box)
-
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         logsize_label = Gtk.Label(label=tr("max_log_size_mb"));
         logsize_label.set_xalign(0)
@@ -983,7 +897,10 @@ class SettingsDialog(Gtk.Dialog):
         logsize_box.pack_start(logsize_label, False, False, 0)
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         box.add(logsize_box)
+        box.add(self._sep())
 
+        # Autostart
+        self.autostart_check = self._add_check(box, "autostart_label", key="autostart", default=False)
         box.add(self._sep())
 
         # Telegram
@@ -995,10 +912,8 @@ class SettingsDialog(Gtk.Dialog):
         test_btn.connect("clicked", self.test_telegram)
         tele_row.pack_end(test_btn, False, False, 0)
         box.add(tele_row)
-
         self.token_entry = self._secret_entry(box, tr("token_bot"), "123...:ABC...")
         self.chat_id_entry = self._secret_entry(box, tr("id_chat"), "123456789")
-
         interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         interval_label = Gtk.Label(label=tr("time_send"));
         interval_label.set_xalign(0)
@@ -1020,9 +935,7 @@ class SettingsDialog(Gtk.Dialog):
         disc_test.connect("clicked", self.test_discord)
         disc_row.pack_end(disc_test, False, False, 0)
         box.add(disc_row)
-
         self.webhook_entry = self._secret_entry(box, tr("webhook_url"), "https://discord.com/api/webhooks/...")
-
         disc_int_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         disc_int_label = Gtk.Label(label=tr("time_send"));
         disc_int_label.set_xalign(0)
@@ -1046,7 +959,6 @@ class SettingsDialog(Gtk.Dialog):
                 self.interval_spin.set_value(int(cfg.get("notification_interval", 3600)))
         except Exception as e:
             print("Telegram config preload error:", e)
-
         try:
             if os.path.exists(DISCORD_CONFIG_FILE):
                 with open(DISCORD_CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -1056,7 +968,6 @@ class SettingsDialog(Gtk.Dialog):
                 self.discord_interval_spin.set_value(int(cfg.get("notification_interval", 3600)))
         except Exception as e:
             print("Discord config preload error:", e)
-
         self.show_all()
 
     # small UI builders
@@ -1153,7 +1064,6 @@ class SystemTrayApp:
     def __init__(self):
         self.settings_file = SETTINGS_FILE
         self.visibility_settings = self._load_settings()
-
         # init language
         global current_lang
         if not self.visibility_settings.get("language"):
@@ -1203,6 +1113,55 @@ class SystemTrayApp:
 
         self.settings_dialog = None
 
+        # === Управление автозапуском при старте ===
+        if self.visibility_settings.get("autostart", False):
+            self._enable_autostart()
+        else:
+            self._disable_autostart()
+
+    # ---- Autostart methods
+    def _get_autostart_path(self):
+        """Путь к .desktop файлу автозапуска."""
+        autostart_dir = os.path.expanduser("~/.config/autostart")
+        os.makedirs(autostart_dir, exist_ok=True)
+        return os.path.join(autostart_dir, "symo.desktop")
+
+    def _enable_autostart(self):
+        """Создаёт .desktop файл автозапуска."""
+        script_path = os.path.abspath(__file__)
+        desktop_entry = f"""[Desktop Entry]
+Name=SyMo System Monitor
+Comment=System monitoring tray application
+Exec=python3 "{script_path}"
+Terminal=false
+Type=Application
+Icon=system-run-symbolic
+Categories=Utility;System;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+"""
+        try:
+            path = self._get_autostart_path()
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(desktop_entry)
+            os.chmod(path, 0o644)
+        except Exception as e:
+            print("Failed to enable autostart:", e)
+
+    def _disable_autostart(self):
+        """Удаляет .desktop файл автозапуска."""
+        try:
+            path = self._get_autostart_path()
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as e:
+            print("Failed to disable autostart:", e)
+
+    def _is_autostart_enabled(self) -> bool:
+        """Проверяет, включён ли автозапуск."""
+        path = self._get_autostart_path()
+        return os.path.exists(path)
+
     # ---- init helpers
     def _set_icon(self):
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
@@ -1244,17 +1203,14 @@ class SystemTrayApp:
         self.uptime_item = Gtk.MenuItem(label=f"{tr('uptime_label')}: N/A")
         self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
         self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
-
         # ping
         self.ping_item = Gtk.MenuItem(label=tr("ping_network"))
         self.ping_item.connect("activate", self._on_ping_click)
         self.ping_top_sep = Gtk.SeparatorMenuItem()
         self.ping_bottom_sep = Gtk.SeparatorMenuItem()
-
         # graphs
         self.graphs_item = Gtk.MenuItem(label=(tr("graphs") if "graphs" in (LANGUAGES.get(current_lang) or {}) else "Graphs"))
         self.graphs_item.connect("activate", self._open_graphs)
-
         # power block
         self.power_separator = Gtk.SeparatorMenuItem()
         self.power_off_item = Gtk.MenuItem(label=tr("power_off"))
@@ -1265,13 +1221,10 @@ class SystemTrayApp:
         self.lock_item.connect("activate", self.power_control._confirm_action, self.power_control._lock_screen, tr("confirm_text_lock"))
         self.timer_item = Gtk.MenuItem(label=tr("settings"))
         self.timer_item.connect("activate", self.power_control._open_settings)
-
         self.main_separator = Gtk.SeparatorMenuItem()
         self.exit_separator = Gtk.SeparatorMenuItem()
-
         self.settings_item = Gtk.MenuItem(label=tr("settings_label"))
         self.settings_item.connect("activate", self._show_settings)
-
         # language submenu
         self.language_menu = Gtk.Menu()
         group_root = None
@@ -1285,16 +1238,12 @@ class SystemTrayApp:
             self.language_menu.append(item)
         self.language_menu_item = Gtk.MenuItem(label=tr("language"))
         self.language_menu_item.set_submenu(self.language_menu)
-
         self.quit_item = Gtk.MenuItem(label=tr("exit_app"))
         self.quit_item.connect("activate", self.quit)
-
         self._update_menu_visibility()
-
         # вставляем графики (только если включены)
         if self.visibility_settings.get("show_graphs", True):
             self.menu.append(self.graphs_item)
-
         if any(
                 [
                     self.visibility_settings.get("show_power_off", True),
@@ -1312,19 +1261,15 @@ class SystemTrayApp:
                 self.menu.append(self.lock_item)
             if self.visibility_settings.get("show_timer", True):
                 self.menu.append(self.timer_item)
-
         self.menu.append(self.main_separator)
-
         if self.visibility_settings.get("ping_network", True):
             self.menu.append(self.ping_top_sep)
             self.menu.append(self.ping_item)
             self.menu.append(self.ping_bottom_sep)
-
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
         self.menu.append(self.exit_separator)
         self.menu.append(self.quit_item)
-
         self.menu.show_all()
         self.indicator.set_menu(self.menu)
 
@@ -1338,7 +1283,6 @@ class SystemTrayApp:
                     self.visibility_settings["language"] = current_lang
                     self._save_settings()
                     self._build_menu()  # пересборка меню для обновления всех надписей
-
                     # Обновить заголовок окна графиков, если оно открыто
                     if self.graph_window and isinstance(self.graph_window, GraphWindow):
                         self.graph_window.update_title()
@@ -1359,23 +1303,19 @@ class SystemTrayApp:
         # учитывать show_graphs при фиксации элементов, которые нельзя удалять
         if self.visibility_settings.get("show_graphs", True):
             keep.append(getattr(self, "graphs_item", None))
-
         if getattr(self, "ping_item", None) and self.visibility_settings.get("ping_network", True):
             keep.extend([self.ping_item, getattr(self, "ping_top_sep", None), getattr(self, "ping_bottom_sep", None)])
         keep = [x for x in keep if x is not None]
-
         for ch in list(children):
             if ch not in keep:
                 try:
                     self.menu.remove(ch)
                 except Exception:
                     pass
-
         # prepend в обратном порядке
         def maybe_prepend(flag_key, item):
             if self.visibility_settings.get(flag_key, True):
                 self.menu.prepend(item)
-
         maybe_prepend("mouse_clicks", self.mouse_item)
         maybe_prepend("keyboard_clicks", self.keyboard_item)
         maybe_prepend("uptime", self.uptime_item)
@@ -1384,7 +1324,6 @@ class SystemTrayApp:
         maybe_prepend("swap", self.swap_item)
         maybe_prepend("ram", self.ram_item)
         maybe_prepend("cpu", self.cpu_temp_item)
-
         self.menu.show_all()
 
     def _open_graphs(self, *_):
@@ -1422,7 +1361,6 @@ class SystemTrayApp:
         host = "8.8.8.8"
         count = 4
         timeout = 5
-
         def worker():
             GLib.idle_add(lambda: self._info(tr("ping_network"), tr("ping_running")))
             try:
@@ -1430,23 +1368,20 @@ class SystemTrayApp:
                 ok = proc.returncode == 0
                 out = proc.stdout.strip() or proc.stderr.strip() or tr("ping_error")
                 title = tr("ok") if ok else tr("error")
-                msg = f"{tr('ping_done')} {host}\n\n{out}"
+                msg = f"{tr('ping_done')} {host}\n{out}"
             except Exception as e:
                 title = tr("error")
                 msg = f"{tr('ping_error')}: {e}"
             GLib.idle_add(lambda: self._info(title, msg))
-
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_settings(self, _w):
         if getattr(self, "settings_dialog", None) and self.settings_dialog.get_mapped():
             self.settings_dialog.present()
             return
-
         dlg = SettingsDialog(None, self.visibility_settings)
         self.power_control.set_parent_window(dlg)
         self.settings_dialog = dlg
-
         try:
             resp = dlg.run()
             if resp == Gtk.ResponseType.OK:
@@ -1470,30 +1405,15 @@ class SystemTrayApp:
                 vis["ping_network"] = dlg.ping_check.get_active()
                 vis["max_log_mb"] = int(dlg.logsize_spin.get_value())
                 vis["show_graphs"] = dlg.graphs_check.get_active()
-
-                # notifiers
-                tel_enabled_before = self.telegram_notifier.enabled
-                if self.telegram_notifier.save_config(
-                        dlg.token_entry.get_text().strip(),
-                        dlg.chat_id_entry.get_text().strip(),
-                        dlg.telegram_enable_check.get_active(),
-                        int(dlg.interval_spin.get_value()),
-                ):
-                    self.telegram_notifier.load_config()
-                    if self.telegram_notifier.enabled and not tel_enabled_before:
-                        self.last_telegram_notification_time = 0
-
-                disc_enabled_before = self.discord_notifier.enabled
-                if self.discord_notifier.save_config(
-                        dlg.webhook_entry.get_text().strip(),
-                        dlg.discord_enable_check.get_active(),
-                        int(dlg.discord_interval_spin.get_value()),
-                ):
-                    self.discord_notifier.load_config()
-                    if self.discord_notifier.enabled and not disc_enabled_before:
-                        self.last_discord_notification_time = 0
-
+                vis["autostart"] = dlg.autostart_check.get_active()  # <--- SAVE AUTOSTART
                 self._save_settings()
+
+                # Apply autostart
+                if vis["autostart"]:
+                    self._enable_autostart()
+                else:
+                    self._disable_autostart()
+
                 self._build_menu()  # refresh labels in chosen language etc.
         finally:
             self.power_control.set_parent_window(None)
@@ -1509,7 +1429,6 @@ class SystemTrayApp:
         try:
             with _clicks_lock:
                 kbd, ms = keyboard_clicks, mouse_clicks
-
             cpu_temp = SystemUsage.get_cpu_temp()
             cpu_usage = SystemUsage.get_cpu_usage()
             ram_used, ram_total = SystemUsage.get_ram_usage()
@@ -1517,14 +1436,12 @@ class SystemTrayApp:
             swap_used, swap_total = SystemUsage.get_swap_usage()
             net_recv_speed, net_sent_speed = SystemUsage.get_network_speed(self.prev_net_data)
             uptime = SystemUsage.get_uptime()
-
             # push to graphs
             if getattr(self, "graph_window", None):
                 try:
                     self.graph_window.push_sample(cpu_temp, cpu_usage, ram_used, ram_total, swap_used, swap_total, disk_used, disk_total, net_recv_speed, net_sent_speed)
                 except Exception as e:
                     print("graph push error:", e)
-
             self._update_ui(
                 cpu_temp, cpu_usage,
                 ram_used, ram_total,
@@ -1533,7 +1450,6 @@ class SystemTrayApp:
                 net_recv_speed, net_sent_speed,
                 uptime, kbd, ms,
             )
-
             now = time.time()
             if self.telegram_notifier.enabled and now - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval:
                 threading.Thread(
@@ -1542,7 +1458,6 @@ class SystemTrayApp:
                     daemon=True,
                 ).start()
                 self.last_telegram_notification_time = now
-
             if self.discord_notifier.enabled and now - self.last_discord_notification_time >= self.discord_notifier.notification_interval:
                 threading.Thread(
                     target=self._send_discord,
@@ -1550,7 +1465,6 @@ class SystemTrayApp:
                     daemon=True,
                 ).start()
                 self.last_discord_notification_time = now
-
             if self.visibility_settings.get("logging_enabled", True):
                 max_mb = int(self.visibility_settings.get("max_log_mb", 5))
                 max_mb = max(1, min(max_mb, 1024))
@@ -1631,7 +1545,6 @@ class SystemTrayApp:
                 self.keyboard_item.set_label(f"{tr('keyboard_clicks')}: {keyboard_clicks_val}")
             if self.visibility_settings["mouse_clicks"]:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
-
             tray_parts = []
             if self.visibility_settings.get("tray_cpu", True):
                 tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
@@ -1683,7 +1596,6 @@ class SystemTrayApp:
         # graph window - правильно уничтожаем
         if getattr(self, "graph_window", None):
             try:
-                # Удаляем обработчики и уничтожаем окно
                 if hasattr(self.graph_window, 'disconnect_by_func'):
                     self.graph_window.disconnect_by_func(self._on_graph_window_close)
                 self.graph_window.destroy()
@@ -1711,7 +1623,6 @@ class SystemTrayApp:
         GLib.timeout_add_seconds(TIME_UPDATE_SECONDS, self.update_info)
         # Запускаем главный цикл GTK
         Gtk.main()
-
 
 # ---------------------------
 # Entrypoint

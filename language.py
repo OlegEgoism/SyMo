@@ -81,6 +81,8 @@ LANGUAGES = {
         'ping_error': 'Ошибка при выполнении ping',
 
         'graphs': 'График',
+
+        'autostart_label': 'Запускать при старте'
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -164,6 +166,8 @@ LANGUAGES = {
         'ping_error': 'Error running ping',
 
         'graphs': 'Graphs',
+
+        'autostart_label': 'Start automatically on boot'
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -247,6 +251,8 @@ LANGUAGES = {
         'ping_error': '执行 ping 时出错',
 
         'graphs': '图表',
+
+        'autostart_label': '开机自动启动'
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -331,6 +337,8 @@ LANGUAGES = {
         'ping_error': 'Fehler beim Ausführen von Ping',
 
         'graphs': 'Diagramme',
+
+        'autostart_label': 'Automatisch beim Start'
     },
     'it': {
         'cpu_tray': "CPU in tray",
@@ -414,6 +422,8 @@ LANGUAGES = {
         'ping_error': 'Errore durante l\'esecuzione di ping',
 
         'graphs': 'Grafici',
+
+        'autostart_label': 'Avvio automatico'
     },
     'es': {
         'cpu_tray': "CPU en bandeja",
@@ -497,6 +507,8 @@ LANGUAGES = {
         'ping_error': 'Error al ejecutar ping',
 
         'graphs': 'Gráficos',
+
+        'autostart_label': 'Inicio automático'
     },
     'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
@@ -580,6 +592,8 @@ LANGUAGES = {
         'ping_error': 'Ping çalıştırılırken hata oluştu',
 
         'graphs': 'Grafikler',
+
+        'autostart_label': 'Otomatik başlat'
     },
     'fr': {
         'cpu_tray': "CPU dans la barre",
@@ -663,5 +677,7 @@ LANGUAGES = {
         'ping_error': 'Erreur lors de exécution du ping',
 
         'graphs': 'Graphiques',
+
+        'autostart_label': 'Démarrage automatique'
     }
 }
