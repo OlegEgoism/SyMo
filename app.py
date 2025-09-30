@@ -782,6 +782,9 @@ class SystemTrayApp:
 
         self.settings_dialog: Optional[SettingsDialog] = None
 
+        # Прогресс-диалог пинга (неблокирующий)
+        self._progress_dialog: Optional[Gtk.MessageDialog] = None
+
         # Лог
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
             try:
@@ -811,6 +814,15 @@ class SystemTrayApp:
             self.mouse_listener = None
             self._notify_no_global_hooks = True
 
+    # --- Безопасное закрытие прогресс-диалога ---
+    def _close_progress_dialog(self):
+        if self._progress_dialog:
+            try:
+                self._progress_dialog.destroy()
+            except Exception:
+                pass
+            self._progress_dialog = None
+
     # --- Обработчики ввода ---
     def on_key_press(self, _key):
         global keyboard_clicks
@@ -824,12 +836,32 @@ class SystemTrayApp:
         with _clicks_lock:
             mouse_clicks += 1
 
-    # --- Пинг ---
+    # --- Пинг (c авто-закрытием waiting-диалога) ---
     def on_ping_click(self, *_):
         host = "8.8.8.8"; count = 4; timeout = 5
 
+        # Показать неблокирующий диалог "в процессе"
+        def show_progress():
+            # если уже есть и он отображается — не создаём второй
+            if self._progress_dialog and self._progress_dialog.get_mapped():
+                return False
+            parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
+            d = Gtk.MessageDialog(
+                transient_for=parent,
+                flags=0,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.NONE,
+                text=tr('ping_running')
+            )
+            d.set_title(tr('ping_network'))
+            d.set_modal(True)
+            d.show()  # неблокирующе
+            self._progress_dialog = d
+            return False
+
+        GLib.idle_add(show_progress)
+
         def worker():
-            GLib.idle_add(lambda: self._show_message(tr('ping_network'), tr('ping_running')))
             cmd = ["ping", "-c", str(count), "-w", str(timeout), host]
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -840,7 +872,14 @@ class SystemTrayApp:
             except Exception as e:
                 title = tr('error')
                 msg = f"{tr('ping_error')}: {e}"
-            GLib.idle_add(lambda: self._show_message(title, msg))
+
+            # На главном потоке: закрыть прогресс и показать итог
+            def finish():
+                self._close_progress_dialog()
+                self._show_message(title, msg)
+                return False
+
+            GLib.idle_add(finish)
 
         self._thread(worker)
 
@@ -1230,6 +1269,9 @@ class SystemTrayApp:
             except Exception:
                 pass
             self.power_control.current_dialog = None
+
+        self._close_progress_dialog()
+
         if self.settings_dialog:
             try:
                 self.settings_dialog.destroy()

@@ -145,5 +145,10 @@ chmod +x build_deb.sh
 sudo dpkg -i SyMo_1.0.1_all.deb
 ```
 
-<h3>💡 Remove package (recommended method)</h3>
-To uninstall, use the file - uninstall-symo.sh
+<h3>💡 Remove package
+<span style="color: red">(recommended method!)</span>
+</h3>
+```bash
+chmod +x uninstall-symo.sh
+./uninstall-symo.sh
+```
