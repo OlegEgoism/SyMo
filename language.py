@@ -21,7 +21,7 @@ LANGUAGES = {
         'power_off': "Выключение",
         'reboot': "Перезагрузка",
         'lock': "Блокировка",
-        'settings': "Таймер",
+        'settings': "Планировщик",
         'minutes': "Минуты:",
         'action': "",
         'apply': "Применить",
