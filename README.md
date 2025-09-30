@@ -109,8 +109,8 @@ python3 app.py
 ```
 
 <h2 style="color: chocolate">
-    Assembling into an executable file
-    <span style="color: red">(recommended option!)</span>
+    Building app
+    <span style="color: red">(recommended)</span>
 </h2>
 
 <h3>💡 Launch file "build.sh" (assembly time up to 5 minutes)</h3>
@@ -126,28 +126,11 @@ chmod +x build.sh
 ls -l *SyMo-onefile
 ```
 
-<h3>💡 After successful assembly, you will have an application icon "SyMo"</h3>
-
 <h2 style="color: chocolate">
-Assembling the application .deb
+  Remove
+  <span style="color: red">(recommended)</span>
 </h2>
 
-<h3>💡 Launch file "build_deb.sh"</h3>
-
-```bash
-chmod +x build_deb.sh
-./build_deb.sh
-```
-
-<h3>💡 Installation after successful build</h3>
-
-```bash
-sudo dpkg -i SyMo_1.0.1_all.deb
-```
-
-<h3>💡 Remove package
-<span style="color: red">(recommended method!)</span>
-</h3>
 ```bash
 chmod +x uninstall-symo.sh
 ./uninstall-symo.sh
