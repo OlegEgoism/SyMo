@@ -1,0 +1,55 @@
+Через того же Telegram-бота, который шлёт уведомления, можно удалённо:
+poweroff или /poweroff → выключить ПК
+reboot или /reboot → перезагрузить ПК
+
+
+Откройте файл sudoers:
+sudo visudo
+
+
+Добавьте в конец (замените ваш_пользователь на ваше имя пользователя):
+ваш_пользователь ALL=(ALL) NOPASSWD: /sbin/shutdown
+
+
+Проверьте, что команды работают без пароля:
+sudo shutdown -h now
+sudo shutdown -r now
+
+
+
+
+
+
+----------------------
+Создай сервис:
+sudo nano /etc/systemd/system/pc-control.service
+
+
+Вставь:
+[Unit]
+Description=Telegram PC Control Bot
+After=network-online.target
+
+[Service]
+User=your_user
+ExecStart=/usr/bin/python3 /home/your_user/pc_control_bot.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+Сохранить и включить:
+sudo systemctl daemon-reload
+sudo systemctl enable pc-control
+sudo systemctl start pc-control
+
+
+Проверить:
+systemctl status pc-control
+
+Теперь ты можешь писать в Telegram-бота:
+/reboot
+или
+/poweroff

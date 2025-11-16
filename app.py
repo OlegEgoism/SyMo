@@ -8,6 +8,7 @@ SyMo — System Monitor (Tray)
 - Уведомления Telegram/Discord (webhook) с настраиваемым интервалом
 - Простой лог с ротацией .1 по максимальному размеру
 - Настройки в диалоге (видимость пунктов, язык, лог, нотификаторы)
+- ДОРАБОТКА: команды Telegram-бота poweroff / reboot для выключения и перезагрузки ПК
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ import subprocess
 from enum import Enum
 from datetime import timedelta
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Callable
 
 import psutil
 import requests
@@ -180,13 +181,57 @@ class SystemUsage:
 # Нотификаторы
 # -----------------------
 class TelegramNotifier:
-    def __init__(self):
+    """Нотификатор + обработчик команд Telegram.
+
+    Команды poweroff / reboot разрешены ТОЛЬКО с chat_id, указанного в конфиге.
+    """
+
+    def __init__(
+        self,
+        on_poweroff: Optional[Callable[[], None]] = None,
+        on_reboot: Optional[Callable[[], None]] = None,
+    ):
         self.token: Optional[str] = None
         self.chat_id: Optional[str] = None
         self.enabled: bool = False
         self.notification_interval: int = 3600
-        self.load_config()
 
+        # callbacks для команд
+        self._on_poweroff = on_poweroff
+        self._on_reboot = on_reboot
+
+        # управление потоком команд
+        self._listener_thread: Optional[threading.Thread] = None
+        self._stop_flag = False
+        self._updates_offset: Optional[int] = None
+
+        self.load_config()  # внутри будет запуск/остановка listener
+
+    # ==== Сервисные методы запуска/остановки слушателя команд ====
+    def set_callbacks(
+        self,
+        on_poweroff: Optional[Callable[[], None]] = None,
+        on_reboot: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self._on_poweroff = on_poweroff
+        self._on_reboot = on_reboot
+
+    def _maybe_start_listener(self) -> None:
+        if not (self.enabled and self.token and self.chat_id):
+            return
+        if self._listener_thread is not None:
+            return
+        self._stop_flag = False
+        t = threading.Thread(target=self._command_loop, daemon=True)
+        self._listener_thread = t
+        t.start()
+
+    def _stop_listener(self) -> None:
+        self._stop_flag = True
+        # Поток завершится сам по себе при следующей итерации; ссылку обнулим
+        self._listener_thread = None
+
+    # ==== Работа с конфигом ====
     def load_config(self) -> None:
         try:
             if TELEGRAM_CONFIG_FILE.exists():
@@ -197,6 +242,12 @@ class TelegramNotifier:
                 self.notification_interval = int(config.get('notification_interval', 3600))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации Telegram: {e}")
+
+        # после загрузки — решить, запускать ли listener
+        if self.enabled and self.token and self.chat_id:
+            self._maybe_start_listener()
+        else:
+            self._stop_listener()
 
     def save_config(self, token: str, chat_id: str, enabled: bool, interval: int) -> bool:
         try:
@@ -214,11 +265,19 @@ class TelegramNotifier:
                 os.chmod(TELEGRAM_CONFIG_FILE, 0o600)
             except Exception:
                 pass
+
+            # после сохранения — запуск/остановка listener
+            if self.enabled and self.token and self.chat_id:
+                self._maybe_start_listener()
+            else:
+                self._stop_listener()
+
             return True
         except Exception as e:
             print(f"Ошибка сохранения конфигурации Telegram: {e}")
             return False
 
+    # ==== Отправка сообщений ====
     def send_message(self, message: str) -> bool:
         if not self.enabled or not self.token or not self.chat_id:
             return False
@@ -230,6 +289,103 @@ class TelegramNotifier:
         except Exception as e:
             print(f"Ошибка отправки сообщения в Telegram: {e}")
             return False
+
+    # ==== Цикл обработки команд ====
+    def _command_loop(self) -> None:
+        """Фоновый long-pollинг getUpdates.
+
+        Команды:
+          - /poweroff или poweroff — выключение
+          - /reboot или reboot — перезагрузка
+
+        Команды принимаются только от chat_id == self.chat_id.
+        """
+        if not (self.token and self.chat_id):
+            return
+
+        base_url = f"https://api.telegram.org/bot{self.token}"  # без / на конце
+        allowed_chat = str(self.chat_id)
+
+        while not self._stop_flag:
+            try:
+                params = {"timeout": 50}
+                if self._updates_offset is not None:
+                    params["offset"] = self._updates_offset + 1
+
+                try:
+                    resp = requests.get(
+                        base_url + "/getUpdates",
+                        params=params,
+                        timeout=(5, 60),
+                    )
+                except Exception as e:
+                    print(f"Telegram getUpdates error: {e}")
+                    time.sleep(5)
+                    continue
+
+                if resp.status_code != 200:
+                    print("Telegram getUpdates HTTP", resp.status_code)
+                    time.sleep(5)
+                    continue
+
+                data = resp.json()
+                if not data.get("ok", False):
+                    print("Telegram getUpdates returned not ok:", data)
+                    time.sleep(5)
+                    continue
+
+                results = data.get("result", [])
+                if not results:
+                    # нет новых сообщений
+                    continue
+
+                for upd in results:
+                    self._updates_offset = upd.get("update_id", self._updates_offset)
+                    msg = upd.get("message") or upd.get("edited_message")
+                    if not msg:
+                        continue
+
+                    chat = msg.get("chat", {})
+                    chat_id_val = str(chat.get("id"))
+                    if chat_id_val != allowed_chat:
+                        # команды только от указанного chat_id
+                        continue
+
+                    text = (msg.get("text") or "").strip().lower()
+                    if not text:
+                        continue
+
+                    if text in ("/poweroff", "poweroff"):
+                        self._handle_poweroff_command()
+                    elif text in ("/reboot", "reboot"):
+                        self._handle_reboot_command()
+
+            except Exception as e:
+                # чтобы не упал насовсем, просто лог и пауза
+                print("Ошибка в Telegram command loop:", e)
+                time.sleep(5)
+
+    def _handle_poweroff_command(self) -> None:
+        if self._on_poweroff is None:
+            self.send_message(tr('no_power_handler'))
+            return
+        # Ответ пользователю и выключение
+        self.send_message(tr('telegram_poweroff_ack'))
+        try:
+            self._on_poweroff()
+        except Exception as e:
+            print("Ошибка при выполнении poweroff из Telegram:", e)
+
+    def _handle_reboot_command(self) -> None:
+        if self._on_reboot is None:
+            self.send_message(tr('no_reboot_handler'))
+            return
+        # Ответ пользователю и рестарт
+        self.send_message(tr('telegram_reboot_ack'))
+        try:
+            self._on_reboot()
+        except Exception as e:
+            print("Ошибка при выполнении reboot из Telegram:", e)
 
 
 class DiscordNotifier:
@@ -374,16 +530,21 @@ class PowerControl:
 
         # Время (минуты)
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        time_label = Gtk.Label(label=tr('minutes')); time_label.set_xalign(0)
+        time_label = Gtk.Label(label=tr('minutes'))
+        time_label.set_xalign(0)
         adjustment = Gtk.Adjustment(value=1, lower=1, upper=1440, step_increment=1)
-        time_spin = Gtk.SpinButton(); time_spin.set_adjustment(adjustment); time_spin.set_numeric(True)
-        time_spin.set_value(1); time_spin.set_size_request(150, -1)
+        time_spin = Gtk.SpinButton()
+        time_spin.set_adjustment(adjustment)
+        time_spin.set_numeric(True)
+        time_spin.set_value(1)
+        time_spin.set_size_request(150, -1)
         time_box.pack_start(time_label, True, True, 0)
         time_box.pack_start(time_spin, False, False, 0)
 
         # Действие
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        action_label_w = Gtk.Label(label=tr('action')); action_label_w.set_xalign(0)
+        action_label_w = Gtk.Label(label=tr('action'))
+        action_label_w.set_xalign(0)
         action_combo = Gtk.ComboBoxText()
         action_combo.append(Action.POWER_OFF.value, action_label(Action.POWER_OFF))
         action_combo.append(Action.REBOOT.value, action_label(Action.REBOOT))
@@ -561,7 +722,8 @@ class SettingsDialog(Gtk.Dialog):
         box.add(logging_box)
 
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        logsize_label = Gtk.Label(label=tr('max_log_size_mb')); logsize_label.set_xalign(0)
+        logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
+        logsize_label.set_xalign(0)
         self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
         self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 5)))
         logsize_box.pack_start(logsize_label, False, False, 0)
@@ -581,33 +743,43 @@ class SettingsDialog(Gtk.Dialog):
         box.add(telegram_box)
 
         token_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        token_label = Gtk.Label(label=tr('token_bot')); token_label.set_xalign(0)
-        self.token_entry = Gtk.Entry(); self.token_entry.set_placeholder_text("123...:ABC...")
+        token_label = Gtk.Label(label=tr('token_bot'))
+        token_label.set_xalign(0)
+        self.token_entry = Gtk.Entry()
+        self.token_entry.set_placeholder_text("123...:ABC...")
         self.token_entry.set_visibility(False)
         token_box.pack_start(token_label, False, False, 0)
         token_box.pack_start(self.token_entry, True, True, 0)
-        token_toggle = Gtk.ToggleButton(label="👁"); token_toggle.set_relief(Gtk.ReliefStyle.NONE)
+        token_toggle = Gtk.ToggleButton(label="👁")
+        token_toggle.set_relief(Gtk.ReliefStyle.NONE)
         token_toggle.connect("toggled", lambda btn: self.token_entry.set_visibility(btn.get_active()))
         token_box.pack_end(token_toggle, False, False, 0)
         box.add(token_box)
 
         chat_id_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        chat_id_label = Gtk.Label(label=tr('id_chat')); chat_id_label.set_xalign(0)
-        self.chat_id_entry = Gtk.Entry(); self.chat_id_entry.set_placeholder_text("123456789")
+        chat_id_label = Gtk.Label(label=tr('id_chat'))
+        chat_id_label.set_xalign(0)
+        self.chat_id_entry = Gtk.Entry()
+        self.chat_id_entry.set_placeholder_text("123456789")
         self.chat_id_entry.set_visibility(False)
         chat_id_box.pack_start(chat_id_label, False, False, 0)
         chat_id_box.pack_start(self.chat_id_entry, True, True, 0)
-        chat_id_toggle = Gtk.ToggleButton(label="👁"); chat_id_toggle.set_relief(Gtk.ReliefStyle.NONE)
+        chat_id_toggle = Gtk.ToggleButton(label="👁")
+        chat_id_toggle.set_relief(Gtk.ReliefStyle.NONE)
         chat_id_toggle.connect("toggled", lambda btn: self.chat_id_entry.set_visibility(btn.get_active()))
         chat_id_box.pack_end(chat_id_toggle, False, False, 0)
         box.add(chat_id_box)
 
         interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        interval_label = Gtk.Label(label=tr('time_send')); interval_label.set_xalign(0)
-        self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1); self.interval_spin.set_value(3600)
+        interval_label = Gtk.Label(label=tr('time_send'))
+        interval_label.set_xalign(0)
+        self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
+        self.interval_spin.set_value(3600)
         interval_box.pack_start(interval_label, False, False, 0)
         interval_box.pack_start(self.interval_spin, True, True, 0)
-        interval_box.set_margin_top(3); interval_box.set_margin_bottom(3); interval_box.set_margin_end(50)
+        interval_box.set_margin_top(3)
+        interval_box.set_margin_bottom(3)
+        interval_box.set_margin_end(50)
         box.add(interval_box)
 
         # Discord
@@ -621,22 +793,29 @@ class SettingsDialog(Gtk.Dialog):
         box.add(discord_box)
 
         webhook_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        webhook_label = Gtk.Label(label=tr('webhook_url')); webhook_label.set_xalign(0)
-        self.webhook_entry = Gtk.Entry(); self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/...")
+        webhook_label = Gtk.Label(label=tr('webhook_url'))
+        webhook_label.set_xalign(0)
+        self.webhook_entry = Gtk.Entry()
+        self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/...")
         self.webhook_entry.set_visibility(False)
         webhook_box.pack_start(webhook_label, False, False, 0)
         webhook_box.pack_start(self.webhook_entry, True, True, 0)
-        webhook_toggle = Gtk.ToggleButton(label="👁"); webhook_toggle.set_relief(Gtk.ReliefStyle.NONE)
+        webhook_toggle = Gtk.ToggleButton(label="👁")
+        webhook_toggle.set_relief(Gtk.ReliefStyle.NONE)
         webhook_toggle.connect("toggled", lambda btn: self.webhook_entry.set_visibility(btn.get_active()))
         webhook_box.pack_end(webhook_toggle, False, False, 0)
         box.add(webhook_box)
 
         discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        discord_interval_label = Gtk.Label(label=tr('time_send')); discord_interval_label.set_xalign(0)
-        self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1); self.discord_interval_spin.set_value(3600)
+        discord_interval_label = Gtk.Label(label=tr('time_send'))
+        discord_interval_label.set_xalign(0)
+        self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
+        self.discord_interval_spin.set_value(3600)
         discord_interval_box.pack_start(discord_interval_label, False, False, 0)
         discord_interval_box.pack_start(self.discord_interval_spin, True, True, 0)
-        discord_interval_box.set_margin_top(3); discord_interval_box.set_margin_bottom(30); discord_interval_box.set_margin_end(50)
+        discord_interval_box.set_margin_top(3)
+        discord_interval_box.set_margin_bottom(30)
+        discord_interval_box.set_margin_end(50)
         box.add(discord_interval_box)
 
         # Предзагрузка конфигов
@@ -775,7 +954,11 @@ class SystemTrayApp:
         self.init_listeners()
 
         # Нотификаторы
-        self.telegram_notifier = TelegramNotifier()
+        # TelegramNotifier сразу знает, как выполнять poweroff/reboot
+        self.telegram_notifier = TelegramNotifier(
+            on_poweroff=self.power_control._shutdown,
+            on_reboot=self.power_control._reboot,
+        )
         self.discord_notifier = DiscordNotifier()
         self.last_telegram_notification_time = 0.0
         self.last_discord_notification_time = 0.0
@@ -838,7 +1021,9 @@ class SystemTrayApp:
 
     # --- Пинг (c авто-закрытием waiting-диалога) ---
     def on_ping_click(self, *_):
-        host = "8.8.8.8"; count = 4; timeout = 5
+        host = "8.8.8.8"
+        count = 4
+        timeout = 5
 
         # Показать неблокирующий диалог "в процессе"
         def show_progress():
@@ -1083,6 +1268,7 @@ class SystemTrayApp:
                     dialog.telegram_enable_check.get_active(),
                     int(dialog.interval_spin.get_value())
                 ):
+                    # Перезагрузим конфиг: внутри load_config управляет listener'ом
                     self.telegram_notifier.load_config()
                     if self.telegram_notifier.enabled and not tel_enabled_before:
                         self.last_telegram_notification_time = 0.0
@@ -1217,7 +1403,9 @@ class SystemTrayApp:
         d = Gtk.MessageDialog(transient_for=parent, flags=0,
                               message_type=Gtk.MessageType.INFO,
                               buttons=Gtk.ButtonsType.OK, text=message)
-        d.set_title(title); d.run(); d.destroy()
+        d.set_title(title)
+        d.run()
+        d.destroy()
 
     def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
                    disk_used, disk_total, swap_used, swap_total,
@@ -1278,6 +1466,13 @@ class SystemTrayApp:
             except Exception:
                 pass
             self.settings_dialog = None
+
+        # Остановить Telegram listener, если есть
+        try:
+            if hasattr(self, 'telegram_notifier'):
+                self.telegram_notifier._stop_listener()
+        except Exception:
+            pass
 
         # Остановить слушатели
         try:
