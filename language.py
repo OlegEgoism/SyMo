@@ -79,6 +79,14 @@ LANGUAGES = {
         'ping_running': 'Выполняется проверка сети…',
         'ping_done': 'Проверка завершена для',
         'ping_error': 'Ошибка при выполнении ping',
+
+        'bot_shutdown_message': "🔌 Выполняется выключение системы...",
+        'bot_reboot_message': "🔄 Выполняется перезагрузка системы...",
+        'bot_help_message': "🤖 Доступные команды:\n/status - статус системы\n/poweroff - выключить компьютер\n/reboot - перезагрузить компьютер\n/help - справка",
+
+        'bot_shutdown_message': "🔌 Выполняется выключение системы...",
+        'bot_reboot_message': "🔄 Выполняется перезагрузка системы...",
+        'bot_help_message': "🤖 Доступные команды:\n/status - текущий статус системы\n/poweroff - выключить компьютер\n/reboot - перезагрузить компьютер\n/help - эта справка",
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -160,6 +168,10 @@ LANGUAGES = {
         'ping_running': 'Running network check…',
         'ping_done': 'Ping finished for',
         'ping_error': 'Error running ping',
+
+        'bot_shutdown_message': "🔌 Shutting down system...",
+        'bot_reboot_message': "🔄 Rebooting system...",
+        'bot_help_message': "🤖 Available commands:\n/status - current system status\n/poweroff - shutdown computer\n/reboot - reboot computer\n/help - this help",
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -241,6 +253,10 @@ LANGUAGES = {
         'ping_running': '正在进行网络测试…',
         'ping_done': '已完成测试：',
         'ping_error': '执行 ping 时出错',
+
+        'bot_shutdown_message': "🔌 正在关闭系统...",
+        'bot_reboot_message': "🔄 正在重启系统...",
+        'bot_help_message': "🤖 可用命令:\n/status - 当前系统状态\n/poweroff - 关闭计算机\n/reboot - 重启计算机\n/help - 帮助信息",
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -323,6 +339,10 @@ LANGUAGES = {
         'ping_running': 'Netzwerkprüfung läuft…',
         'ping_done': 'Prüfung abgeschlossen für',
         'ping_error': 'Fehler beim Ausführen von Ping',
+
+        'bot_shutdown_message': "🔌 System wird heruntergefahren...",
+        'bot_reboot_message': "🔄 System wird neu gestartet...",
+        'bot_help_message': "🤖 Verfügbare Befehle:\n/status - aktueller Systemstatus\n/poweroff - Computer ausschalten\n/reboot - Computer neu starten\n/help - diese Hilfe",
     },
     'it': {
         'cpu_tray': "CPU in tray",
@@ -404,6 +424,10 @@ LANGUAGES = {
         'ping_running': 'Verifica della rete in corso…',
         'ping_done': 'Verifica completata per',
         'ping_error': 'Errore durante l\'esecuzione di ping',
+
+        'bot_shutdown_message': "🔌 Spegnimento del sistema in corso...",
+        'bot_reboot_message': "🔄 Riavvio del sistema in corso...",
+        'bot_help_message': "🤖 Comandi disponibili:\n/status - stato attuale del sistema\n/poweroff - spegni computer\n/reboot - riavvia computer\n/help - questo aiuto",
     },
     'es': {
         'cpu_tray': "CPU en bandeja",
@@ -485,6 +509,10 @@ LANGUAGES = {
         'ping_running': 'Comprobando la red…',
         'ping_done': 'Comprobación finalizada para',
         'ping_error': 'Error al ejecutar ping',
+
+        'bot_shutdown_message': "🔌 Apagando el sistema...",
+        'bot_reboot_message': "🔄 Reiniciando el sistema...",
+        'bot_help_message': "🤖 Comandos disponibles:\n/status - estado actual del sistema\n/poweroff - apagar computadora\n/reboot - reiniciar computadora\n/help - esta ayuda",
     },
     'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
@@ -566,6 +594,10 @@ LANGUAGES = {
         'ping_running': 'Ağ kontrolü yapılıyor…',
         'ping_done': 'Kontrol tamamlandı:',
         'ping_error': 'Ping çalıştırılırken hata oluştu',
+
+        'bot_shutdown_message': "🔌 Sistem kapatılıyor...",
+        'bot_reboot_message': "🔄 Sistem yeniden başlatılıyor...",
+        'bot_help_message': "🤖 Mevcut komutlar:\n/status - mevcut sistem durumu\n/poweroff - bilgisayarı kapat\n/reboot - bilgisayarı yeniden başlat\n/help - bu yardım",
     },
     'fr': {
         'cpu_tray': "CPU dans la barre",
@@ -647,5 +679,9 @@ LANGUAGES = {
         'ping_running': 'Vérification du réseau en cours…',
         'ping_done': 'Vérification terminée pour',
         'ping_error': 'Erreur lors de l\'exécution du ping',
+
+        'bot_shutdown_message': "🔌 Arrêt du système en cours...",
+        'bot_reboot_message': "🔄 Redémarrage du système en cours...",
+        'bot_help_message': "🤖 Commandes disponibles:\n/status - état actuel du système\n/poweroff - éteindre l'ordinateur\n/reboot - redémarrer l'ordinateur\n/help - cette aide",
     }
 }
