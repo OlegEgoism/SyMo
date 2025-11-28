@@ -288,18 +288,14 @@ class TelegramNotifier:
                                 self.send_message(help_text)
 
                 elif response.status_code == 409:
-                    # Конфликт - другой экземпляр бота уже запущен
                     print("Предупреждение: Другой экземпляр бота уже получает обновления")
-                    # time.sleep(10)
 
             except requests.exceptions.Timeout:
                 continue
             except requests.exceptions.RequestException as e:
                 print(f"Ошибка связи с Telegram API: {e}")
-                # time.sleep(10)
             except Exception as e:
                 print(f"Неожиданная ошибка в боте: {e}")
-                # time.sleep(5)
 
     def _send_system_status(self) -> None:
         """Отправить текущий статус системы"""
