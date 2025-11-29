@@ -9,16 +9,15 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import gi
-# --- GTK / Indicator ---
+
 try:
     gi.require_version("AppIndicator3", "0.1")
     from gi.repository import AppIndicator3 as AppInd
 except (ValueError, ImportError):
     gi.require_version("AyatanaAppIndicator3", "0.1")
-    from gi.repository import AyatanaAppIndicator3 as AppInd  # type: ignore
+    from gi.repository import AyatanaAppIndicator3 as AppInd
 
 gi.require_version("Gtk", "3.0")
-
 
 import psutil
 from gi.repository import Gtk, GLib
@@ -40,7 +39,6 @@ from notifications import TelegramNotifier, DiscordNotifier
 from power_control import PowerControl
 from system_usage import SystemUsage
 from click_tracker import increment_keyboard, increment_mouse, get_counts
-
 
 
 class SystemTrayApp:

@@ -126,6 +126,13 @@ chmod +x build.sh
 ls -l *SyMo-onefile
 ```
 
+The build script also prepares an archive with everything needed to install the app on another machine:
+
+```bash
+ls -l dist/SyMo-installer.tar.gz
+```
+
+
 <h2 style="color: chocolate">
   Remove
   <span style="color: red">(recommended)</span>

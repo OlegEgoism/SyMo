@@ -12,7 +12,6 @@ current_lang = 'ru'
 
 
 def tr(key: str) -> str:
-    """Локализация: берём карту текущего языка, иначе EN; при отсутствии ключа возвращаем сам ключ."""
     lang_map: Dict[str, str] = LANGUAGES.get(current_lang) or LANGUAGES.get('en', {})
     return lang_map.get(key, key)
 

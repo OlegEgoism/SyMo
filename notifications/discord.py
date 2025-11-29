@@ -38,8 +38,8 @@ class DiscordNotifier:
             try:
                 import os
                 os.chmod(DISCORD_CONFIG_FILE, 0o600)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Ошибка: {e}")
             return True
         except Exception as e:
             print(f"Ошибка сохранения конфигурации Discord: {e}")

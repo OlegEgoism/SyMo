@@ -12,7 +12,7 @@ from localization import tr
 from system_usage import SystemUsage
 from click_tracker import get_counts
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from power_control import PowerControl
 
 
