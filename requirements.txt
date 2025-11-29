@@ -1,0 +1,4 @@
+psutil>=5.9
+pynput>=1.7
+requests>=2.31
+pygobject

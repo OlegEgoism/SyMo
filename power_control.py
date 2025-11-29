@@ -8,7 +8,7 @@ from gi.repository import GLib, Gtk
 
 from localization import tr
 
-if TYPE_CHECKING:  # pragma: no cover
+if TYPE_CHECKING:
     from app import SystemTrayApp
 
 
