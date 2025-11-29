@@ -8,6 +8,11 @@
 Application Description and Features
 </h2> 
 
+<h3> 
+SyMo is a GTK-based system tray utility that surfaces real-time system metrics, manages power actions, and delivers optional Telegram/Discord notifications. 
+It is designed to run on Linux desktops with AppIndicator/Ayatana support, displaying compact tray labels while exposing richer details through the indicator menu.
+</h3>
+
 Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 
 <h3>System Monitor</h3>
@@ -51,6 +56,8 @@ Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 - Email: olegpustovalov220@gmail.com
 - Special thanks for help: https://github.com/korneyka3000
 - Developers: https://github.com/korneyka3000, https://github.com/OlegEgoism
+
+<img src="img.png" width="50%" />
 
 <h3>Video Demonstration</h3>
 
