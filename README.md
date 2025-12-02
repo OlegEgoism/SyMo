@@ -54,8 +54,7 @@ Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 <h3>Feedback and Support</h3>
 
 - Email: olegpustovalov220@gmail.com
-- Special thanks for help: https://github.com/korneyka3000
-- Developers: https://github.com/korneyka3000, https://github.com/OlegEgoism
+- Developers: https://github.com/OlegEgoism
 
 <img src="img.png" width="50%" />
 
