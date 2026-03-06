@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
 
@@ -72,27 +73,37 @@ class PowerControl:
         dialog.show()
 
     def _shutdown(self) -> None:
-        try:
-            if os.system("loginctl poweroff") != 0:
-                os.system("systemctl poweroff")
-        except Exception as e:
-            print(f"Ошибка выключения: {e}")
+        if not self._run_command(["loginctl", "poweroff"]):
+            self._run_command(["systemctl", "poweroff"])
 
     def _reboot(self) -> None:
-        try:
-            if os.system("loginctl reboot") != 0:
-                os.system("systemctl reboot")
-        except Exception as e:
-            print(f"Ошибка перезагрузки: {e}")
+        if not self._run_command(["loginctl", "reboot"]):
+            self._run_command(["systemctl", "reboot"])
 
     @staticmethod
     def _lock_screen() -> None:
-        for c in ("loginctl lock-session",
-                  "gnome-screensaver-command -l",
-                  "xdg-screensaver lock",
-                  "dm-tool lock"):
-            if os.system(c) == 0:
+        for cmd in (["loginctl", "lock-session"],
+                    ["gnome-screensaver-command", "-l"],
+                    ["xdg-screensaver", "lock"],
+                    ["dm-tool", "lock"]):
+            if PowerControl._run_command(cmd):
                 return
+
+    @staticmethod
+    def _run_command(cmd: list[str]) -> bool:
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if proc.returncode == 0:
+                return True
+            err = (proc.stderr or proc.stdout or "").strip()
+            if err:
+                print(f"Команда {' '.join(cmd)} завершилась с кодом {proc.returncode}: {err}")
+            else:
+                print(f"Команда {' '.join(cmd)} завершилась с кодом {proc.returncode}")
+            return False
+        except Exception as e:
+            print(f"Ошибка выполнения команды {' '.join(cmd)}: {e}")
+            return False
 
     def _open_settings(self, *_):
         dialog = Gtk.Dialog(

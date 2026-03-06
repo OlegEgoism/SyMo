@@ -21,7 +21,9 @@ for bin_path in "${BINARIES[@]}"; do
 done
 
 DESKTOP_FILES=(
+  "$HOME/.local/share/applications/SyMo.desktop"
   "$HOME/.local/share/applications/symo.desktop"
+  "/usr/share/applications/SyMo.desktop"
   "/usr/share/applications/symo.desktop"
 )
 
