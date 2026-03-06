@@ -48,7 +48,6 @@ Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 - 🇮🇹 Italian.
 - 🇪🇸 Spanish.
 - 🇹🇷 Turkish.
-- 🇸🇦 Arabic.
 - 🇫🇷 French.
 
 <h3>Feedback and Support</h3>
