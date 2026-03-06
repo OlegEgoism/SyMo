@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from typing import Optional, TYPE_CHECKING
 
 import requests
@@ -92,6 +93,7 @@ class TelegramNotifier:
         print("Telegram бот остановлен")
 
     def _bot_worker(self) -> None:
+        backoff_seconds = 1.0
         while self.bot_running and self.enabled and self.token:
             try:
                 url = f"https://api.telegram.org/bot{self.token}/getUpdates"
@@ -126,16 +128,23 @@ class TelegramNotifier:
                             elif text == '/help':
                                 help_text = tr('bot_help_message')
                                 self.send_message(help_text)
+                    backoff_seconds = 1.0
 
                 elif response.status_code == 409:
                     print("Предупреждение: Другой экземпляр бота уже получает обновления")
+                    time.sleep(min(backoff_seconds, 30.0))
+                    backoff_seconds = min(backoff_seconds * 2, 30.0)
 
             except requests.exceptions.Timeout:
                 continue
             except requests.exceptions.RequestException as e:
                 print(f"Ошибка связи с Telegram API: {e}")
+                time.sleep(min(backoff_seconds, 30.0))
+                backoff_seconds = min(backoff_seconds * 2, 30.0)
             except Exception as e:
                 print(f"Неожиданная ошибка в боте: {e}")
+                time.sleep(min(backoff_seconds, 30.0))
+                backoff_seconds = min(backoff_seconds * 2, 30.0)
 
     def _send_system_status(self) -> None:
         try:
