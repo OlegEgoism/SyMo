@@ -132,6 +132,26 @@ chmod +x build.sh
 ls -l *SyMo-onefile
 ```
 
+
+<h3>💡 Build a single installer file (`.run`)</h3>
+
+This repository also includes a self-extracting installer builder script based on `makeself`.
+
+```bash
+sudo apt update
+sudo apt install -y makeself
+chmod +x scripts/build-installer.sh
+./scripts/build-installer.sh
+```
+
+After that, you will get `SyMo-installer.run`.
+The user can install with:
+
+```bash
+chmod +x SyMo-installer.run
+./SyMo-installer.run
+```
+
 <h2 style="color: chocolate">
   Remove
   <span style="color: red">(recommended)</span>
