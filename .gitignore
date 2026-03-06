@@ -1,2 +1,12 @@
 .idea/
 
+app.build
+app.dist
+app.onefile-build
+build_standalone
+docs
+SyMo-standalone
+
+SyMo-onefile
+SyMo-onefile.spec
+SyMo-run
