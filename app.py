@@ -287,8 +287,8 @@ class SystemTrayApp:
             if self.settings_file.exists():
                 saved = json.loads(self.settings_file.read_text(encoding="utf-8"))
                 default.update(saved)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
         return default
 
     def save_settings(self) -> None:
