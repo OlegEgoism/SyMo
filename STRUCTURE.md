@@ -5,14 +5,6 @@ packages and their roles in the runtime flow.
 
 ```
 SyMo/
-├─ app.py                  # GTK entry point: builds tray UI, wires listeners, orchestrates power + notifications
-│  ├─ uses constants.py    # shared identifiers, paths, and intervals
-│  ├─ uses localization.py # active language helpers (tr, set_language, detect_system_language)
-│  ├─ uses dialogs.py      # settings dialog (visibility, logging, language, notification options)
-│  ├─ uses power_control.py# shutdown/reboot/lock controls and scheduler dialog
-│  ├─ uses system_usage.py # CPU/RAM/Disk/Network metrics for UI + pings
-│  └─ uses click_tracker.py# keyboard/mouse counters for tray + notifications
-│
 ├─ notifications/
 │  ├─ __init__.py          # convenience exports for notifiers
 │  ├─ telegram.py          # bot config, polling, commands, periodic status with metrics + click counts
