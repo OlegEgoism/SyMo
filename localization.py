@@ -30,7 +30,8 @@ def detect_system_language() -> str:
 
 def set_language(lang_code: str) -> None:
     global current_lang
-    current_lang = lang_code
+    normalized = (lang_code or '').strip().lower()
+    current_lang = normalized if normalized in SUPPORTED_LANGS else 'ru'
 
 
 def get_language() -> str:

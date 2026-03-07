@@ -40,6 +40,17 @@ from power_control import PowerControl
 from system_usage import SystemUsage
 from click_tracker import increment_keyboard, increment_mouse, get_counts
 
+LANGUAGE_FLAGS = {
+    'ru': '🇷🇺',
+    'en': '🇬🇧',
+    'cn': '🇨🇳',
+    'de': '🇩🇪',
+    'it': '🇮🇹',
+    'es': '🇪🇸',
+    'tr': '🇹🇷',
+    'fr': '🇫🇷',
+}
+
 
 class SystemTrayApp:
     def __init__(self):
@@ -222,8 +233,9 @@ class SystemTrayApp:
         self.language_menu = Gtk.Menu()
         group_root = None
         for code in SUPPORTED_LANGS:
-            label = (LANGUAGES.get(code) or LANGUAGES.get('en', {})).get('language_name', code)
-            item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, label)
+            language_name = (LANGUAGES.get(code) or LANGUAGES.get('en', {})).get('language_name', code)
+            flag = LANGUAGE_FLAGS.get(code, '🏳️')
+            item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, f"{language_name} {flag}")
             if group_root is None:
                 group_root = item
             item.set_active(code == get_language())

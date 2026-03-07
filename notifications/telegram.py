@@ -36,7 +36,7 @@ class TelegramNotifier:
                 self.token = (config.get('TELEGRAM_BOT_TOKEN') or '').strip() or None
                 self.chat_id = (str(config.get('TELEGRAM_CHAT_ID') or '').strip() or None)
                 self.enabled = bool(config.get('enabled', False))
-                self.notification_interval = int(config.get('notification_interval', 3600))
+                self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации Telegram: {e}")
 
@@ -45,7 +45,7 @@ class TelegramNotifier:
             self.token = token.strip() if token else None
             self.chat_id = chat_id.strip() if chat_id else None
             self.enabled = bool(enabled)
-            self.notification_interval = int(max(10, min(86400, interval)))
+            self.notification_interval = self._normalize_interval(interval)
             TELEGRAM_CONFIG_FILE.write_text(json.dumps({
                 'TELEGRAM_BOT_TOKEN': self.token,
                 'TELEGRAM_CHAT_ID': self.chat_id,
@@ -61,6 +61,14 @@ class TelegramNotifier:
         except Exception as e:
             print(f"Ошибка сохранения конфигурации Telegram: {e}")
             return False
+
+    @staticmethod
+    def _normalize_interval(interval: object) -> int:
+        try:
+            value = int(interval)
+        except (TypeError, ValueError):
+            value = 3600
+        return max(10, min(86400, value))
 
     def send_message(self, message: str) -> bool:
         if not self.enabled or not self.token or not self.chat_id:
