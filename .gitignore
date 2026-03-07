@@ -7,5 +7,5 @@ build_standalone
 SyMo-standalone
 
 SyMo-onefile
-SyMo-onefile.spec
+SyMo-launch
 SyMo-run
