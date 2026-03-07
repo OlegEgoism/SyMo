@@ -485,17 +485,28 @@ class SystemTrayApp:
                     pass
             self.settings_dialog = None
 
+
+    @staticmethod
+    def _safe_call(func, default):
+        try:
+            return func()
+        except Exception:
+            return default
+
     def update_info(self) -> bool:
         try:
-            kbd, ms = get_counts()
+            kbd, ms = self._safe_call(get_counts, (0, 0))
 
-            cpu_temp = SystemUsage.get_cpu_temp()
-            cpu_usage = SystemUsage.get_cpu_usage()
-            ram_used, ram_total = SystemUsage.get_ram_usage()
-            disk_used, disk_total = SystemUsage.get_disk_usage()
-            swap_used, swap_total = SystemUsage.get_swap_usage()
-            net_recv_speed, net_sent_speed = SystemUsage.get_network_speed(self.prev_net_data)
-            uptime = SystemUsage.get_uptime()
+            cpu_temp = self._safe_call(SystemUsage.get_cpu_temp, 0)
+            cpu_usage = self._safe_call(SystemUsage.get_cpu_usage, 0.0)
+            ram_used, ram_total = self._safe_call(SystemUsage.get_ram_usage, (0.0, 0.0))
+            disk_used, disk_total = self._safe_call(SystemUsage.get_disk_usage, (0.0, 0.0))
+            swap_used, swap_total = self._safe_call(SystemUsage.get_swap_usage, (0.0, 0.0))
+            net_recv_speed, net_sent_speed = self._safe_call(
+                lambda: SystemUsage.get_network_speed(self.prev_net_data),
+                (0.0, 0.0),
+            )
+            uptime = self._safe_call(SystemUsage.get_uptime, "00:00:00")
 
             self._update_ui(cpu_temp, cpu_usage,
                             ram_used, ram_total,
@@ -675,8 +686,10 @@ class SystemTrayApp:
             cr.show_text(label)
 
         samples = list(self.cpu_history)
-        if len(samples) < 2:
+        if not samples:
             return
+        if len(samples) == 1:
+            samples = [samples[0], samples[0]]
 
         max_temp = max(100.0, max(temp for _, _, temp in samples) + 5.0)
 
@@ -823,8 +836,10 @@ class SystemTrayApp:
             cr.show_text(label)
 
         samples = list(self.ram_history)
-        if len(samples) < 2:
+        if not samples:
             return
+        if len(samples) == 1:
+            samples = [samples[0], samples[0]]
 
         cr.set_source_rgb(0.35, 1.0, 0.35)
         cr.set_line_width(2)
@@ -956,8 +971,10 @@ class SystemTrayApp:
             cr.show_text(label)
 
         samples = list(self.swap_history)
-        if len(samples) < 2:
+        if not samples:
             return
+        if len(samples) == 1:
+            samples = [samples[0], samples[0]]
 
         cr.set_source_rgb(0.95, 0.55, 1.0)
         cr.set_line_width(2)
@@ -1089,8 +1106,10 @@ class SystemTrayApp:
             cr.show_text(label)
 
         samples = list(self.disk_history)
-        if len(samples) < 2:
+        if not samples:
             return
+        if len(samples) == 1:
+            samples = [samples[0], samples[0]]
 
         cr.set_source_rgb(0.35, 0.72, 1.0)
         cr.set_line_width(2)
@@ -1212,8 +1231,10 @@ class SystemTrayApp:
         cr.stroke()
 
         samples = list(self.net_history)
-        if len(samples) < 2:
+        if not samples:
             return
+        if len(samples) == 1:
+            samples = [samples[0], samples[0]]
 
         max_speed = max(1.0, max(max(s[1], s[2]) for s in samples) * 1.15)
 
@@ -1355,8 +1376,10 @@ class SystemTrayApp:
         cr.stroke()
 
         samples = list(self.keyboard_history)
-        if len(samples) < 2:
+        if not samples:
             return
+        if len(samples) == 1:
+            samples = [samples[0], samples[0]]
 
         max_count = max(1, max(s[1] for s in samples))
         y_max = max_count * 1.05
@@ -1486,8 +1509,10 @@ class SystemTrayApp:
         cr.stroke()
 
         samples = list(self.mouse_history)
-        if len(samples) < 2:
+        if not samples:
             return
+        if len(samples) == 1:
+            samples = [samples[0], samples[0]]
 
         max_count = max(1, max(s[1] for s in samples))
         y_max = max_count * 1.05
@@ -1713,6 +1738,8 @@ class SystemTrayApp:
         Gtk.main_quit()
 
     def run(self):
+        # Начальный снимок, чтобы графики не открывались полностью пустыми.
+        self.update_info()
         GLib.timeout_add_seconds(TIME_UPDATE_SEC, self.update_info)
         Gtk.main()
 
