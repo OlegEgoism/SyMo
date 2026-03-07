@@ -23,6 +23,7 @@ SyMo/
 │  └─ discord.py           # Discord webhook notifier config + send logic
 │
 ├─ docs/                   # project documentation
+│  └─ CODE_ANALYSIS.md     # deep architecture/code analysis and technical roadmap
 │
 ├─ tests/                  # pytest suites
 ├─ app.py                  # thin launcher for app_core.app
