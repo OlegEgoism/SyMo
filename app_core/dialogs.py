@@ -59,6 +59,7 @@ class SettingsDialog(Gtk.Dialog):
 
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         self.ping_check = add_check('ping_network', 'ping_network')
+        self.system_info_check = add_check('system_info', 'show_system_info')
 
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         logging_box = Gtk.Box(spacing=6)
