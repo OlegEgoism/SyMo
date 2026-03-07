@@ -109,7 +109,17 @@ cat > ${APP_NAME}-run <<EOF
 set -e
 DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 cd "\$DIR/${APP_NAME}-standalone"
-exec ./app "\$@"
+
+# Nuitka может назвать бинарник как app или app.bin (зависит от версии/режима).
+if [[ -x "./app" ]]; then
+    exec ./app "\$@"
+fi
+if [[ -x "./app.bin" ]]; then
+    exec ./app.bin "\$@"
+fi
+
+echo "❌ Не найден исполняемый файл ./app или ./app.bin в ${APP_NAME}-standalone"
+exit 1
 EOF
 chmod +x ${APP_NAME}-run
 
@@ -123,8 +133,8 @@ set -e
 
 # Для некоторых систем (особенно Wayland + GPU-драйверы)
 # в скомпилированных GTK-приложениях возможен чёрный экран
-# в DrawingArea. Эти переменные стабилизируют рендеринг.
-export GDK_BACKEND="${GDK_BACKEND:-x11}"
+# в DrawingArea. Не форсируем GDK_BACKEND, чтобы не ломать запуск
+# на системах без X11. Оставляем только безопасный GL fallback.
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
