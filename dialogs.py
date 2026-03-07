@@ -23,12 +23,12 @@ class SettingsDialog(Gtk.Dialog):
                          tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
 
-        self.set_default_size(620, 700)
+        self.set_default_size(560, 620)
 
         box = self.get_content_area()
-        box.set_border_width(12)
+        box.set_border_width(8)
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.add(root)
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -48,20 +48,20 @@ class SettingsDialog(Gtk.Dialog):
         scroller.set_propagate_natural_width(True)
         root.pack_start(scroller, True, True, 0)
 
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        content.set_margin_start(4)
-        content.set_margin_end(4)
-        content.set_margin_bottom(4)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        content.set_margin_start(2)
+        content.set_margin_end(2)
+        content.set_margin_bottom(2)
         scroller.add(content)
 
         def make_section(title_text: str) -> Gtk.Box:
             frame = Gtk.Frame()
             frame.set_shadow_type(Gtk.ShadowType.IN)
-            section_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-            section_box.set_margin_top(8)
-            section_box.set_margin_bottom(8)
-            section_box.set_margin_start(10)
-            section_box.set_margin_end(10)
+            section_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            section_box.set_margin_top(6)
+            section_box.set_margin_bottom(6)
+            section_box.set_margin_start(8)
+            section_box.set_margin_end(8)
             frame.add(section_box)
             label = Gtk.Label()
             label.set_markup(f"<b>{title_text}</b>")
@@ -72,7 +72,7 @@ class SettingsDialog(Gtk.Dialog):
 
         visibility_section = make_section(tr('settings_label'))
 
-        tray_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        tray_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         visibility_section.pack_start(tray_row, False, False, 0)
 
         def add_check(container: Gtk.Box, label_key: str, key: str):
@@ -84,7 +84,7 @@ class SettingsDialog(Gtk.Dialog):
         self.tray_cpu_check = add_check(tray_row, 'cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check(tray_row, 'ram_tray', 'tray_ram')
 
-        info_grid = Gtk.Grid(column_spacing=12, row_spacing=6)
+        info_grid = Gtk.Grid(column_spacing=8, row_spacing=4)
         visibility_section.pack_start(info_grid, False, False, 0)
 
         def add_info_check(label_key: str, key: str, row: int, col: int):
@@ -102,7 +102,7 @@ class SettingsDialog(Gtk.Dialog):
         self.keyboard_check = add_info_check('keyboard_clicks', 'keyboard_clicks', 3, 0)
         self.mouse_check = add_info_check('mouse_clicks', 'mouse_clicks', 3, 1)
 
-        power_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        power_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         visibility_section.pack_start(power_row, False, False, 0)
         self.power_off_check = add_check(power_row, 'power_off', 'show_power_off')
         self.reboot_check = add_check(power_row, 'reboot', 'show_reboot')
@@ -114,7 +114,7 @@ class SettingsDialog(Gtk.Dialog):
         self.ping_check.set_active(self.visibility_settings.get('ping_network', True))
         system_section.pack_start(self.ping_check, False, False, 0)
 
-        logging_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        logging_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
         logging_row.pack_start(self.logging_check, True, True, 0)
@@ -134,10 +134,10 @@ class SettingsDialog(Gtk.Dialog):
         system_section.pack_start(logsize_grid, False, False, 0)
 
         def build_secret_row(label_key: str, entry: Gtk.Entry, placeholder: str):
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             label = Gtk.Label(label=tr(label_key))
             label.set_xalign(0)
-            label.set_width_chars(20)
+            label.set_width_chars(14)
             entry.set_placeholder_text(placeholder)
             entry.set_visibility(False)
             toggle = Gtk.ToggleButton(label="👁")
@@ -149,7 +149,7 @@ class SettingsDialog(Gtk.Dialog):
             return row
 
         telegram_section = make_section("Telegram")
-        telegram_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        telegram_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
         telegram_header.pack_start(self.telegram_enable_check, True, True, 0)
         test_button = Gtk.Button(label=tr('check_telegram'))
@@ -163,7 +163,7 @@ class SettingsDialog(Gtk.Dialog):
         self.chat_id_entry = Gtk.Entry()
         telegram_section.pack_start(build_secret_row('id_chat', self.chat_id_entry, "123456789"), False, False, 0)
 
-        interval_grid = Gtk.Grid(column_spacing=8, row_spacing=4)
+        interval_grid = Gtk.Grid(column_spacing=6, row_spacing=3)
         interval_label = Gtk.Label(label=tr('time_send'))
         interval_label.set_xalign(0)
         self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
@@ -173,7 +173,7 @@ class SettingsDialog(Gtk.Dialog):
         telegram_section.pack_start(interval_grid, False, False, 0)
 
         discord_section = make_section("Discord")
-        discord_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        discord_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
         discord_header.pack_start(self.discord_enable_check, True, True, 0)
         discord_test_button = Gtk.Button(label=tr('check_discord'))
@@ -184,7 +184,7 @@ class SettingsDialog(Gtk.Dialog):
         self.webhook_entry = Gtk.Entry()
         discord_section.pack_start(build_secret_row('webhook_url', self.webhook_entry, "https://discord.com/api/webhooks/..."), False, False, 0)
 
-        discord_interval_grid = Gtk.Grid(column_spacing=8, row_spacing=4)
+        discord_interval_grid = Gtk.Grid(column_spacing=6, row_spacing=3)
         discord_interval_label = Gtk.Label(label=tr('time_send'))
         discord_interval_label.set_xalign(0)
         self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
