@@ -744,7 +744,7 @@ class SystemTrayApp:
         cr.fill()
         cr.set_source_rgb(1.0, 0.88, 0.82)
         cr.move_to(margin_left + 168, 12)
-        cr.show_text(f"{tr('temperature')} (°C)")
+        cr.show_text(f"{tr('temperature')}")
 
         last_usage = samples[-1][1]
         last_temp = samples[-1][2]
