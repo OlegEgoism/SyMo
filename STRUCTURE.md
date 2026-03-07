@@ -23,9 +23,13 @@ SyMo/
 │  └─ discord.py           # Discord webhook notifier config + send logic
 │
 ├─ tests/                  # pytest suites
+│  ├─ test_system_info_localization.py      # localization integrity for System Info labels
+│  ├─ test_system_info_visibility_setting.py # settings wiring for show/hide System Info tray item
+│  └─ test_build_artifacts_bundle.py         # build/uninstall scripts expectations
 ├─ app.py                  # thin launcher for app_core.app
-├─ build.sh                # build helper
-├─ uninstall-symo.sh       # uninstall helper
+├─ build.sh                # Nuitka build helper; collects artifacts into SyMo-bundle/
+├─ uninstall-symo.sh       # uninstall helper (desktop files, autostart, binaries, local artifacts)
+├─ SyMo-bundle/            # (generated) unified build artifacts directory
 ├─ requirements.txt        # Python dependencies
 ├─ logo.png, img.png       # branding and README visuals
 └─ README.md               # quickstart and usage overview
