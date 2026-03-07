@@ -5,7 +5,7 @@ from typing import Optional
 
 import requests
 
-from constants import DISCORD_CONFIG_FILE
+from app_core.constants import DISCORD_CONFIG_FILE
 
 
 class DiscordNotifier:
@@ -21,7 +21,7 @@ class DiscordNotifier:
                 config = json.loads(DISCORD_CONFIG_FILE.read_text(encoding="utf-8"))
                 self.webhook_url = (config.get('DISCORD_WEBHOOK_URL') or '').strip() or None
                 self.enabled = bool(config.get('enabled', False))
-                self.notification_interval = int(config.get('notification_interval', 3600))
+                self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации Discord: {e}")
 
@@ -29,7 +29,7 @@ class DiscordNotifier:
         try:
             self.webhook_url = (webhook_url or '').strip() or None
             self.enabled = bool(enabled)
-            self.notification_interval = int(max(10, min(86400, interval)))
+            self.notification_interval = self._normalize_interval(interval)
             DISCORD_CONFIG_FILE.write_text(json.dumps({
                 'DISCORD_WEBHOOK_URL': self.webhook_url,
                 'enabled': self.enabled,
@@ -45,8 +45,16 @@ class DiscordNotifier:
             print(f"Ошибка сохранения конфигурации Discord: {e}")
             return False
 
-    def send_message(self, message: str) -> bool:
-        if not self.enabled or not self.webhook_url:
+    @staticmethod
+    def _normalize_interval(interval: object) -> int:
+        try:
+            value = int(interval)
+        except (TypeError, ValueError):
+            value = 3600
+        return max(10, min(86400, value))
+
+    def send_message(self, message: str, force: bool = False) -> bool:
+        if (not force and not self.enabled) or not self.webhook_url:
             return False
         try:
             payload = {"content": message, "username": "System Monitor"}

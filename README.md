@@ -15,6 +15,15 @@ It is designed to run on Linux desktops with AppIndicator/Ayatana support, displ
 
 Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 
+
+<h3>Repository Structure (actual)</h3>
+
+- `app.py` — thin launcher entry point.
+- `app_core/` — all core application logic (tray runtime, dialogs, localization, metrics, power actions, constants, logging).
+- `notifications/` — Telegram/Discord integrations.
+- `docs/` — project documentation and audits.
+- `tests/` — pytest test suite.
+
 <h3>System Monitor</h3>
 
 - Real-time display:
@@ -53,8 +62,7 @@ Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 <h3>Feedback and Support</h3>
 
 - Email: olegpustovalov220@gmail.com
-- Special thanks for help: https://github.com/korneyka3000
-- Developers: https://github.com/korneyka3000, https://github.com/OlegEgoism
+- Developers: https://github.com/OlegEgoism
 
 <img src="img.png" width="50%" />
 
@@ -109,6 +117,8 @@ pip install -r requirements.txt
 ```
 
 <h3>💡 Launching the application</h3>
+
+`app.py` is a lightweight launcher, while the main runtime is in `app_core/app.py`.
 
 ```bash
 python3 app.py
