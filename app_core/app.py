@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from collections import deque
 from datetime import datetime
 import signal
@@ -247,6 +248,65 @@ class SystemTrayApp:
 
         self._thread(worker)
 
+
+    def _detect_cpu_model(self) -> str:
+        try:
+            proc_info = Path("/proc/cpuinfo")
+            if proc_info.exists():
+                for line in proc_info.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    if ":" in line and line.lower().startswith("model name"):
+                        return line.split(":", 1)[1].strip()
+        except Exception:
+            pass
+
+        return platform.processor() or tr('unknown_value')
+
+    def _build_system_info_text(self) -> str:
+        uname = platform.uname()
+        cpu_count = psutil.cpu_count(logical=False) or 0
+        cpu_threads = psutil.cpu_count(logical=True) or 0
+        cpu_freq = psutil.cpu_freq()
+        ram = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        disk = psutil.disk_usage('/')
+        boot_time = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M:%S")
+
+        freq_text = tr('unknown_value')
+        if cpu_freq and cpu_freq.max:
+            freq_text = f"{cpu_freq.max / 1000:.2f} GHz"
+        elif cpu_freq and cpu_freq.current:
+            freq_text = f"{cpu_freq.current / 1000:.2f} GHz"
+
+        return "\n".join([
+            f"{tr('system_label')}: {uname.system} {uname.release}",
+            f"{tr('hostname_label')}: {uname.node}",
+            f"{tr('architecture_label')}: {uname.machine}",
+            f"{tr('python_version_label')}: {platform.python_version()}",
+            "",
+            f"{tr('cpu_label')}: {self._detect_cpu_model()}",
+            f"{tr('cores_label')}: {cpu_count}",
+            f"{tr('threads_label')}: {cpu_threads}",
+            f"{tr('cpu_frequency_label')}: {freq_text}",
+            "",
+            f"{tr('ram_total_label')}: {ram.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('ram_available_label')}: {ram.available / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('swap_total_label')}: {swap.total / (1024 ** 3):.2f} {tr('gb')}",
+            "",
+            f"{tr('disk_total_label')}: {disk.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('disk_free_label')}: {disk.free / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('boot_time_label')}: {boot_time}",
+            f"{tr('uptime')}: {SystemUsage.get_uptime()}",
+        ])
+
+    def on_system_info_click(self, *_):
+        try:
+            info_text = self._build_system_info_text()
+        except Exception as e:
+            self._show_message(tr('error'), f"{tr('system_info_error')}: {e}")
+            return
+
+        self._show_message(tr('system_info_title'), info_text)
+
     def create_menu(self):
         self.menu = Gtk.Menu()
 
@@ -268,6 +328,8 @@ class SystemTrayApp:
 
         self.ping_item = Gtk.MenuItem(label=tr('ping_network'))
         self.ping_item.connect("activate", self.on_ping_click)
+        self.system_info_item = Gtk.MenuItem(label=tr('system_info'))
+        self.system_info_item.connect("activate", self.on_system_info_click)
         self.ping_top_sep = Gtk.SeparatorMenuItem()
         self.ping_bottom_sep = Gtk.SeparatorMenuItem()
 
@@ -328,6 +390,8 @@ class SystemTrayApp:
                 self.menu.append(self.timer_item)
 
         self.menu.append(self.main_separator)
+
+        self.menu.append(self.system_info_item)
 
         if self.visibility_settings.get('ping_network', True):
             self.menu.append(self.ping_top_sep)
