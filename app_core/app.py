@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 import signal
 import subprocess
 import threading
@@ -110,6 +111,10 @@ class SystemTrayApp:
         self.settings_dialog: Optional[SettingsDialog] = None
         self._progress_dialog: Optional[Gtk.MessageDialog] = None
 
+        self.cpu_graph_window: Optional[Gtk.Window] = None
+        self.cpu_graph_area: Optional[Gtk.DrawingArea] = None
+        self.cpu_history = deque(maxlen=120)
+
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
             try:
                 LOG_FILE.write_text("", encoding="utf-8")
@@ -201,6 +206,7 @@ class SystemTrayApp:
         self.menu = Gtk.Menu()
 
         self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
+        self.cpu_temp_item.connect("activate", self.show_cpu_graph)
         self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
         self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
         self.disk_item = Gtk.MenuItem(label=f"{tr('disk_loading')}: N/A")
@@ -518,6 +524,97 @@ class SystemTrayApp:
         )
         self.discord_notifier.send_message(msg)
 
+    @staticmethod
+    def _normalize_cpu_sample(cpu_usage: object, cpu_temp: object) -> tuple[float, float]:
+        try:
+            usage = float(cpu_usage)
+        except (TypeError, ValueError):
+            usage = 0.0
+        try:
+            temp = float(cpu_temp)
+        except (TypeError, ValueError):
+            temp = 0.0
+        return max(0.0, min(100.0, usage)), max(0.0, min(150.0, temp))
+
+    def _append_cpu_sample(self, cpu_usage: object, cpu_temp: object) -> None:
+        usage, temp = self._normalize_cpu_sample(cpu_usage, cpu_temp)
+        self.cpu_history.append((usage, temp))
+
+    def show_cpu_graph(self, _w=None):
+        if self.cpu_graph_window and self.cpu_graph_window.get_visible():
+            self.cpu_graph_window.present()
+            return
+
+        window = Gtk.Window(title=f"{tr('cpu_info')} — {tr('system_status')}")
+        window.set_default_size(720, 380)
+        window.set_border_width(10)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        hint = Gtk.Label(label=f"{tr('cpu_info')} (%) / {tr('temperature')} (°C)")
+        hint.set_xalign(0)
+        box.pack_start(hint, False, False, 0)
+
+        area = Gtk.DrawingArea()
+        area.set_size_request(680, 320)
+        area.connect("draw", self._draw_cpu_graph)
+        box.pack_start(area, True, True, 0)
+
+        window.add(box)
+        window.connect("destroy", self._on_cpu_graph_destroy)
+
+        self.cpu_graph_window = window
+        self.cpu_graph_area = area
+
+        window.show_all()
+
+    def _on_cpu_graph_destroy(self, _w):
+        self.cpu_graph_window = None
+        self.cpu_graph_area = None
+
+    def _draw_cpu_graph(self, widget, cr):
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+
+        margin_left = 42
+        margin_right = 12
+        margin_top = 12
+        margin_bottom = 24
+
+        plot_w = max(10, width - margin_left - margin_right)
+        plot_h = max(10, height - margin_top - margin_bottom)
+
+        cr.set_source_rgb(0.09, 0.09, 0.09)
+        cr.paint()
+
+        cr.set_source_rgb(0.2, 0.2, 0.2)
+        for i in range(5):
+            y = margin_top + (plot_h * i / 4)
+            cr.move_to(margin_left, y)
+            cr.line_to(margin_left + plot_w, y)
+        cr.stroke()
+
+        samples = list(self.cpu_history)
+        if len(samples) < 2:
+            return
+
+        max_temp = max(100.0, max(temp for _, temp in samples) + 5.0)
+
+        def draw_line(selector, color, max_value):
+            cr.set_source_rgb(*color)
+            cr.set_line_width(2)
+            for idx, sample in enumerate(samples):
+                x = margin_left + plot_w * idx / (len(samples) - 1)
+                value = selector(sample)
+                y = margin_top + plot_h * (1.0 - (value / max_value))
+                if idx == 0:
+                    cr.move_to(x, y)
+                else:
+                    cr.line_to(x, y)
+            cr.stroke()
+
+        draw_line(lambda s: s[0], (0.1, 0.8, 1.0), 100.0)
+        draw_line(lambda s: s[1], (1.0, 0.4, 0.2), max_temp)
+
     def _show_message(self, title: str, message: str):
         parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
         d = Gtk.MessageDialog(transient_for=parent, flags=0,
@@ -532,6 +629,10 @@ class SystemTrayApp:
                    net_recv_speed, net_sent_speed, uptime,
                    keyboard_clicks_val, mouse_clicks_val):
         try:
+            self._append_cpu_sample(cpu_usage, cpu_temp)
+            if self.cpu_graph_area:
+                self.cpu_graph_area.queue_draw()
+
             if self.visibility_settings.get('cpu', True):
                 self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
             if self.visibility_settings.get('ram', True):
@@ -579,6 +680,14 @@ class SystemTrayApp:
             self.power_control.current_dialog = None
 
         self._close_progress_dialog()
+
+        if self.cpu_graph_window:
+            try:
+                self.cpu_graph_window.destroy()
+            except Exception:
+                pass
+            self.cpu_graph_window = None
+            self.cpu_graph_area = None
 
         if self.settings_dialog:
             try:
