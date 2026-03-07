@@ -9,6 +9,7 @@ set -e
 
 APP_NAME="SyMo"
 VERSION="1.0.0"
+OUTPUT_DIR="${APP_NAME}-bundle"
 
 echo "⚙️  Building $APP_NAME using Nuitka..."
 
@@ -67,8 +68,8 @@ mkdir -p "$(dirname "$DESKTOP_AUTOSTART")"
 
 
 # ---------- Очистка предыдущих сборок ----------
-rm -rf ${APP_NAME}-standalone *.build *.dist build_standalone *.onefile-build
-rm -f ${APP_NAME}-run ${APP_NAME}-onefile ${APP_NAME}-launch
+rm -rf "${OUTPUT_DIR}" "${APP_NAME}-standalone" *.build *.dist build_standalone *.onefile-build
+rm -f "${APP_NAME}-run" "${APP_NAME}-onefile" "${APP_NAME}-launch"
 
 
 # ---------- Утилита генерации .desktop ----------
@@ -122,13 +123,13 @@ if [[ ! -d build_standalone/app.dist ]]; then
     exit 1
 fi
 
-mv build_standalone/app.dist ${APP_NAME}-standalone
+mv build_standalone/app.dist "${APP_NAME}-standalone"
 
 echo "📦 Standalone built: ${APP_NAME}-standalone/"
 
 
 # ---------- Создание раннера ----------
-cat > ${APP_NAME}-run <<EOF
+cat > "${APP_NAME}-run" <<EOF_RUN
 #!/bin/bash
 set -e
 DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
@@ -144,14 +145,14 @@ fi
 
 echo "❌ Не найден исполняемый файл ./app или ./app.bin в ${APP_NAME}-standalone"
 exit 1
-EOF
-chmod +x ${APP_NAME}-run
+EOF_RUN
+chmod +x "${APP_NAME}-run"
 
 echo "▶️  Standalone runner created: ${APP_NAME}-run"
 
 
 # ---------- Универсальный лаунчер (фикс рендера графиков) ----------
-cat > ${APP_NAME}-launch <<'EOF'
+cat > "${APP_NAME}-launch" <<'EOF_LAUNCH'
 #!/bin/bash
 set -e
 
@@ -183,8 +184,8 @@ fi
 
 echo "❌ Не найден исполняемый файл SyMo-run или SyMo-onefile"
 exit 1
-EOF
-chmod +x ${APP_NAME}-launch
+EOF_LAUNCH
+chmod +x "${APP_NAME}-launch"
 
 echo "▶️  Launcher created: ${APP_NAME}-launch"
 
@@ -220,9 +221,27 @@ else
 fi
 
 
-# ---------- Выбор исполняемого файла ----------
-EXEC_TARGET="$(pwd)/${APP_NAME}-launch"
+# ---------- Сборка всех артефактов в одну папку ----------
+mkdir -p "${OUTPUT_DIR}"
 
+move_if_exists() {
+    local target="$1"
+    if [[ -e "$target" ]]; then
+        mv "$target" "${OUTPUT_DIR}/"
+    fi
+}
+
+move_if_exists "app.build"
+move_if_exists "app.dist"
+move_if_exists "app.onefile-build"
+move_if_exists "build_standalone"
+move_if_exists "${APP_NAME}-standalone"
+move_if_exists "${APP_NAME}-onefile"
+move_if_exists "${APP_NAME}-launch"
+move_if_exists "${APP_NAME}-run"
+
+# ---------- Выбор исполняемого файла ----------
+EXEC_TARGET="$(pwd)/${OUTPUT_DIR}/${APP_NAME}-launch"
 ICON_PATH="$(pwd)/logo.png"
 
 
@@ -237,12 +256,13 @@ write_desktop "$DESKTOP_AUTOSTART" "$EXEC_TARGET" "$ICON_PATH" "yes"
 echo ""
 echo "🎉 BUILD COMPLETE!"
 echo "--------------------------------------"
-echo "Standalone dir : ${APP_NAME}-standalone/"
-echo "Standalone run : ./SyMo-run"
-echo "Launcher        : ./SyMo-launch"
-echo "Onefile        : ./SyMo-onefile (если собрался)"
-echo "Desktop icon   : $DESKTOP_MAIN"
-echo "Autostart file : $DESKTOP_AUTOSTART"
+echo "Build artifacts dir: ${OUTPUT_DIR}/"
+echo "Standalone dir      : ${OUTPUT_DIR}/${APP_NAME}-standalone/"
+echo "Standalone run      : ${OUTPUT_DIR}/SyMo-run"
+echo "Launcher            : ${OUTPUT_DIR}/SyMo-launch"
+echo "Onefile             : ${OUTPUT_DIR}/SyMo-onefile (если собрался)"
+echo "Desktop icon        : $DESKTOP_MAIN"
+echo "Autostart file      : $DESKTOP_AUTOSTART"
 echo ""
 echo "✔ Готово к распространению:"
-echo "   tar -czf SyMo-standalone.tar.gz SyMo-standalone/ SyMo-run"
+echo "   tar -czf ${APP_NAME}-bundle.tar.gz ${OUTPUT_DIR}/"
