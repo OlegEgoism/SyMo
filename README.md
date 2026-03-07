@@ -21,7 +21,7 @@ Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 - `app.py` — thin launcher entry point.
 - `app_core/` — all core application logic (tray runtime, dialogs, localization, metrics, power actions, constants, logging).
 - `notifications/` — Telegram/Discord integrations.
-- `tests/` — pytest test suite.
+- `tests/` — pytest test suite (including checks for localization, tray settings wiring, and build/uninstall scripts).
 
 <h3>Technical Deep Dive</h3>
 
@@ -39,6 +39,10 @@ Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
     - Select display parameters.
     - Tray display settings.
     - Send notifications to Telegram and Discord on timer.
+- System info dialog from tray:
+    - Menu item **"System information / Характеристики ПК"**.
+    - Shows key machine details (OS, host, architecture, CPU model/cores/threads/frequency, RAM total).
+    - Visibility of this tray item can be toggled in **Settings** (option: show/hide System info).
 
 <h3>Power Management</h3>
 
@@ -138,11 +142,23 @@ chmod +x build.sh
 ./build.sh
 ```
 
-<h3>💡 Checking the created file SyMo-onefile</h3>
+<h3>💡 Build output location</h3>
+
+After running `build.sh`, all generated artifacts are collected into a single folder:
 
 ```bash
-ls -l *SyMo-onefile
+ls -la SyMo-bundle
 ```
+
+Expected artifacts in `SyMo-bundle/`:
+- `app.build`
+- `app.dist`
+- `app.onefile-build`
+- `build_standalone`
+- `SyMo-standalone`
+- `SyMo-onefile`
+- `SyMo-launch`
+- `SyMo-run`
 
 
 <h3>💡 Build a single installer file (`.run`)</h3>
@@ -164,6 +180,12 @@ chmod +x SyMo-installer.run
 ./SyMo-installer.run
 ```
 
+<h3>💡 Bundle archive for distribution</h3>
+
+```bash
+tar -czf SyMo-bundle.tar.gz SyMo-bundle/
+```
+
 <h2 style="color: chocolate">
   Remove
   <span style="color: red">(recommended)</span>
@@ -173,3 +195,5 @@ chmod +x SyMo-installer.run
 chmod +x uninstall-symo.sh
 ./uninstall-symo.sh
 ```
+
+`uninstall-symo.sh` also removes local build artifacts, including `SyMo-bundle/`.
