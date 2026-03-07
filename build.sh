@@ -45,7 +45,7 @@ mkdir -p "$(dirname "$DESKTOP_AUTOSTART")"
 
 # ---------- Очистка предыдущих сборок ----------
 rm -rf ${APP_NAME}-standalone *.build *.dist build_standalone *.onefile-build
-rm -f ${APP_NAME}-run ${APP_NAME}-onefile
+rm -f ${APP_NAME}-run ${APP_NAME}-onefile ${APP_NAME}-launch
 
 
 # ---------- Утилита генерации .desktop ----------
@@ -116,6 +116,31 @@ chmod +x ${APP_NAME}-run
 echo "▶️  Standalone runner created: ${APP_NAME}-run"
 
 
+# ---------- Универсальный лаунчер (фикс рендера графиков) ----------
+cat > ${APP_NAME}-launch <<'EOF'
+#!/bin/bash
+set -e
+
+# Для некоторых систем (особенно Wayland + GPU-драйверы)
+# в скомпилированных GTK-приложениях возможен чёрный экран
+# в DrawingArea. Эти переменные стабилизируют рендеринг.
+export GDK_BACKEND="${GDK_BACKEND:-x11}"
+export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
+cd "$DIR"
+
+if [[ -x "./SyMo-onefile" ]]; then
+    exec "./SyMo-onefile" "$@"
+fi
+
+exec "./SyMo-run" "$@"
+EOF
+chmod +x ${APP_NAME}-launch
+
+echo "▶️  Launcher created: ${APP_NAME}-launch"
+
+
 # ---------- Сборка ONEFILE ----------
 echo "🗜️  Building ONEFILE..."
 
@@ -147,11 +172,7 @@ fi
 
 
 # ---------- Выбор исполняемого файла ----------
-if [[ -f "${APP_NAME}-onefile" ]]; then
-    EXEC_TARGET="$(pwd)/${APP_NAME}-onefile"
-else
-    EXEC_TARGET="$(pwd)/${APP_NAME}-run"
-fi
+EXEC_TARGET="$(pwd)/${APP_NAME}-launch"
 
 ICON_PATH="$(pwd)/logo.png"
 
@@ -169,6 +190,7 @@ echo "🎉 BUILD COMPLETE!"
 echo "--------------------------------------"
 echo "Standalone dir : ${APP_NAME}-standalone/"
 echo "Standalone run : ./SyMo-run"
+echo "Launcher        : ./SyMo-launch"
 echo "Onefile        : ./SyMo-onefile (если собрался)"
 echo "Desktop icon   : $DESKTOP_MAIN"
 echo "Autostart file : $DESKTOP_AUTOSTART"
