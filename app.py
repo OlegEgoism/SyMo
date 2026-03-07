@@ -235,7 +235,7 @@ class SystemTrayApp:
         for code in SUPPORTED_LANGS:
             language_name = (LANGUAGES.get(code) or LANGUAGES.get('en', {})).get('language_name', code)
             flag = LANGUAGE_FLAGS.get(code, '🏳️')
-            item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, f"{language_name} {flag}")
+            item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, f"{flag} {language_name}")
             if group_root is None:
                 group_root = item
             item.set_active(code == get_language())
