@@ -1,11 +1,3 @@
 .idea/
-
-app.build
-app.dist
-app.onefile-build
-build_standalone
-SyMo-standalone
-
-SyMo-onefile
-SyMo-launch
-SyMo-run
+venv
+SyMo-bundle

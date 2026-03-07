@@ -15,16 +15,44 @@ It is designed to run on Linux desktops with AppIndicator/Ayatana support, displ
 
 Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 
-
 <h3>Repository Structure (actual)</h3>
 
-- `app.py` — thin launcher entry point.
-- `app_core/` — all core application logic (tray runtime, dialogs, localization, metrics, power actions, constants, logging).
-- `notifications/` — Telegram/Discord integrations.
-- `tests/` — pytest test suite (including checks for localization, tray settings wiring, and build/uninstall scripts).
+The SyMo repository is now grouped so core application logic lives under one folder (`app_core/`),
+while documentation and external notification adapters remain in dedicated top-level directories.
+
+```
+SyMo/
+├─ app_core/               # core application package
+│  ├─ __init__.py
+│  ├─ app.py               # SystemTrayApp runtime, menu wiring, periodic updates
+│  ├─ dialogs.py           # GTK settings dialog; log export, reset counters, notification settings
+│  ├─ power_control.py     # power actions + confirmation/scheduling dialogs
+│  ├─ system_usage.py      # psutil-based system metrics (temp, CPU, RAM/SWAP, disk, network, uptime)
+│  ├─ click_tracker.py     # thread-safe keyboard/mouse counters
+│  ├─ constants.py         # app constants, paths, defaults, language list
+│  ├─ localization.py      # translation helpers and language selection
+│  ├─ language.py          # localized string dictionaries
+│  └─ logging_utils.py     # log rotation utilities
+│
+├─ notifications/
+│  ├─ __init__.py          # convenience exports
+│  ├─ telegram.py          # Telegram notifier config, polling, command handling
+│  └─ discord.py           # Discord webhook notifier config + send logic
+│
+├─ tests/                  # pytest suites
+│  ├─ test_system_info_localization.py      # localization integrity for System Info labels
+│  ├─ test_system_info_visibility_setting.py # settings wiring for show/hide System Info tray item
+│  └─ test_build_artifacts_bundle.py         # build/uninstall scripts expectations
+├─ app.py                  # thin launcher for app_core.app
+├─ build.sh                # Nuitka build helper; collects artifacts into SyMo-bundle/
+├─ uninstall-symo.sh       # uninstall helper (desktop files, autostart, binaries, local artifacts)
+├─ SyMo-bundle/            # (generated) unified build artifacts directory
+├─ requirements.txt        # Python dependencies
+├─ logo.png, img.png       # branding and README visuals
+└─ README.md               # quickstart and usage overview
+```
 
 <h3>Technical Deep Dive</h3>
-
 
 <h3>System Monitor</h3>
 
@@ -151,6 +179,7 @@ ls -la SyMo-bundle
 ```
 
 Expected artifacts in `SyMo-bundle/`:
+
 - `app.build`
 - `app.dist`
 - `app.onefile-build`
@@ -159,7 +188,6 @@ Expected artifacts in `SyMo-bundle/`:
 - `SyMo-onefile`
 - `SyMo-launch`
 - `SyMo-run`
-
 
 <h3>💡 Build a single installer file (`.run`)</h3>
 
