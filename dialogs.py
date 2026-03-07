@@ -210,7 +210,7 @@ class SettingsDialog(Gtk.Dialog):
             return
         notifier = TelegramNotifier()
         if notifier.save_config(token, chat_id, enabled, interval):
-            ok = notifier.send_message(tr('test_message'))
+            ok = notifier.send_message(tr('test_message'), force=True)
             self._message(tr('ok') if ok else tr('error'),
                           tr('test_message_ok') if ok else tr('test_message_error'))
         else:
@@ -225,7 +225,7 @@ class SettingsDialog(Gtk.Dialog):
             return
         notifier = DiscordNotifier()
         if notifier.save_config(webhook_url, enabled, interval):
-            ok = notifier.send_message(tr('test_message'))
+            ok = notifier.send_message(tr('test_message'), force=True)
             self._message(tr('ok') if ok else tr('error'),
                           tr('test_message_ok') if ok else tr('test_message_error'))
         else:

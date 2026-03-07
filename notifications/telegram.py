@@ -70,8 +70,8 @@ class TelegramNotifier:
             value = 3600
         return max(10, min(86400, value))
 
-    def send_message(self, message: str) -> bool:
-        if not self.enabled or not self.token or not self.chat_id:
+    def send_message(self, message: str, force: bool = False) -> bool:
+        if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
         try:
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
