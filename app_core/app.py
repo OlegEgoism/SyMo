@@ -114,6 +114,7 @@ class SystemTrayApp:
 
         self.cpu_graph_window: Optional[Gtk.Window] = None
         self.cpu_graph_area: Optional[Gtk.DrawingArea] = None
+        self.cpu_graph_hint_label: Optional[Gtk.Label] = None
         self.cpu_history = deque(maxlen=120)
 
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
@@ -298,6 +299,7 @@ class SystemTrayApp:
             self.visibility_settings['language'] = lang_code
             self.save_settings()
             self.create_menu()
+            self._refresh_cpu_graph_texts()
 
     def load_settings(self) -> Dict:
         default = {
@@ -551,7 +553,7 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label(label=f"{tr('cpu_info')} (линия: %) · {tr('temperature')} (линия: °C)")
+        hint = Gtk.Label()
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
@@ -565,12 +567,23 @@ class SystemTrayApp:
 
         self.cpu_graph_window = window
         self.cpu_graph_area = area
+        self.cpu_graph_hint_label = hint
+        self._refresh_cpu_graph_texts()
 
         window.show_all()
 
     def _on_cpu_graph_destroy(self, _w):
         self.cpu_graph_window = None
         self.cpu_graph_area = None
+        self.cpu_graph_hint_label = None
+
+    def _refresh_cpu_graph_texts(self) -> None:
+        if self.cpu_graph_window:
+            self.cpu_graph_window.set_title(f"{tr('cpu_info')} — {tr('system_status')}")
+        if self.cpu_graph_hint_label:
+            self.cpu_graph_hint_label.set_text(f"{tr('cpu')} (%) · {tr('temperature')} (°C)")
+        if self.cpu_graph_area:
+            self.cpu_graph_area.queue_draw()
 
     def _draw_cpu_graph(self, widget, cr):
         width = widget.get_allocated_width()
@@ -625,7 +638,7 @@ class SystemTrayApp:
         cr.fill()
         cr.set_source_rgb(0.88, 0.92, 1.0)
         cr.move_to(margin_left + 18, 12)
-        cr.show_text(f"{tr('cpu_info')} (%)")
+        cr.show_text(f"{tr('cpu')} (%)")
 
         cr.set_source_rgb(1.0, 0.4, 0.2)
         cr.rectangle(margin_left + 150, 4, 12, 8)
@@ -634,6 +647,15 @@ class SystemTrayApp:
         cr.move_to(margin_left + 168, 12)
         cr.show_text(f"{tr('temperature')} (°C)")
 
+        last_usage = samples[-1][1]
+        last_temp = samples[-1][2]
+        values_text = f"{tr('cpu')}: {last_usage:.0f}%   {tr('temperature')}: {last_temp:.1f}°C"
+        cr.set_source_rgb(0.95, 0.95, 0.95)
+        cr.set_font_size(12)
+        ext = cr.text_extents(values_text)
+        cr.move_to(width - margin_right - ext.width, 12)
+        cr.show_text(values_text)
+
         # Start and end time at the bottom
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
         end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
@@ -641,9 +663,9 @@ class SystemTrayApp:
         cr.set_source_rgb(0.75, 0.75, 0.75)
         cr.set_font_size(11)
         cr.move_to(margin_left, height - 10)
-        cr.show_text(f"Старт: {start_ts}")
+        cr.show_text(f"◀ {start_ts}")
 
-        end_text = f"Сейчас: {end_ts}"
+        end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
         cr.move_to(width - margin_right - text_extents.width, height - 10)
         cr.show_text(end_text)
@@ -721,6 +743,7 @@ class SystemTrayApp:
                 pass
             self.cpu_graph_window = None
             self.cpu_graph_area = None
+            self.cpu_graph_hint_label = None
 
         if self.settings_dialog:
             try:
