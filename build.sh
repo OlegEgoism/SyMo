@@ -131,11 +131,14 @@ cat > ${APP_NAME}-launch <<'EOF'
 #!/bin/bash
 set -e
 
-# Для некоторых систем (особенно Wayland + GPU-драйверы)
-# в скомпилированных GTK-приложениях возможен чёрный экран
-# в DrawingArea. Не форсируем GDK_BACKEND, чтобы не ломать запуск
-# на системах без X11. Оставляем только безопасный GL fallback.
+# Для Wayland/GPU-драйверов у GTK3 иногда возникает чёрный DrawingArea.
+# Включаем более безопасные дефолты рендера (их можно переопределить извне).
+if [[ -z "${GDK_BACKEND:-}" && "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+    export GDK_BACKEND="wayland,x11"
+fi
+export GDK_GL="${GDK_GL:-disable}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+export LIBGL_DRI3_DISABLE="${LIBGL_DRI3_DISABLE:-1}"
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 cd "$DIR"
