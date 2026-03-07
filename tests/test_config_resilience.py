@@ -4,7 +4,7 @@ import sys
 import types
 from pathlib import Path
 
-import localization
+from app_core import localization
 
 
 def _load_module(name: str, path: Path):

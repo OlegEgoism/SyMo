@@ -6,9 +6,9 @@ from typing import Dict, Optional
 
 from gi.repository import Gtk
 
-from click_tracker import get_counts
-from constants import LOG_FILE, TELEGRAM_CONFIG_FILE, DISCORD_CONFIG_FILE
-from localization import tr
+from .click_tracker import get_counts
+from .constants import LOG_FILE, TELEGRAM_CONFIG_FILE, DISCORD_CONFIG_FILE
+from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
 
 

@@ -1,4 +1,4 @@
-import click_tracker
+from app_core import click_tracker
 
 
 def test_increment_and_reset_counts():

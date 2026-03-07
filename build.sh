@@ -82,12 +82,12 @@ $NUITKA --standalone \
     --follow-imports \
     --assume-yes-for-downloads \
     --include-data-files=logo.png=logo.png \
-    --include-data-files=language.py=language.py \
-    --include-data-files=localization.py=localization.py \
-    --include-data-files=system_usage.py=system_usage.py \
-    --include-data-files=power_control.py=power_control.py \
-    --include-data-files=dialogs.py=dialogs.py \
-    --include-data-files=click_tracker.py=click_tracker.py \
+    --include-data-files=app_core/language.py=app_core/language.py \
+    --include-data-files=app_core/localization.py=app_core/localization.py \
+    --include-data-files=app_core/system_usage.py=app_core/system_usage.py \
+    --include-data-files=app_core/power_control.py=app_core/power_control.py \
+    --include-data-files=app_core/dialogs.py=app_core/dialogs.py \
+    --include-data-files=app_core/click_tracker.py=app_core/click_tracker.py \
     --output-dir=build_standalone \
     --python-flag=no_site \
     --python-flag=-O \
@@ -125,12 +125,12 @@ $NUITKA --onefile \
     --follow-imports \
     --assume-yes-for-downloads \
     --include-data-files=logo.png=logo.png \
-    --include-data-files=language.py=language.py \
-    --include-data-files=localization.py=localization.py \
-    --include-data-files=system_usage.py=system_usage.py \
-    --include-data-files=power_control.py=power_control.py \
-    --include-data-files=dialogs.py=dialogs.py \
-    --include-data-files=click_tracker.py=click_tracker.py \
+    --include-data-files=app_core/language.py=app_core/language.py \
+    --include-data-files=app_core/localization.py=app_core/localization.py \
+    --include-data-files=app_core/system_usage.py=app_core/system_usage.py \
+    --include-data-files=app_core/power_control.py=app_core/power_control.py \
+    --include-data-files=app_core/dialogs.py=app_core/dialogs.py \
+    --include-data-files=app_core/click_tracker.py=app_core/click_tracker.py \
     --python-flag=no_site \
     --python-flag=-O \
     --output-filename="${APP_NAME}-onefile" \

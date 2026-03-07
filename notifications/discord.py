@@ -5,7 +5,7 @@ from typing import Optional
 
 import requests
 
-from constants import DISCORD_CONFIG_FILE
+from app_core.constants import DISCORD_CONFIG_FILE
 
 
 class DiscordNotifier:

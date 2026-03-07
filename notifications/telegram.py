@@ -8,13 +8,13 @@ from typing import Optional, TYPE_CHECKING
 import requests
 from gi.repository import GLib
 
-from constants import TELEGRAM_CONFIG_FILE
-from localization import tr
-from system_usage import SystemUsage
-from click_tracker import get_counts
+from app_core.constants import TELEGRAM_CONFIG_FILE
+from app_core.localization import tr
+from app_core.system_usage import SystemUsage
+from app_core.click_tracker import get_counts
 
 if TYPE_CHECKING:
-    from power_control import PowerControl
+    from app_core.power_control import PowerControl
 
 
 class TelegramNotifier:
