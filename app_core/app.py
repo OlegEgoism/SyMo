@@ -42,6 +42,19 @@ from .power_control import PowerControl
 from .system_usage import SystemUsage
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
 
+
+
+def _text_width(text_extents) -> float:
+    """Return cairo text extents width for both object- and tuple-based APIs."""
+    width = getattr(text_extents, "width", None)
+    if width is not None:
+        return float(width)
+    try:
+        # tuple API: (x_bearing, y_bearing, width, height, x_advance, y_advance)
+        return float(text_extents[2])
+    except Exception:
+        return 0.0
+
 LANGUAGE_FLAGS = {
     'ru': '🇷🇺',
     'en': '🇬🇧',
@@ -658,7 +671,7 @@ class SystemTrayApp:
             y = margin_top + (plot_h * i / 4)
             label = f"{cpu_mark}%"
             text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - text_extents.width - 6), y + 4)
+            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
         samples = list(self.cpu_history)
@@ -707,7 +720,7 @@ class SystemTrayApp:
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - ext.width, 12)
+        cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
         # Start and end time at the bottom
@@ -721,7 +734,7 @@ class SystemTrayApp:
 
         end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
         cr.show_text(end_text)
 
     def _append_ram_sample(self, ram_used: object, ram_total: object) -> None:
@@ -806,7 +819,7 @@ class SystemTrayApp:
             y = margin_top + (plot_h * i / 4)
             label = f"{mark}%"
             text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - text_extents.width - 6), y + 4)
+            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
         samples = list(self.ram_history)
@@ -841,7 +854,7 @@ class SystemTrayApp:
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - ext.width, 12)
+        cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
@@ -854,7 +867,7 @@ class SystemTrayApp:
 
         end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
         cr.show_text(end_text)
 
     def _append_swap_sample(self, swap_used: object, swap_total: object) -> None:
@@ -939,7 +952,7 @@ class SystemTrayApp:
             y = margin_top + (plot_h * i / 4)
             label = f"{mark}%"
             text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - text_extents.width - 6), y + 4)
+            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
         samples = list(self.swap_history)
@@ -974,7 +987,7 @@ class SystemTrayApp:
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - ext.width, 12)
+        cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
@@ -987,7 +1000,7 @@ class SystemTrayApp:
 
         end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
         cr.show_text(end_text)
 
     def _append_disk_sample(self, disk_used: object, disk_total: object) -> None:
@@ -1072,7 +1085,7 @@ class SystemTrayApp:
             y = margin_top + (plot_h * i / 4)
             label = f"{mark}%"
             text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - text_extents.width - 6), y + 4)
+            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
         samples = list(self.disk_history)
@@ -1107,7 +1120,7 @@ class SystemTrayApp:
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - ext.width, 12)
+        cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
@@ -1120,7 +1133,7 @@ class SystemTrayApp:
 
         end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
         cr.show_text(end_text)
 
     def _append_net_sample(self, recv_speed: object, sent_speed: object) -> None:
@@ -1212,7 +1225,7 @@ class SystemTrayApp:
             mark = max_speed * (1 - i / 4)
             label = f"{mark:.1f}"
             ext = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - ext.width - 8), y + 4)
+            cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
             cr.show_text(label)
 
         def draw_line(selector, color):
@@ -1254,7 +1267,7 @@ class SystemTrayApp:
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - ext.width, 12)
+        cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
@@ -1267,7 +1280,7 @@ class SystemTrayApp:
 
         end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
         cr.show_text(end_text)
 
     def _append_keyboard_sample(self, keyboard_clicks: object) -> None:
@@ -1356,7 +1369,7 @@ class SystemTrayApp:
             mark = int(y_max * (1 - i / 4))
             label = f"{mark}"
             ext = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - ext.width - 8), y + 4)
+            cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
             cr.show_text(label)
 
         cr.set_source_rgb(1.0, 0.86, 0.25)
@@ -1385,7 +1398,7 @@ class SystemTrayApp:
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - ext.width, 12)
+        cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
@@ -1398,7 +1411,7 @@ class SystemTrayApp:
 
         end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
         cr.show_text(end_text)
 
     def _append_mouse_sample(self, mouse_clicks: object) -> None:
@@ -1487,7 +1500,7 @@ class SystemTrayApp:
             mark = int(y_max * (1 - i / 4))
             label = f"{mark}"
             ext = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - ext.width - 8), y + 4)
+            cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
             cr.show_text(label)
 
         cr.set_source_rgb(0.4, 0.9, 1.0)
@@ -1516,7 +1529,7 @@ class SystemTrayApp:
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - ext.width, 12)
+        cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
@@ -1529,7 +1542,7 @@ class SystemTrayApp:
 
         end_text = f"{end_ts} ▶"
         text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
         cr.show_text(end_text)
 
     def _show_message(self, title: str, message: str):
