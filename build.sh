@@ -35,6 +35,30 @@ command -v nuitka3 &>/dev/null && NUITKA=nuitka3
 echo "➡️  Using Nuitka: $NUITKA"
 
 
+# ---------- Опциональные модули для Nuitka ----------
+NUITKA_EXTRA_MODULE_ARGS=()
+
+add_optional_module() {
+    local module_name="$1"
+    if python3 - "$module_name" <<'PYMOD'
+import importlib.util
+import sys
+name = sys.argv[1]
+raise SystemExit(0 if importlib.util.find_spec(name) is not None else 1)
+PYMOD
+    then
+        NUITKA_EXTRA_MODULE_ARGS+=("--include-module=${module_name}")
+        echo "➕ Include optional module: ${module_name}"
+    else
+        echo "ℹ️  Skip optional module (not found): ${module_name}"
+    fi
+}
+
+add_optional_module gi._gi_cairo
+add_optional_module cairo
+add_optional_module gi.repository.cairo
+
+
 # ---------- Пути для ярлыков ----------
 DESKTOP_MAIN="$HOME/.local/share/applications/${APP_NAME}.desktop"
 DESKTOP_AUTOSTART="$HOME/.config/autostart/${APP_NAME}.desktop"
@@ -80,9 +104,7 @@ echo "🚀 Building STANDALONE..."
 $NUITKA --standalone \
     --enable-plugin=gi \
     --follow-imports \
-    --include-module=gi._gi_cairo \
-    --include-module=cairo \
-    --include-module=gi.repository.cairo \
+    "${NUITKA_EXTRA_MODULE_ARGS[@]}" \
     --assume-yes-for-downloads \
     --include-data-files=logo.png=logo.png \
     --include-data-files=app_core/language.py=app_core/language.py \
@@ -175,9 +197,7 @@ set +e
 $NUITKA --onefile \
     --enable-plugin=gi \
     --follow-imports \
-    --include-module=gi._gi_cairo \
-    --include-module=cairo \
-    --include-module=gi.repository.cairo \
+    "${NUITKA_EXTRA_MODULE_ARGS[@]}" \
     --assume-yes-for-downloads \
     --include-data-files=logo.png=logo.png \
     --include-data-files=app_core/language.py=app_core/language.py \
