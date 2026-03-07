@@ -137,6 +137,11 @@ class SystemTrayApp:
         self.net_graph_hint_label: Optional[Gtk.Label] = None
         self.net_history = deque(maxlen=120)
 
+        self.keyboard_graph_window: Optional[Gtk.Window] = None
+        self.keyboard_graph_area: Optional[Gtk.DrawingArea] = None
+        self.keyboard_graph_hint_label: Optional[Gtk.Label] = None
+        self.keyboard_history = deque(maxlen=120)
+
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
             try:
                 LOG_FILE.write_text("", encoding="utf-8")
@@ -239,6 +244,7 @@ class SystemTrayApp:
         self.net_item.connect("activate", self.show_net_graph)
         self.uptime_item = Gtk.MenuItem(label=f"{tr('uptime_label')}: N/A")
         self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
+        self.keyboard_item.connect("activate", self.show_keyboard_graph)
         self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
 
         self.ping_item = Gtk.MenuItem(label=tr('ping_network'))
@@ -328,6 +334,7 @@ class SystemTrayApp:
             self._refresh_swap_graph_texts()
             self._refresh_disk_graph_texts()
             self._refresh_net_graph_texts()
+            self._refresh_keyboard_graph_texts()
 
     def load_settings(self) -> Dict:
         default = {
@@ -1256,6 +1263,137 @@ class SystemTrayApp:
         cr.move_to(width - margin_right - text_extents.width, height - 10)
         cr.show_text(end_text)
 
+    def _append_keyboard_sample(self, keyboard_clicks: object) -> None:
+        try:
+            count = max(0, int(keyboard_clicks))
+        except (TypeError, ValueError):
+            count = 0
+        self.keyboard_history.append((time.time(), count))
+
+    def show_keyboard_graph(self, _w=None):
+        if self.keyboard_graph_window and self.keyboard_graph_window.get_visible():
+            self.keyboard_graph_window.present()
+            return
+
+        window = Gtk.Window(title=f"{tr('keyboard_clicks')} — {tr('system_status')}")
+        window.set_default_size(720, 380)
+        window.set_border_width(10)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        hint = Gtk.Label()
+        hint.set_xalign(0)
+        box.pack_start(hint, False, False, 0)
+
+        area = Gtk.DrawingArea()
+        area.set_size_request(680, 320)
+        area.connect("draw", self._draw_keyboard_graph)
+        box.pack_start(area, True, True, 0)
+
+        window.add(box)
+        window.connect("destroy", self._on_keyboard_graph_destroy)
+
+        self.keyboard_graph_window = window
+        self.keyboard_graph_area = area
+        self.keyboard_graph_hint_label = hint
+        self._refresh_keyboard_graph_texts()
+
+        window.show_all()
+
+    def _on_keyboard_graph_destroy(self, _w):
+        self.keyboard_graph_window = None
+        self.keyboard_graph_area = None
+        self.keyboard_graph_hint_label = None
+
+    def _refresh_keyboard_graph_texts(self) -> None:
+        if self.keyboard_graph_window:
+            self.keyboard_graph_window.set_title(f"{tr('keyboard_clicks')} — {tr('system_status')}")
+        if self.keyboard_graph_hint_label:
+            self.keyboard_graph_hint_label.set_text("")
+        if self.keyboard_graph_area:
+            self.keyboard_graph_area.queue_draw()
+
+    def _draw_keyboard_graph(self, widget, cr):
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+
+        margin_left = 58
+        margin_right = 16
+        margin_top = 16
+        margin_bottom = 36
+
+        plot_w = max(10, width - margin_left - margin_right)
+        plot_h = max(10, height - margin_top - margin_bottom)
+
+        cr.set_source_rgb(0.09, 0.09, 0.09)
+        cr.paint()
+
+        cr.set_source_rgb(0.2, 0.2, 0.2)
+        for i in range(5):
+            y = margin_top + (plot_h * i / 4)
+            cr.move_to(margin_left, y)
+            cr.line_to(margin_left + plot_w, y)
+        cr.stroke()
+
+        samples = list(self.keyboard_history)
+        if len(samples) < 2:
+            return
+
+        max_count = max(1, max(s[1] for s in samples))
+        y_max = max_count * 1.05
+
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(10)
+        cr.set_source_rgb(0.85, 0.85, 0.85)
+        for i in range(5):
+            y = margin_top + (plot_h * i / 4)
+            mark = int(y_max * (1 - i / 4))
+            label = f"{mark}"
+            ext = cr.text_extents(label)
+            cr.move_to(max(2, margin_left - ext.width - 8), y + 4)
+            cr.show_text(label)
+
+        cr.set_source_rgb(1.0, 0.86, 0.25)
+        cr.set_line_width(2)
+        for idx, sample in enumerate(samples):
+            x = margin_left + plot_w * idx / (len(samples) - 1)
+            value = sample[1]
+            y = margin_top + plot_h * (1.0 - (value / y_max))
+            if idx == 0:
+                cr.move_to(x, y)
+            else:
+                cr.line_to(x, y)
+        cr.stroke()
+
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(12)
+        cr.set_source_rgb(1.0, 0.86, 0.25)
+        cr.rectangle(margin_left, 4, 12, 8)
+        cr.fill()
+        cr.set_source_rgb(1.0, 0.96, 0.78)
+        cr.move_to(margin_left + 18, 12)
+        cr.show_text(tr('keyboard_clicks'))
+
+        last_count = samples[-1][1]
+        values_text = f"{tr('keyboard_clicks')}: {last_count}"
+        cr.set_source_rgb(0.95, 0.95, 0.95)
+        cr.set_font_size(12)
+        ext = cr.text_extents(values_text)
+        cr.move_to(width - margin_right - ext.width, 12)
+        cr.show_text(values_text)
+
+        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
+        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
+
+        cr.set_source_rgb(0.75, 0.75, 0.75)
+        cr.set_font_size(11)
+        cr.move_to(margin_left, height - 10)
+        cr.show_text(f"◀ {start_ts}")
+
+        end_text = f"{end_ts} ▶"
+        text_extents = cr.text_extents(end_text)
+        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.show_text(end_text)
+
     def _show_message(self, title: str, message: str):
         parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
         d = Gtk.MessageDialog(transient_for=parent, flags=0,
@@ -1275,6 +1413,7 @@ class SystemTrayApp:
             self._append_swap_sample(swap_used, swap_total)
             self._append_disk_sample(disk_used, disk_total)
             self._append_net_sample(net_recv_speed, net_sent_speed)
+            self._append_keyboard_sample(keyboard_clicks_val)
             if self.cpu_graph_area:
                 self.cpu_graph_area.queue_draw()
             if self.ram_graph_area:
@@ -1285,6 +1424,8 @@ class SystemTrayApp:
                 self.disk_graph_area.queue_draw()
             if self.net_graph_area:
                 self.net_graph_area.queue_draw()
+            if self.keyboard_graph_area:
+                self.keyboard_graph_area.queue_draw()
 
             if self.visibility_settings.get('cpu', True):
                 self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
@@ -1378,6 +1519,15 @@ class SystemTrayApp:
             self.net_graph_window = None
             self.net_graph_area = None
             self.net_graph_hint_label = None
+
+        if self.keyboard_graph_window:
+            try:
+                self.keyboard_graph_window.destroy()
+            except Exception:
+                pass
+            self.keyboard_graph_window = None
+            self.keyboard_graph_area = None
+            self.keyboard_graph_hint_label = None
 
         if self.settings_dialog:
             try:
