@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from datetime import datetime
 import signal
 import subprocess
 import threading
@@ -538,7 +539,7 @@ class SystemTrayApp:
 
     def _append_cpu_sample(self, cpu_usage: object, cpu_temp: object) -> None:
         usage, temp = self._normalize_cpu_sample(cpu_usage, cpu_temp)
-        self.cpu_history.append((usage, temp))
+        self.cpu_history.append((time.time(), usage, temp))
 
     def show_cpu_graph(self, _w=None):
         if self.cpu_graph_window and self.cpu_graph_window.get_visible():
@@ -550,7 +551,7 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label(label=f"{tr('cpu_info')} (%) / {tr('temperature')} (°C)")
+        hint = Gtk.Label(label=f"{tr('cpu_info')} (линия: %) · {tr('temperature')} (линия: °C)")
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
@@ -575,10 +576,10 @@ class SystemTrayApp:
         width = widget.get_allocated_width()
         height = widget.get_allocated_height()
 
-        margin_left = 42
-        margin_right = 12
-        margin_top = 12
-        margin_bottom = 24
+        margin_left = 48
+        margin_right = 16
+        margin_top = 16
+        margin_bottom = 36
 
         plot_w = max(10, width - margin_left - margin_right)
         plot_h = max(10, height - margin_top - margin_bottom)
@@ -597,7 +598,7 @@ class SystemTrayApp:
         if len(samples) < 2:
             return
 
-        max_temp = max(100.0, max(temp for _, temp in samples) + 5.0)
+        max_temp = max(100.0, max(temp for _, _, temp in samples) + 5.0)
 
         def draw_line(selector, color, max_value):
             cr.set_source_rgb(*color)
@@ -612,8 +613,40 @@ class SystemTrayApp:
                     cr.line_to(x, y)
             cr.stroke()
 
-        draw_line(lambda s: s[0], (0.1, 0.8, 1.0), 100.0)
-        draw_line(lambda s: s[1], (1.0, 0.4, 0.2), max_temp)
+        draw_line(lambda s: s[1], (0.1, 0.8, 1.0), 100.0)
+        draw_line(lambda s: s[2], (1.0, 0.4, 0.2), max_temp)
+
+        # Legend/signatures for displayed data
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(12)
+
+        cr.set_source_rgb(0.1, 0.8, 1.0)
+        cr.rectangle(margin_left, 4, 12, 8)
+        cr.fill()
+        cr.set_source_rgb(0.88, 0.92, 1.0)
+        cr.move_to(margin_left + 18, 12)
+        cr.show_text(f"{tr('cpu_info')} (%)")
+
+        cr.set_source_rgb(1.0, 0.4, 0.2)
+        cr.rectangle(margin_left + 150, 4, 12, 8)
+        cr.fill()
+        cr.set_source_rgb(1.0, 0.88, 0.82)
+        cr.move_to(margin_left + 168, 12)
+        cr.show_text(f"{tr('temperature')} (°C)")
+
+        # Start and end time at the bottom
+        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
+        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
+
+        cr.set_source_rgb(0.75, 0.75, 0.75)
+        cr.set_font_size(11)
+        cr.move_to(margin_left, height - 10)
+        cr.show_text(f"Старт: {start_ts}")
+
+        end_text = f"Сейчас: {end_ts}"
+        text_extents = cr.text_extents(end_text)
+        cr.move_to(width - margin_right - text_extents.width, height - 10)
+        cr.show_text(end_text)
 
     def _show_message(self, title: str, message: str):
         parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
