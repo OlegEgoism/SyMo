@@ -22,7 +22,12 @@ Made By ❤ [OlegEgoism](https://github.com/OlegEgoism)
 - `app_core/` — all core application logic (tray runtime, dialogs, localization, metrics, power actions, constants, logging).
 - `notifications/` — Telegram/Discord integrations.
 - `docs/` — project documentation and audits.
+  - `docs/CODE_ANALYSIS.md` — deep architecture/code analysis, risks, and improvement roadmap.
 - `tests/` — pytest test suite.
+
+<h3>Technical Deep Dive</h3>
+
+- Full deep code analysis and roadmap: [`docs/CODE_ANALYSIS.md`](docs/CODE_ANALYSIS.md)
 
 <h3>System Monitor</h3>
 
