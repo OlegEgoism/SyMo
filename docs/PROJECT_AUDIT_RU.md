@@ -10,7 +10,7 @@ SyMo — это Linux-приложение в системном трее (GTK +
 - отправляет периодические уведомления в Telegram и Discord;
 - поддерживает локализацию интерфейса.
 
-Точка входа: `app.py`.
+Точка входа: `app.py` (launcher) / `app_core/app.py` (основной orchestrator).
 
 ---
 
@@ -18,15 +18,17 @@ SyMo — это Linux-приложение в системном трее (GTK +
 
 ```text
 SyMo/
-├── app.py                     # Основной orchestrator приложения и tray UI
-├── constants.py               # Константы: app-id, пути к конфигам/логам, языки
-├── localization.py            # Текущий язык, tr(), определение языка системы
-├── language.py                # Словари переводов
-├── dialogs.py                 # GTK-диалог настроек
-├── power_control.py           # Power-операции + планировщик действий
-├── system_usage.py            # Получение метрик через psutil
-├── click_tracker.py           # Потокобезопасные счётчики клавиатуры/мыши
-├── logging_utils.py           # Ротация логов
+├── app.py                     # Launcher (точка входа)
+├── app_core/                  # Core-пакет приложения
+│   ├── app.py                 # Основной orchestrator приложения и tray UI
+│   ├── constants.py           # Константы: app-id, пути к конфигам/логам, языки
+│   ├── localization.py        # Текущий язык, tr(), определение языка системы
+│   ├── language.py            # Словари переводов
+│   ├── dialogs.py             # GTK-диалог настроек
+│   ├── power_control.py       # Power-операции + планировщик действий
+│   ├── system_usage.py        # Получение метрик через psutil
+│   ├── click_tracker.py       # Потокобезопасные счётчики клавиатуры/мыши
+│   └── logging_utils.py       # Ротация логов
 ├── notifications/
 │   ├── telegram.py            # Telegram-уведомления + bot polling
 │   ├── discord.py             # Discord webhook-уведомления
@@ -36,6 +38,7 @@ SyMo/
 │   ├── test_click_tracker.py
 │   ├── test_discord_notifier.py
 │   └── test_language_keys.py
+├── docs/                      # Проектная документация
 ├── build.sh                   # Сборка Nuitka + desktop/autostart файлы
 ├── uninstall-symo.sh          # Скрипт удаления
 ├── requirements.txt           # Минимальные Python-зависимости
@@ -66,11 +69,11 @@ SyMo/
 
 ## 3.3 Слои ответственности
 
-- **UI/Orchestration:** `app.py`, `dialogs.py`, `power_control.py`
-- **Domain/metrics:** `system_usage.py`, `click_tracker.py`
+- **UI/Orchestration:** `app.py` (launcher) / `app_core/app.py` (основной orchestrator), `app_core/dialogs.py`, `app_core/power_control.py`
+- **Domain/metrics:** `app_core/system_usage.py`, `app_core/click_tracker.py`
 - **Integrations:** `notifications/telegram.py`, `notifications/discord.py`
-- **I18n:** `language.py`, `localization.py`
-- **Infrastructure:** `constants.py`, `logging_utils.py`, `build.sh`
+- **I18n:** `app_core/language.py`, `app_core/localization.py`
+- **Infrastructure:** `app_core/constants.py`, `app_core/logging_utils.py`, `build.sh`
 
 ---
 
@@ -115,9 +118,9 @@ SyMo/
 
 3. **Несоответствие заявленных языков README и фактической поддержки.**
    - В README упомянут арабский, но в `SUPPORTED_LANGS` его нет.
-   - **Что сделать:** либо удалить Arabic из README, либо добавить `ar` в `SUPPORTED_LANGS` и словарь `language.py`.
+   - **Что сделать:** либо удалить Arabic из README, либо добавить `ar` в `SUPPORTED_LANGS` и словарь `app_core/language.py`.
 
-4. **Дубли ключей локализации в русской секции (`language.py`).**
+4. **Дубли ключей локализации в русской секции (`app_core/language.py`).**
    - Ключи `bot_shutdown_message`, `bot_reboot_message`, `bot_help_message` объявлены дважды; фактически используются последние значения.
    - **Что сделать:** удалить дубли, добавить тест на уникальность ключей в исходнике.
 
@@ -136,7 +139,7 @@ SyMo/
    - **Что сделать:** привести runtime/log-сообщения к одному стандарту (например, English), а UI оставить локализуемым.
 
 8. **Неполное тестовое покрытие.**
-   - Нет юнит-тестов для `system_usage.py`, `power_control.py`, `localization.py`, `logging_utils.py`, Telegram части.
+   - Нет юнит-тестов для `app_core/system_usage.py`, `app_core/power_control.py`, `app_core/localization.py`, `app_core/logging_utils.py`, Telegram части.
    - **Что сделать:** покрыть критические сценарии + негативные кейсы (битый JSON, таймауты API, отсутствие sensors).
 
 9. **`uninstall-symo.sh` и build naming mismatch.**
@@ -164,13 +167,13 @@ SyMo/
    - Ввести CI (pytest + lint + type checks).
 
 4. **Architecture Sprint**
-   - Вынести конфиг и сервисный слой, уменьшить связанность `app.py`.
+   - Вынести конфиг и сервисный слой, уменьшить связанность `app.py` (launcher) / `app_core/app.py` (основной orchestrator).
 
 ---
 
 ## 8. Быстрый чек-лист для исправлений
 
-- [ ] Устранить дубли ключей в `language.py`.
+- [ ] Устранить дубли ключей в `app_core/language.py`.
 - [ ] Синхронизировать `README` и `SUPPORTED_LANGS`.
 - [ ] Добавить тесты на локализацию (полнота и уникальность ключей).
 - [ ] Добавить backoff/retry policy в Telegram bot worker.
@@ -199,7 +202,7 @@ SyMo/
    - Сейчас README и `SUPPORTED_LANGS` расходятся по Arabic.
    - Эффект: убирает пользовательскую путаницу и несоответствие документации.
 
-2. **Удалить дубли ключей в `language.py`**
+2. **Удалить дубли ключей в `app_core/language.py`**
    - Убрать повторные `bot_*` ключи и добавить тест на дубликаты.
    - Эффект: предсказуемость локализации и снижение риска регрессий.
 
@@ -223,12 +226,12 @@ SyMo/
 
 7. **Разделить конфиг-слой и UI-слой**
    - Вынести чтение/запись настроек в отдельный сервис.
-   - Эффект: проще тестировать и сопровождать, меньше связность `app.py`.
+   - Эффект: проще тестировать и сопровождать, меньше связность `app.py` (launcher) / `app_core/app.py` (основной orchestrator).
 
 ### 10.3 Улучшения качества (3–5 дней)
 
 8. **Расширить тестовое покрытие**
-   - Добавить тесты на `localization.py`, `logging_utils.py`, `system_usage.py`, базовые кейсы `power_control.py`.
+   - Добавить тесты на `app_core/localization.py`, `app_core/logging_utils.py`, `app_core/system_usage.py`, базовые кейсы `app_core/power_control.py`.
    - Эффект: ловля регрессий до релиза, безопасный рефакторинг.
 
 9. **Ввести quality-gates в CI**
@@ -257,6 +260,6 @@ SyMo/
 1. **Документационная консистентность + локализация** (быстро и безопасно).
 2. **Надёжность runtime** (backoff, `subprocess.run`, улучшенный error reporting).
 3. **Тесты и CI** (закрепить изменения quality-gates).
-4. **Модульный рефакторинг** (конфиг-сервис, снижение связности `app.py`).
+4. **Модульный рефакторинг** (конфиг-сервис, снижение связности `app.py` (launcher) / `app_core/app.py` (основной orchestrator)).
 
 Такой порядок даёт лучший баланс между скоростью и снижением эксплуатационных рисков.
