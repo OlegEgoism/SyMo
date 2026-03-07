@@ -390,9 +390,9 @@ class SystemTrayApp:
             if self.visibility_settings.get(flag_key, True):
                 self.menu.prepend(item)
 
+        prepend_if('uptime', self.uptime_item)
         prepend_if('mouse_clicks', self.mouse_item)
         prepend_if('keyboard_clicks', self.keyboard_item)
-        prepend_if('uptime', self.uptime_item)
         prepend_if('net', self.net_item)
         prepend_if('disk', self.disk_item)
         prepend_if('swap', self.swap_item)

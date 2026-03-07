@@ -47,9 +47,9 @@ class SettingsDialog(Gtk.Dialog):
         self.swap_check = add_check('swap_loading', 'swap')
         self.disk_check = add_check('disk_loading', 'disk')
         self.net_check = add_check('lan_speed', 'net')
-        self.uptime_check = add_check('uptime_label', 'uptime')
         self.keyboard_check = add_check('keyboard_clicks', 'keyboard_clicks')
         self.mouse_check = add_check('mouse_clicks', 'mouse_clicks')
+        self.uptime_check = add_check('uptime_label', 'uptime')
 
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         self.power_off_check = add_check('power_off', 'show_power_off')
