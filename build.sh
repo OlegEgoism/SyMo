@@ -56,7 +56,6 @@ PYMOD
 
 add_optional_module gi._gi_cairo
 add_optional_module cairo
-add_optional_module gi.repository.cairo
 
 
 # ---------- Пути для ярлыков ----------
