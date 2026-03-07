@@ -651,6 +651,24 @@ class SystemTrayApp:
         if self.cpu_graph_area:
             self.cpu_graph_area.queue_draw()
 
+
+    @staticmethod
+    def _draw_no_data(widget, cr, message: str) -> None:
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+
+        cr.set_source_rgb(0.09, 0.09, 0.09)
+        cr.paint()
+
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(14)
+        cr.set_source_rgb(0.78, 0.78, 0.78)
+        ext = cr.text_extents(message)
+        x = max(8, (width - _text_width(ext)) / 2)
+        y = max(20, height / 2)
+        cr.move_to(x, y)
+        cr.show_text(message)
+
     def _draw_cpu_graph(self, widget, cr):
         width = widget.get_allocated_width()
         height = widget.get_allocated_height()
@@ -687,6 +705,7 @@ class SystemTrayApp:
 
         samples = list(self.cpu_history)
         if not samples:
+            self._draw_no_data(widget, cr, 'No data yet…')
             return
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
@@ -837,6 +856,7 @@ class SystemTrayApp:
 
         samples = list(self.ram_history)
         if not samples:
+            self._draw_no_data(widget, cr, 'No data yet…')
             return
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
@@ -972,6 +992,7 @@ class SystemTrayApp:
 
         samples = list(self.swap_history)
         if not samples:
+            self._draw_no_data(widget, cr, 'No data yet…')
             return
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
@@ -1107,6 +1128,7 @@ class SystemTrayApp:
 
         samples = list(self.disk_history)
         if not samples:
+            self._draw_no_data(widget, cr, 'No data yet…')
             return
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
@@ -1232,6 +1254,7 @@ class SystemTrayApp:
 
         samples = list(self.net_history)
         if not samples:
+            self._draw_no_data(widget, cr, 'No data yet…')
             return
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
@@ -1377,6 +1400,7 @@ class SystemTrayApp:
 
         samples = list(self.keyboard_history)
         if not samples:
+            self._draw_no_data(widget, cr, 'No data yet…')
             return
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
@@ -1510,6 +1534,7 @@ class SystemTrayApp:
 
         samples = list(self.mouse_history)
         if not samples:
+            self._draw_no_data(widget, cr, 'No data yet…')
             return
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
