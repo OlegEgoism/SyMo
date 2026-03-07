@@ -380,7 +380,8 @@ class SystemTrayApp:
 
         self.menu.append(self.main_separator)
 
-        self.menu.append(self.system_info_item)
+        if self.visibility_settings.get('show_system_info', True):
+            self.menu.append(self.system_info_item)
 
         if self.visibility_settings.get('ping_network', True):
             self.menu.append(self.ping_top_sep)
@@ -415,7 +416,7 @@ class SystemTrayApp:
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
-            'max_log_mb': 5, 'ping_network': True,
+            'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
         }
         try:
             if self.settings_file.exists():
@@ -443,6 +444,8 @@ class SystemTrayApp:
         ]
         if getattr(self, 'ping_item', None) and self.visibility_settings.get('ping_network', True):
             keep.extend([self.ping_item, getattr(self, 'ping_top_sep', None), getattr(self, 'ping_bottom_sep', None)])
+        if getattr(self, 'system_info_item', None) and self.visibility_settings.get('show_system_info', True):
+            keep.append(self.system_info_item)
         keep = [x for x in keep if x is not None]
 
         for ch in children:
@@ -497,6 +500,7 @@ class SystemTrayApp:
                 vs['show_timer'] = dialog.timer_check.get_active()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['ping_network'] = dialog.ping_check.get_active()
+                vs['show_system_info'] = dialog.system_info_check.get_active()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
 
                 tel_enabled_before = getattr(self, 'telegram_notifier', TelegramNotifier()).enabled
