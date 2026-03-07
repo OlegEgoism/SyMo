@@ -130,11 +130,22 @@ export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 cd "$DIR"
 
+# По умолчанию запускаем standalone-версию: она стабильнее для GTK-графиков.
+# Onefile оставляем как резервный вариант или для явного принудительного запуска.
+if [[ "${SYMO_FORCE_ONEFILE:-0}" == "1" && -x "./SyMo-onefile" ]]; then
+    exec "./SyMo-onefile" "$@"
+fi
+
+if [[ -x "./SyMo-run" ]]; then
+    exec "./SyMo-run" "$@"
+fi
+
 if [[ -x "./SyMo-onefile" ]]; then
     exec "./SyMo-onefile" "$@"
 fi
 
-exec "./SyMo-run" "$@"
+echo "❌ Не найден исполняемый файл SyMo-run или SyMo-onefile"
+exit 1
 EOF
 chmod +x ${APP_NAME}-launch
 
