@@ -80,6 +80,9 @@ echo "🚀 Building STANDALONE..."
 $NUITKA --standalone \
     --enable-plugin=gi \
     --follow-imports \
+    --include-module=gi._gi_cairo \
+    --include-module=cairo \
+    --include-module=gi.repository.cairo \
     --assume-yes-for-downloads \
     --include-data-files=logo.png=logo.png \
     --include-data-files=app_core/language.py=app_core/language.py \
@@ -172,6 +175,9 @@ set +e
 $NUITKA --onefile \
     --enable-plugin=gi \
     --follow-imports \
+    --include-module=gi._gi_cairo \
+    --include-module=cairo \
+    --include-module=gi.repository.cairo \
     --assume-yes-for-downloads \
     --include-data-files=logo.png=logo.png \
     --include-data-files=app_core/language.py=app_core/language.py \
