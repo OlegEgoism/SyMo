@@ -267,9 +267,6 @@ class SystemTrayApp:
         cpu_threads = psutil.cpu_count(logical=True) or 0
         cpu_freq = psutil.cpu_freq()
         ram = psutil.virtual_memory()
-        swap = psutil.swap_memory()
-        disk = psutil.disk_usage('/')
-        boot_time = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M:%S")
 
         freq_text = tr('unknown_value')
         if cpu_freq and cpu_freq.max:
@@ -281,7 +278,6 @@ class SystemTrayApp:
             f"{tr('system_label')}: {uname.system} {uname.release}",
             f"{tr('hostname_label')}: {uname.node}",
             f"{tr('architecture_label')}: {uname.machine}",
-            f"{tr('python_version_label')}: {platform.python_version()}",
             "",
             f"{tr('cpu_label')}: {self._detect_cpu_model()}",
             f"{tr('cores_label')}: {cpu_count}",
@@ -289,13 +285,6 @@ class SystemTrayApp:
             f"{tr('cpu_frequency_label')}: {freq_text}",
             "",
             f"{tr('ram_total_label')}: {ram.total / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('ram_available_label')}: {ram.available / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('swap_total_label')}: {swap.total / (1024 ** 3):.2f} {tr('gb')}",
-            "",
-            f"{tr('disk_total_label')}: {disk.total / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('disk_free_label')}: {disk.free / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('boot_time_label')}: {boot_time}",
-            f"{tr('uptime')}: {SystemUsage.get_uptime()}",
         ])
 
     def on_system_info_click(self, *_):
