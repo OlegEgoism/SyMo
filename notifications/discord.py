@@ -53,8 +53,8 @@ class DiscordNotifier:
             value = 3600
         return max(10, min(86400, value))
 
-    def send_message(self, message: str) -> bool:
-        if not self.enabled or not self.webhook_url:
+    def send_message(self, message: str, force: bool = False) -> bool:
+        if (not force and not self.enabled) or not self.webhook_url:
             return False
         try:
             payload = {"content": message, "username": "System Monitor"}
