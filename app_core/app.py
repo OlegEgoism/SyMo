@@ -63,9 +63,14 @@ class SystemTrayApp:
         set_language(self.visibility_settings['language'])
 
         self.indicator = AppInd.Indicator.new(APP_ID, ICON_FALLBACK, AppInd.IndicatorCategory.SYSTEM_SERVICES)
-        icon_path = Path(__file__).resolve().parent / "logo.png"
+        icon_candidates = [
+            Path(__file__).resolve().parent / "logo.png",
+            Path(__file__).resolve().parent.parent / "logo.png",
+            Path.cwd() / "logo.png",
+        ]
+        icon_path = next((path for path in icon_candidates if path.exists()), None)
         try:
-            if icon_path.exists():
+            if icon_path:
                 if hasattr(self.indicator, "set_icon_full"):
                     self.indicator.set_icon_full(str(icon_path), APP_NAME)
                 else:
