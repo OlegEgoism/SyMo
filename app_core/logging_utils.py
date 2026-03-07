@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from constants import LOG_FILE
+from .constants import LOG_FILE
 
 
 def rotate_log_if_needed(max_size_bytes: int) -> None:

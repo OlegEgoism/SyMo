@@ -7,7 +7,7 @@ from typing import Optional, TYPE_CHECKING
 
 from gi.repository import GLib, Gtk
 
-from localization import tr
+from .localization import tr
 
 if TYPE_CHECKING:
     from app import SystemTrayApp

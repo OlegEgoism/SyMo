@@ -4,9 +4,9 @@ import locale
 import os
 from typing import Dict
 
-from language import LANGUAGES
+from .language import LANGUAGES
 
-from constants import SUPPORTED_LANGS
+from .constants import SUPPORTED_LANGS
 
 current_lang = 'ru'
 
