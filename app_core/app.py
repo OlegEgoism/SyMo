@@ -581,7 +581,7 @@ class SystemTrayApp:
         if self.cpu_graph_window:
             self.cpu_graph_window.set_title(f"{tr('cpu_info')} — {tr('system_status')}")
         if self.cpu_graph_hint_label:
-            self.cpu_graph_hint_label.set_text(f"{tr('cpu')} (%) · {tr('temperature')} (°C)")
+            self.cpu_graph_hint_label.set_text("")
         if self.cpu_graph_area:
             self.cpu_graph_area.queue_draw()
 
@@ -606,6 +606,18 @@ class SystemTrayApp:
             cr.move_to(margin_left, y)
             cr.line_to(margin_left + plot_w, y)
         cr.stroke()
+
+        # Left-side numeric Y axis labels for CPU load (%)
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(10)
+        cr.set_source_rgb(0.72, 0.82, 0.9)
+        for i in range(5):
+            cpu_mark = 100 - (25 * i)
+            y = margin_top + (plot_h * i / 4)
+            label = f"{cpu_mark}%"
+            text_extents = cr.text_extents(label)
+            cr.move_to(max(2, margin_left - text_extents.width - 6), y + 4)
+            cr.show_text(label)
 
         samples = list(self.cpu_history)
         if len(samples) < 2:
