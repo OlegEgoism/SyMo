@@ -7,9 +7,31 @@ from typing import Dict, Optional
 from gi.repository import Gtk
 
 from .click_tracker import get_counts
-from .constants import LOG_FILE, TELEGRAM_CONFIG_FILE, DISCORD_CONFIG_FILE
+from .constants import LOG_FILE, TELEGRAM_CONFIG_FILE, DISCORD_CONFIG_FILE, MENU_ORDER_DEFAULT
 from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
+
+
+class ReorderRow(Gtk.ListBoxRow):
+    def __init__(self, label: str, key: str):
+        super().__init__()
+        self.key = key
+
+        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        row_box.set_margin_top(4)
+        row_box.set_margin_bottom(4)
+        row_box.set_margin_start(6)
+        row_box.set_margin_end(6)
+
+        drag_hint = Gtk.Label(label="↕")
+        drag_hint.set_xalign(0)
+        row_box.pack_start(drag_hint, False, False, 0)
+
+        title = Gtk.Label(label=label)
+        title.set_xalign(0)
+        row_box.pack_start(title, True, True, 0)
+
+        self.add(row_box)
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -60,6 +82,63 @@ class SettingsDialog(Gtk.Dialog):
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         self.ping_check = add_check('ping_network', 'ping_network')
         self.system_info_check = add_check('system_info', 'show_system_info')
+
+        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+
+        reorder_title = Gtk.Label(label=tr('menu_order_title'))
+        reorder_title.set_xalign(0)
+        box.add(reorder_title)
+
+        reorder_hint = Gtk.Label(label=tr('menu_order_hint'))
+        reorder_hint.set_xalign(0)
+        reorder_hint.set_line_wrap(True)
+        reorder_hint.get_style_context().add_class('dim-label')
+        box.add(reorder_hint)
+
+        self.menu_order_list = Gtk.ListBox()
+        self.menu_order_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.menu_order_list.set_reorderable(True)
+        self.menu_order_list.connect('row-selected', self._on_menu_row_selected)
+
+        order_labels = [
+            ('cpu_info', 'cpu'),
+            ('ram_loading', 'ram'),
+            ('swap_loading', 'swap'),
+            ('disk_loading', 'disk'),
+            ('lan_speed', 'net'),
+            ('keyboard_clicks', 'keyboard_clicks'),
+            ('mouse_clicks', 'mouse_clicks'),
+            ('uptime_label', 'uptime'),
+            ('power_off', 'show_power_off'),
+            ('reboot', 'show_reboot'),
+            ('lock', 'show_lock'),
+            ('settings', 'show_timer'),
+            ('ping_network', 'ping_network'),
+            ('system_info', 'show_system_info'),
+        ]
+
+        display_map = {key: label_key for label_key, key in order_labels}
+        current_order = self._normalize_menu_order(self.visibility_settings.get('menu_order'))
+        for key in current_order:
+            label_key = display_map.get(key, key)
+            self.menu_order_list.add(ReorderRow(tr(label_key), key))
+
+        order_scroll = Gtk.ScrolledWindow()
+        order_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        order_scroll.set_min_content_height(210)
+        order_scroll.set_shadow_type(Gtk.ShadowType.IN)
+        order_scroll.add(self.menu_order_list)
+        box.add(order_scroll)
+
+        order_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        order_buttons.set_halign(Gtk.Align.END)
+        self.order_up_button = Gtk.Button(label='↑')
+        self.order_up_button.connect('clicked', lambda *_: self._move_selected_order_row(-1))
+        self.order_down_button = Gtk.Button(label='↓')
+        self.order_down_button.connect('clicked', lambda *_: self._move_selected_order_row(1))
+        order_buttons.pack_start(self.order_up_button, False, False, 0)
+        order_buttons.pack_start(self.order_down_button, False, False, 0)
+        box.add(order_buttons)
 
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         logging_box = Gtk.Box(spacing=6)
@@ -171,6 +250,45 @@ class SettingsDialog(Gtk.Dialog):
 
         self._prefill_configs()
         self.show_all()
+
+    def _normalize_menu_order(self, order) -> list[str]:
+        unique = []
+        for key in order or []:
+            if key in MENU_ORDER_DEFAULT and key not in unique:
+                unique.append(key)
+        for key in MENU_ORDER_DEFAULT:
+            if key not in unique:
+                unique.append(key)
+        return unique
+
+    def _on_menu_row_selected(self, _listbox, row):
+        self._selected_order_row = row if isinstance(row, ReorderRow) else None
+
+    def _move_selected_order_row(self, delta: int):
+        row = getattr(self, '_selected_order_row', None)
+        if not row:
+            return
+        children = self.menu_order_list.get_children()
+        if row not in children:
+            return
+
+        current_index = children.index(row)
+        new_index = current_index + delta
+        if new_index < 0 or new_index >= len(children):
+            return
+
+        self.menu_order_list.remove(row)
+        self.menu_order_list.insert(row, new_index)
+        self.menu_order_list.select_row(row)
+        self.menu_order_list.show_all()
+
+    def get_menu_order(self) -> list[str]:
+        keys = []
+        for row in self.menu_order_list.get_children():
+            key = getattr(row, 'key', None)
+            if key:
+                keys.append(key)
+        return self._normalize_menu_order(keys)
 
     def _prefill_configs(self):
         try:

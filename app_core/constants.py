@@ -13,3 +13,20 @@ LOG_FILE = HOME / ".symo_log.txt"
 SETTINGS_FILE = HOME / ".symo_settings.json"
 TELEGRAM_CONFIG_FILE = HOME / ".symo_telegram.json"
 DISCORD_CONFIG_FILE = HOME / ".symo_discord.json"
+
+MENU_ORDER_DEFAULT = [
+    'cpu',
+    'ram',
+    'swap',
+    'disk',
+    'net',
+    'keyboard_clicks',
+    'mouse_clicks',
+    'uptime',
+    'show_power_off',
+    'show_reboot',
+    'show_lock',
+    'show_timer',
+    'ping_network',
+    'show_system_info',
+]

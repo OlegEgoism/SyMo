@@ -34,6 +34,7 @@ from .constants import (
     SETTINGS_FILE,
     TIME_UPDATE_SEC,
     SUPPORTED_LANGS,
+    MENU_ORDER_DEFAULT,
 )
 from .dialogs import SettingsDialog
 from .localization import tr, detect_system_language, set_language, get_language
@@ -362,32 +363,7 @@ class SystemTrayApp:
 
         self.update_menu_visibility()
 
-        if any([
-            self.visibility_settings.get('show_power_off', True),
-            self.visibility_settings.get('show_reboot', True),
-            self.visibility_settings.get('show_lock', True),
-            self.visibility_settings.get('show_timer', True)
-        ]):
-            self.menu.append(self.power_separator)
-            if self.visibility_settings.get('show_power_off', True):
-                self.menu.append(self.power_off_item)
-            if self.visibility_settings.get('show_reboot', True):
-                self.menu.append(self.reboot_item)
-            if self.visibility_settings.get('show_lock', True):
-                self.menu.append(self.lock_item)
-            if self.visibility_settings.get('show_timer', True):
-                self.menu.append(self.timer_item)
-
         self.menu.append(self.main_separator)
-
-        if self.visibility_settings.get('show_system_info', True):
-            self.menu.append(self.system_info_item)
-
-        if self.visibility_settings.get('ping_network', True):
-            self.menu.append(self.ping_top_sep)
-            self.menu.append(self.ping_item)
-            self.menu.append(self.ping_bottom_sep)
-
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
         self.menu.append(self.exit_separator)
@@ -417,6 +393,7 @@ class SystemTrayApp:
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
+            'menu_order': MENU_ORDER_DEFAULT.copy(),
         }
         try:
             if self.settings_file.exists():
@@ -424,6 +401,7 @@ class SystemTrayApp:
                 default.update(saved)
         except Exception as e:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
+        default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))
         return default
 
     def save_settings(self) -> None:
@@ -431,6 +409,16 @@ class SystemTrayApp:
             self.settings_file.write_text(json.dumps(self.visibility_settings, indent=2), encoding="utf-8")
         except Exception as e:
             print("Ошибка сохранения настроек:", e)
+
+    def _normalize_menu_order(self, order) -> list[str]:
+        unique = []
+        for key in order or []:
+            if key in MENU_ORDER_DEFAULT and key not in unique:
+                unique.append(key)
+        for key in MENU_ORDER_DEFAULT:
+            if key not in unique:
+                unique.append(key)
+        return unique
 
     def update_menu_visibility(self) -> None:
         children = list(self.menu.get_children()) if hasattr(self, 'menu') else []
@@ -441,11 +429,9 @@ class SystemTrayApp:
             getattr(self, 'language_menu_item', None),
             getattr(self, 'settings_item', None),
             getattr(self, 'quit_item', None),
+            getattr(self, 'ping_top_sep', None),
+            getattr(self, 'ping_bottom_sep', None),
         ]
-        if getattr(self, 'ping_item', None) and self.visibility_settings.get('ping_network', True):
-            keep.extend([self.ping_item, getattr(self, 'ping_top_sep', None), getattr(self, 'ping_bottom_sep', None)])
-        if getattr(self, 'system_info_item', None) and self.visibility_settings.get('show_system_info', True):
-            keep.append(self.system_info_item)
         keep = [x for x in keep if x is not None]
 
         for ch in children:
@@ -455,18 +441,43 @@ class SystemTrayApp:
                 except Exception:
                     pass
 
-        def prepend_if(flag_key: str, item: Gtk.MenuItem):
-            if self.visibility_settings.get(flag_key, True):
-                self.menu.prepend(item)
+        ordered_items = {
+            'cpu': self.cpu_temp_item,
+            'ram': self.ram_item,
+            'swap': self.swap_item,
+            'disk': self.disk_item,
+            'net': self.net_item,
+            'keyboard_clicks': self.keyboard_item,
+            'mouse_clicks': self.mouse_item,
+            'uptime': self.uptime_item,
+            'show_power_off': self.power_off_item,
+            'show_reboot': self.reboot_item,
+            'show_lock': self.lock_item,
+            'show_timer': self.timer_item,
+            'ping_network': self.ping_item,
+            'show_system_info': self.system_info_item,
+        }
 
-        prepend_if('uptime', self.uptime_item)
-        prepend_if('mouse_clicks', self.mouse_item)
-        prepend_if('keyboard_clicks', self.keyboard_item)
-        prepend_if('net', self.net_item)
-        prepend_if('disk', self.disk_item)
-        prepend_if('swap', self.swap_item)
-        prepend_if('ram', self.ram_item)
-        prepend_if('cpu', self.cpu_temp_item)
+        menu_order = self._normalize_menu_order(self.visibility_settings.get('menu_order'))
+        self.visibility_settings['menu_order'] = menu_order
+
+        visible_order = [key for key in menu_order if self.visibility_settings.get(key, True)]
+
+        power_shown = any(key in visible_order for key in ('show_power_off', 'show_reboot', 'show_lock', 'show_timer'))
+        if power_shown and getattr(self, 'power_separator', None) is not None:
+            self.menu.append(self.power_separator)
+
+        inserted_ping_sep = False
+        for key in visible_order:
+            if key == 'ping_network':
+                if not inserted_ping_sep and getattr(self, 'ping_top_sep', None) is not None:
+                    self.menu.append(self.ping_top_sep)
+                self.menu.append(self.ping_item)
+                if getattr(self, 'ping_bottom_sep', None) is not None:
+                    self.menu.append(self.ping_bottom_sep)
+                inserted_ping_sep = True
+                continue
+            self.menu.append(ordered_items[key])
 
         self.menu.show_all()
 
@@ -501,6 +512,7 @@ class SystemTrayApp:
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['ping_network'] = dialog.ping_check.get_active()
                 vs['show_system_info'] = dialog.system_info_check.get_active()
+                vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
 
                 tel_enabled_before = getattr(self, 'telegram_notifier', TelegramNotifier()).enabled
