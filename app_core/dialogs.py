@@ -61,8 +61,7 @@ class SettingsDialog(Gtk.Dialog):
         box.add(order_label)
 
         order_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        self.info_order_list = Gtk.ListBox()
-        self.info_order_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.info_order_store = Gtk.ListStore(str, str, bool)
         self._info_order_labels = {
             'cpu': 'cpu_info',
             'ram': 'ram_loading',
@@ -79,30 +78,39 @@ class SettingsDialog(Gtk.Dialog):
             'ping_network': 'ping_network',
             'show_system_info': 'system_info',
         }
-        self.info_order_checks = {}
-        self.info_order_keys = []
 
         saved_order = self.visibility_settings.get(
             'info_menu_order',
             ['cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime', 'show_power_off', 'show_reboot', 'show_lock', 'show_timer', 'ping_network', 'show_system_info']
         )
+        seen = set()
         for key in saved_order:
-            if key in self._info_order_labels and key not in self.info_order_keys:
-                self._append_info_order_row(key)
+            if key in self._info_order_labels and key not in seen:
+                self._append_info_order_item(key)
+                seen.add(key)
         for key in self._info_order_labels:
-            if key not in self.info_order_keys:
-                self._append_info_order_row(key)
+            if key not in seen:
+                self._append_info_order_item(key)
 
-        order_controls.pack_start(self.info_order_list, True, True, 0)
+        self.info_order_view = Gtk.TreeView(model=self.info_order_store)
+        self.info_order_view.set_headers_visible(False)
+        self.info_order_view.set_reorderable(True)
 
-        buttons_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.order_up_btn = Gtk.Button(label='↑')
-        self.order_up_btn.connect('clicked', self._move_info_order_up)
-        self.order_down_btn = Gtk.Button(label='↓')
-        self.order_down_btn.connect('clicked', self._move_info_order_down)
-        buttons_box.pack_start(self.order_up_btn, False, False, 0)
-        buttons_box.pack_start(self.order_down_btn, False, False, 0)
-        order_controls.pack_start(buttons_box, False, False, 0)
+        name_renderer = Gtk.CellRendererText()
+        name_column = Gtk.TreeViewColumn(tr('menu_info_order'), name_renderer, text=1)
+        self.info_order_view.append_column(name_column)
+
+        enabled_renderer = Gtk.CellRendererToggle()
+        enabled_renderer.set_property('activatable', True)
+        enabled_renderer.connect('toggled', self._on_info_order_toggled)
+        enabled_column = Gtk.TreeViewColumn(tr('apply_label'), enabled_renderer, active=2)
+        self.info_order_view.append_column(enabled_column)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_min_content_height(220)
+        scrolled.add(self.info_order_view)
+        order_controls.pack_start(scrolled, True, True, 0)
 
         box.add(order_controls)
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
@@ -217,71 +225,23 @@ class SettingsDialog(Gtk.Dialog):
         self.show_all()
 
 
-    def _append_info_order_row(self, key: str) -> None:
-        row = Gtk.ListBoxRow()
-        row.metric_key = key
+    def _append_info_order_item(self, key: str) -> None:
+        self.info_order_store.append([
+            key,
+            tr(self._info_order_labels[key]),
+            bool(self.visibility_settings.get(key, True)),
+        ])
 
-        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        label = Gtk.Label(label=tr(self._info_order_labels[key]))
-        label.set_xalign(0)
-        label.set_hexpand(True)
-        label.set_margin_start(6)
-        label.set_margin_end(6)
-        label.set_margin_top(3)
-        label.set_margin_bottom(3)
-
-        enabled_check = Gtk.CheckButton()
-        enabled_check.set_active(bool(self.visibility_settings.get(key, True)))
-        enabled_check.set_margin_end(6)
-
-        row_box.pack_start(label, True, True, 0)
-        row_box.pack_end(enabled_check, False, False, 0)
-        row.add(row_box)
-
-        self.info_order_list.add(row)
-        self.info_order_checks[key] = enabled_check
-        self.info_order_keys.append(key)
-
-    def _rebuild_info_order_rows(self) -> None:
-        for child in self.info_order_list.get_children():
-            self.info_order_list.remove(child)
-        keys = list(self.info_order_keys)
-        self.info_order_keys = []
-        self.info_order_checks = {}
-        for key in keys:
-            self._append_info_order_row(key)
-        self.info_order_list.show_all()
-
-    def _move_info_order_up(self, _btn) -> None:
-        row = self.info_order_list.get_selected_row()
-        if row is None:
-            return
-        index = row.get_index()
-        if index <= 0:
-            return
-        self.info_order_keys[index - 1], self.info_order_keys[index] = self.info_order_keys[index], self.info_order_keys[index - 1]
-        self._rebuild_info_order_rows()
-        self.info_order_list.select_row(self.info_order_list.get_row_at_index(index - 1))
-
-    def _move_info_order_down(self, _btn) -> None:
-        row = self.info_order_list.get_selected_row()
-        if row is None:
-            return
-        index = row.get_index()
-        if index < 0 or index >= len(self.info_order_keys) - 1:
-            return
-        self.info_order_keys[index + 1], self.info_order_keys[index] = self.info_order_keys[index], self.info_order_keys[index + 1]
-        self._rebuild_info_order_rows()
-        self.info_order_list.select_row(self.info_order_list.get_row_at_index(index + 1))
+    def _on_info_order_toggled(self, _renderer, path: str) -> None:
+        tree_iter = self.info_order_store.get_iter(path)
+        current = bool(self.info_order_store[tree_iter][2])
+        self.info_order_store[tree_iter][2] = not current
 
     def get_info_menu_order(self) -> list[str]:
-        return list(self.info_order_keys)
+        return [row[0] for row in self.info_order_store]
 
     def get_info_menu_visibility(self) -> dict:
-        return {
-            key: bool(check.get_active())
-            for key, check in self.info_order_checks.items()
-        }
+        return {row[0]: bool(row[2]) for row in self.info_order_store}
 
 
     def get_tray_info_order(self) -> list[str]:

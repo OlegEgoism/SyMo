@@ -26,13 +26,14 @@ def test_tray_order_setting_is_saved_and_applied():
     assert "vs['show_power_off'] = info_visibility.get('show_power_off', True)" in app_code
     assert "vs['ping_network'] = info_visibility.get('ping_network', True)" in app_code
 
-    assert "self.info_order_list = Gtk.ListBox()" in dialogs_code
+    assert "self.info_order_store = Gtk.ListStore(str, str, bool)" in dialogs_code
+    assert "self.info_order_view = Gtk.TreeView(model=self.info_order_store)" in dialogs_code
+    assert "self.info_order_view.set_reorderable(True)" in dialogs_code
     assert "def get_info_menu_order(self) -> list[str]:" in dialogs_code
-    assert "def _move_info_order_up(self, _btn) -> None:" in dialogs_code
-    assert "def _move_info_order_down(self, _btn) -> None:" in dialogs_code
+    assert "def _on_info_order_toggled(self, _renderer, path: str) -> None:" in dialogs_code
 
-    assert "enabled_check = Gtk.CheckButton()" in dialogs_code
-    assert "enabled_check.set_active(bool(self.visibility_settings.get(key, True)))" in dialogs_code
+    assert "enabled_renderer = Gtk.CellRendererToggle()" in dialogs_code
+    assert "enabled_renderer.connect('toggled', self._on_info_order_toggled)" in dialogs_code
     assert "'show_power_off': 'power_off'" in dialogs_code
     assert "'show_system_info': 'system_info'" in dialogs_code
     assert "def get_info_menu_visibility(self) -> dict:" in dialogs_code
