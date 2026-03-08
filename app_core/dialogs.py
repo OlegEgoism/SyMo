@@ -105,17 +105,6 @@ class SettingsDialog(Gtk.Dialog):
         order_controls.pack_start(buttons_box, False, False, 0)
 
         box.add(order_controls)
-
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        self.power_off_check = add_check('power_off', 'show_power_off')
-        self.reboot_check = add_check('reboot', 'show_reboot')
-        self.lock_check = add_check('lock', 'show_lock')
-        self.timer_check = add_check('settings', 'show_timer')
-
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        self.ping_check = add_check('ping_network', 'ping_network')
-        self.system_info_check = add_check('system_info', 'show_system_info')
-
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         logging_box = Gtk.Box(spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))

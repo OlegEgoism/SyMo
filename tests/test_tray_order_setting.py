@@ -23,8 +23,8 @@ def test_tray_order_setting_is_saved_and_applied():
     assert "info_visibility = dialog.get_info_menu_visibility()" in app_code
     assert "vs['cpu'] = info_visibility.get('cpu', True)" in app_code
     assert "vs['keyboard_clicks'] = info_visibility.get('keyboard_clicks', True)" in app_code
-    assert "vs['show_power_off'] = info_visibility.get('show_power_off', dialog.power_off_check.get_active())" in app_code
-    assert "vs['ping_network'] = info_visibility.get('ping_network', dialog.ping_check.get_active())" in app_code
+    assert "vs['show_power_off'] = info_visibility.get('show_power_off', True)" in app_code
+    assert "vs['ping_network'] = info_visibility.get('ping_network', True)" in app_code
 
     assert "self.info_order_list = Gtk.ListBox()" in dialogs_code
     assert "def get_info_menu_order(self) -> list[str]:" in dialogs_code
@@ -44,3 +44,6 @@ def test_tray_order_setting_is_saved_and_applied():
     assert "self.cpu_check = add_check('cpu_info', 'cpu')" not in dialogs_code
     assert "self.ram_check = add_check('ram_loading', 'ram')" not in dialogs_code
     assert "self.net_check = add_check('lan_speed', 'net')" not in dialogs_code
+
+    assert "self.power_off_check = add_check('power_off', 'show_power_off')" not in dialogs_code
+    assert "self.system_info_check = add_check('system_info', 'show_system_info')" not in dialogs_code
