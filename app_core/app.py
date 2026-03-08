@@ -495,23 +495,11 @@ class SystemTrayApp:
 
             if response == Gtk.ResponseType.OK:
                 vs = self.visibility_settings
-                vs['cpu'] = dialog.cpu_check.get_active()
-                vs['ram'] = dialog.ram_check.get_active()
-                vs['swap'] = dialog.swap_check.get_active()
-                vs['disk'] = dialog.disk_check.get_active()
-                vs['net'] = dialog.net_check.get_active()
-                vs['uptime'] = dialog.uptime_check.get_active()
+                menu_visibility = dialog.get_menu_visibility()
+                vs.update(menu_visibility)
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
-                vs['keyboard_clicks'] = dialog.keyboard_check.get_active()
-                vs['mouse_clicks'] = dialog.mouse_check.get_active()
-                vs['show_power_off'] = dialog.power_off_check.get_active()
-                vs['show_reboot'] = dialog.reboot_check.get_active()
-                vs['show_lock'] = dialog.lock_check.get_active()
-                vs['show_timer'] = dialog.timer_check.get_active()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
-                vs['ping_network'] = dialog.ping_check.get_active()
-                vs['show_system_info'] = dialog.system_info_check.get_active()
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
 
