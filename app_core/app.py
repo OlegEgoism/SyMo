@@ -637,16 +637,7 @@ class SystemTrayApp:
 
         finally:
             self.power_control.set_parent_window(None)
-            if self.system_status_window:
-            try:
-                self.system_status_window.destroy()
-            except Exception:
-                pass
-            self.system_status_window = None
-            self.system_status_titles = {}
-            self.system_status_graph_areas = {}
-
-        if self.settings_dialog:
+            if self.settings_dialog:
                 try:
                     self.settings_dialog.destroy()
                 except Exception:
