@@ -7,6 +7,10 @@ def test_show_system_info_setting_is_wired_in_app_and_dialog():
 
     assert "'show_system_info': True" in app_code
     assert "visibility_settings.get('show_system_info', True)" in app_code
+    assert "self.system_status_item = Gtk.MenuItem(label=tr('system_status'))" in app_code
+    assert "self.system_status_item.connect(\"activate\", self.show_system_status_window)" in app_code
     assert "vs['show_system_info'] = dialog.system_info_check.get_active()" in app_code
+    assert "self.menu.append(self.system_status_item)" in app_code
+    assert "keep.append(self.system_status_item)" in app_code
 
     assert "self.system_info_check = add_check('system_info', 'show_system_info')" in dialogs_code

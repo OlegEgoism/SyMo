@@ -161,6 +161,10 @@ class SystemTrayApp:
         self.mouse_graph_hint_label: Optional[Gtk.Label] = None
         self.mouse_history = deque(maxlen=120)
 
+        self.system_status_window: Optional[Gtk.Window] = None
+        self.system_status_titles: Dict[str, Gtk.Label] = {}
+        self.system_status_graph_areas: Dict[str, Gtk.DrawingArea] = {}
+
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
             try:
                 LOG_FILE.write_text("", encoding="utf-8")
@@ -319,6 +323,8 @@ class SystemTrayApp:
         self.ping_item.connect("activate", self.on_ping_click)
         self.system_info_item = Gtk.MenuItem(label=tr('system_info'))
         self.system_info_item.connect("activate", self.on_system_info_click)
+        self.system_status_item = Gtk.MenuItem(label=tr('system_status'))
+        self.system_status_item.connect("activate", self.show_system_status_window)
         self.ping_top_sep = Gtk.SeparatorMenuItem()
         self.ping_bottom_sep = Gtk.SeparatorMenuItem()
 
@@ -381,6 +387,7 @@ class SystemTrayApp:
         self.menu.append(self.main_separator)
 
         if self.visibility_settings.get('show_system_info', True):
+            self.menu.append(self.system_status_item)
             self.menu.append(self.system_info_item)
 
         if self.visibility_settings.get('ping_network', True):
@@ -409,6 +416,100 @@ class SystemTrayApp:
             self._refresh_net_graph_texts()
             self._refresh_keyboard_graph_texts()
             self._refresh_mouse_graph_texts()
+            self._refresh_system_status_texts()
+
+
+    @staticmethod
+    def _configure_transparent_window(window: Gtk.Window) -> None:
+        screen = window.get_screen()
+        rgba = screen.get_rgba_visual() if screen else None
+        if rgba and screen.is_composited():
+            window.set_visual(rgba)
+        window.set_app_paintable(True)
+        window.connect("draw", SystemTrayApp._draw_transparent_background)
+
+    @staticmethod
+    def _draw_transparent_background(_widget, cr):
+        cr.set_source_rgba(0.05, 0.05, 0.05, 0.78)
+        cr.paint()
+        return False
+
+    def show_system_status_window(self, _w=None):
+        if self.system_status_window and self.system_status_window.get_visible():
+            self.system_status_window.present()
+            return
+
+        window = Gtk.Window(title=tr('system_status'))
+        window.set_default_size(1180, 900)
+        window.set_border_width(10)
+        self._configure_transparent_window(window)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(10)
+        grid.set_row_spacing(10)
+
+        panels = [
+            ("cpu", tr('cpu_info'), self._draw_cpu_graph),
+            ("ram", tr('ram_loading'), self._draw_ram_graph),
+            ("swap", tr('swap_loading'), self._draw_swap_graph),
+            ("disk", tr('disk_loading'), self._draw_disk_graph),
+            ("net", tr('lan_speed'), self._draw_net_graph),
+            ("keyboard", tr('keyboard_clicks'), self._draw_keyboard_graph),
+            ("mouse", tr('mouse_clicks'), self._draw_mouse_graph),
+        ]
+
+        self.system_status_titles = {}
+        self.system_status_graph_areas = {}
+        for idx, (key, title, draw_handler) in enumerate(panels):
+            section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+
+            label = Gtk.Label(label=title)
+            label.set_xalign(0)
+            section.pack_start(label, False, False, 0)
+            self.system_status_titles[key] = label
+
+            area = Gtk.DrawingArea()
+            area.set_size_request(540, 240)
+            area.connect("draw", draw_handler)
+            section.pack_start(area, True, True, 0)
+            self.system_status_graph_areas[key] = area
+
+            grid.attach(section, idx % 2, idx // 2, 1, 1)
+
+        scrolled.add(grid)
+        window.add(scrolled)
+        window.connect("destroy", self._on_system_status_destroy)
+
+        self.system_status_window = window
+        self._refresh_system_status_texts()
+        window.show_all()
+
+    def _on_system_status_destroy(self, _w):
+        self.system_status_window = None
+        self.system_status_titles = {}
+        self.system_status_graph_areas = {}
+
+    def _refresh_system_status_texts(self) -> None:
+        if self.system_status_window:
+            self.system_status_window.set_title(tr('system_status'))
+
+        title_texts = {
+            "cpu": tr('cpu_info'),
+            "ram": tr('ram_loading'),
+            "swap": tr('swap_loading'),
+            "disk": tr('disk_loading'),
+            "net": tr('lan_speed'),
+            "keyboard": tr('keyboard_clicks'),
+            "mouse": tr('mouse_clicks'),
+        }
+        for key, label in self.system_status_titles.items():
+            label.set_text(title_texts.get(key, key))
+
+        for area in self.system_status_graph_areas.values():
+            area.queue_draw()
 
     def load_settings(self) -> Dict:
         default = {
@@ -445,6 +546,7 @@ class SystemTrayApp:
         if getattr(self, 'ping_item', None) and self.visibility_settings.get('ping_network', True):
             keep.extend([self.ping_item, getattr(self, 'ping_top_sep', None), getattr(self, 'ping_bottom_sep', None)])
         if getattr(self, 'system_info_item', None) and self.visibility_settings.get('show_system_info', True):
+            keep.append(self.system_status_item)
             keep.append(self.system_info_item)
         keep = [x for x in keep if x is not None]
 
@@ -535,7 +637,16 @@ class SystemTrayApp:
 
         finally:
             self.power_control.set_parent_window(None)
-            if self.settings_dialog:
+            if self.system_status_window:
+            try:
+                self.system_status_window.destroy()
+            except Exception:
+                pass
+            self.system_status_window = None
+            self.system_status_titles = {}
+            self.system_status_graph_areas = {}
+
+        if self.settings_dialog:
                 try:
                     self.settings_dialog.destroy()
                 except Exception:
@@ -1687,6 +1798,8 @@ class SystemTrayApp:
                 self.keyboard_graph_area.queue_draw()
             if self.mouse_graph_area:
                 self.mouse_graph_area.queue_draw()
+            for area in self.system_status_graph_areas.values():
+                area.queue_draw()
 
             if self.visibility_settings.get('cpu', True):
                 self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
@@ -1798,6 +1911,15 @@ class SystemTrayApp:
             self.mouse_graph_window = None
             self.mouse_graph_area = None
             self.mouse_graph_hint_label = None
+
+        if self.system_status_window:
+            try:
+                self.system_status_window.destroy()
+            except Exception:
+                pass
+            self.system_status_window = None
+            self.system_status_titles = {}
+            self.system_status_graph_areas = {}
 
         if self.settings_dialog:
             try:
