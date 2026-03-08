@@ -21,8 +21,8 @@ def test_tray_order_setting_is_saved_and_applied():
     assert "'show_system_info': self.system_info_item" in app_code
 
     assert "info_visibility = dialog.get_info_menu_visibility()" in app_code
-    assert "vs['cpu'] = info_visibility.get('cpu', dialog.cpu_check.get_active())" in app_code
-    assert "vs['keyboard_clicks'] = info_visibility.get('keyboard_clicks', dialog.keyboard_check.get_active())" in app_code
+    assert "vs['cpu'] = info_visibility.get('cpu', True)" in app_code
+    assert "vs['keyboard_clicks'] = info_visibility.get('keyboard_clicks', True)" in app_code
     assert "vs['show_power_off'] = info_visibility.get('show_power_off', dialog.power_off_check.get_active())" in app_code
     assert "vs['ping_network'] = info_visibility.get('ping_network', dialog.ping_check.get_active())" in app_code
 
@@ -40,3 +40,7 @@ def test_tray_order_setting_is_saved_and_applied():
     assert "self.tray_order_combo.append('cpu_ram', tr('tray_order_cpu_ram'))" in dialogs_code
     assert "self.tray_order_combo.append('ram_cpu', tr('tray_order_ram_cpu'))" in dialogs_code
     assert "def get_tray_info_order(self) -> list[str]:" in dialogs_code
+
+    assert "self.cpu_check = add_check('cpu_info', 'cpu')" not in dialogs_code
+    assert "self.ram_check = add_check('ram_loading', 'ram')" not in dialogs_code
+    assert "self.net_check = add_check('lan_speed', 'net')" not in dialogs_code

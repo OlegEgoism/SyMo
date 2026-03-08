@@ -55,16 +55,6 @@ class SettingsDialog(Gtk.Dialog):
 
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
-        self.cpu_check = add_check('cpu_info', 'cpu')
-        self.ram_check = add_check('ram_loading', 'ram')
-        self.swap_check = add_check('swap_loading', 'swap')
-        self.disk_check = add_check('disk_loading', 'disk')
-        self.net_check = add_check('lan_speed', 'net')
-        self.keyboard_check = add_check('keyboard_clicks', 'keyboard_clicks')
-        self.mouse_check = add_check('mouse_clicks', 'mouse_clicks')
-        self.uptime_check = add_check('uptime_label', 'uptime')
-
-
         order_label = Gtk.Label(label=tr('menu_info_order'))
         order_label.set_xalign(0)
         order_label.set_margin_top(6)
