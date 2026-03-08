@@ -82,13 +82,19 @@ class SettingsDialog(Gtk.Dialog):
             'keyboard_clicks': 'keyboard_clicks',
             'mouse_clicks': 'mouse_clicks',
             'uptime': 'uptime_label',
+            'show_power_off': 'power_off',
+            'show_reboot': 'reboot',
+            'show_lock': 'lock',
+            'show_timer': 'settings',
+            'ping_network': 'ping_network',
+            'show_system_info': 'system_info',
         }
         self.info_order_checks = {}
         self.info_order_keys = []
 
         saved_order = self.visibility_settings.get(
             'info_menu_order',
-            ['cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime']
+            ['cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime', 'show_power_off', 'show_reboot', 'show_lock', 'show_timer', 'ping_network', 'show_system_info']
         )
         for key in saved_order:
             if key in self._info_order_labels and key not in self.info_order_keys:

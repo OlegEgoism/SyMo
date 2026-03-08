@@ -319,10 +319,6 @@ class SystemTrayApp:
         self.ping_item.connect("activate", self.on_ping_click)
         self.system_info_item = Gtk.MenuItem(label=tr('system_info'))
         self.system_info_item.connect("activate", self.on_system_info_click)
-        self.ping_top_sep = Gtk.SeparatorMenuItem()
-        self.ping_bottom_sep = Gtk.SeparatorMenuItem()
-
-        self.power_separator = Gtk.SeparatorMenuItem()
         self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
         self.power_off_item.connect("activate", self.power_control._confirm_action,
                                     self.power_control._shutdown, tr('confirm_text_power_off'))
@@ -362,32 +358,7 @@ class SystemTrayApp:
 
         self.update_menu_visibility()
 
-        if any([
-            self.visibility_settings.get('show_power_off', True),
-            self.visibility_settings.get('show_reboot', True),
-            self.visibility_settings.get('show_lock', True),
-            self.visibility_settings.get('show_timer', True)
-        ]):
-            self.menu.append(self.power_separator)
-            if self.visibility_settings.get('show_power_off', True):
-                self.menu.append(self.power_off_item)
-            if self.visibility_settings.get('show_reboot', True):
-                self.menu.append(self.reboot_item)
-            if self.visibility_settings.get('show_lock', True):
-                self.menu.append(self.lock_item)
-            if self.visibility_settings.get('show_timer', True):
-                self.menu.append(self.timer_item)
-
         self.menu.append(self.main_separator)
-
-        if self.visibility_settings.get('show_system_info', True):
-            self.menu.append(self.system_info_item)
-
-        if self.visibility_settings.get('ping_network', True):
-            self.menu.append(self.ping_top_sep)
-            self.menu.append(self.ping_item)
-            self.menu.append(self.ping_bottom_sep)
-
         self.menu.append(self.language_menu_item)
         self.menu.append(self.settings_item)
         self.menu.append(self.exit_separator)
@@ -415,7 +386,7 @@ class SystemTrayApp:
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
             'tray_info_order': ['cpu', 'ram'],
-            'info_menu_order': ['cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime'],
+            'info_menu_order': ['cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime', 'show_power_off', 'show_reboot', 'show_lock', 'show_timer', 'ping_network', 'show_system_info'],
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
@@ -445,7 +416,7 @@ class SystemTrayApp:
 
     @staticmethod
     def _normalize_info_menu_order(order) -> list[str]:
-        allowed = ('cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime')
+        allowed = ('cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime', 'show_power_off', 'show_reboot', 'show_lock', 'show_timer', 'ping_network', 'show_system_info')
         result = []
         if isinstance(order, list):
             for item in order:
@@ -466,16 +437,11 @@ class SystemTrayApp:
         children = list(self.menu.get_children()) if hasattr(self, 'menu') else []
         keep = [
             getattr(self, 'main_separator', None),
-            getattr(self, 'power_separator', None),
             getattr(self, 'exit_separator', None),
             getattr(self, 'language_menu_item', None),
             getattr(self, 'settings_item', None),
             getattr(self, 'quit_item', None),
         ]
-        if getattr(self, 'ping_item', None) and self.visibility_settings.get('ping_network', True):
-            keep.extend([self.ping_item, getattr(self, 'ping_top_sep', None), getattr(self, 'ping_bottom_sep', None)])
-        if getattr(self, 'system_info_item', None) and self.visibility_settings.get('show_system_info', True):
-            keep.append(self.system_info_item)
         keep = [x for x in keep if x is not None]
 
         for ch in children:
@@ -494,6 +460,12 @@ class SystemTrayApp:
             'keyboard_clicks': self.keyboard_item,
             'mouse_clicks': self.mouse_item,
             'uptime': self.uptime_item,
+            'show_power_off': self.power_off_item,
+            'show_reboot': self.reboot_item,
+            'show_lock': self.lock_item,
+            'show_timer': self.timer_item,
+            'ping_network': self.ping_item,
+            'show_system_info': self.system_info_item,
         }
         order = self._normalize_info_menu_order(self.visibility_settings.get('info_menu_order'))
         for key in order:
@@ -529,13 +501,13 @@ class SystemTrayApp:
                 vs['info_menu_order'] = self._normalize_info_menu_order(dialog.get_info_menu_order())
                 vs['keyboard_clicks'] = info_visibility.get('keyboard_clicks', dialog.keyboard_check.get_active())
                 vs['mouse_clicks'] = info_visibility.get('mouse_clicks', dialog.mouse_check.get_active())
-                vs['show_power_off'] = dialog.power_off_check.get_active()
-                vs['show_reboot'] = dialog.reboot_check.get_active()
-                vs['show_lock'] = dialog.lock_check.get_active()
-                vs['show_timer'] = dialog.timer_check.get_active()
+                vs['show_power_off'] = info_visibility.get('show_power_off', dialog.power_off_check.get_active())
+                vs['show_reboot'] = info_visibility.get('show_reboot', dialog.reboot_check.get_active())
+                vs['show_lock'] = info_visibility.get('show_lock', dialog.lock_check.get_active())
+                vs['show_timer'] = info_visibility.get('show_timer', dialog.timer_check.get_active())
                 vs['logging_enabled'] = dialog.logging_check.get_active()
-                vs['ping_network'] = dialog.ping_check.get_active()
-                vs['show_system_info'] = dialog.system_info_check.get_active()
+                vs['ping_network'] = info_visibility.get('ping_network', dialog.ping_check.get_active())
+                vs['show_system_info'] = info_visibility.get('show_system_info', dialog.system_info_check.get_active())
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
 
                 tel_enabled_before = getattr(self, 'telegram_notifier', TelegramNotifier()).enabled
