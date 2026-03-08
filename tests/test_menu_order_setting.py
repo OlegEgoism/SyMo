@@ -11,5 +11,5 @@ def test_menu_order_setting_is_wired_in_app_and_dialog():
     assert "default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))" in app_code
     assert "vs['menu_order'] = dialog.get_menu_order()" in app_code
 
-    assert "self.menu_order_list.set_reorderable(True)" in dialogs_code
+    assert "self.menu_order_view.set_reorderable(True)" in dialogs_code
     assert "def get_menu_order(self) -> list[str]:" in dialogs_code
