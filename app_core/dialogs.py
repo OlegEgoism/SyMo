@@ -10,6 +10,7 @@ from .click_tracker import get_counts
 from .constants import LOG_FILE, TELEGRAM_CONFIG_FILE, DISCORD_CONFIG_FILE
 from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
+from .tray_display import normalize_tray_order
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -40,6 +41,33 @@ class SettingsDialog(Gtk.Dialog):
 
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
+
+        tray_cycle_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.tray_cycle_check = Gtk.CheckButton(label=tr('tray_cycle_enabled'))
+        self.tray_cycle_check.set_active(bool(self.visibility_settings.get('tray_cycle_enabled', False)))
+        tray_cycle_box.pack_start(self.tray_cycle_check, False, False, 0)
+
+        cycle_label = Gtk.Label(label=tr('tray_cycle_interval_sec'))
+        cycle_label.set_xalign(0)
+        tray_cycle_box.pack_start(cycle_label, False, False, 0)
+
+        self.tray_cycle_interval_spin = Gtk.SpinButton.new_with_range(1, 3600, 1)
+        self.tray_cycle_interval_spin.set_value(int(self.visibility_settings.get('tray_cycle_interval_sec', 3)))
+        tray_cycle_box.pack_start(self.tray_cycle_interval_spin, False, False, 0)
+        box.add(tray_cycle_box)
+
+        tray_order_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        tray_order_label = Gtk.Label(label=tr('tray_order'))
+        tray_order_label.set_xalign(0)
+        tray_order_box.pack_start(tray_order_label, False, False, 0)
+
+        self.tray_order_entry = Gtk.Entry()
+        self.tray_order_entry.set_placeholder_text('cpu, ram')
+        current_order = normalize_tray_order(self.visibility_settings.get('tray_display_order'))
+        self.tray_order_entry.set_text(', '.join(current_order))
+        tray_order_box.pack_start(self.tray_order_entry, True, True, 0)
+        box.add(tray_order_box)
+
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
         self.cpu_check = add_check('cpu_info', 'cpu')

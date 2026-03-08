@@ -42,6 +42,7 @@ from notifications import TelegramNotifier, DiscordNotifier
 from .power_control import PowerControl
 from .system_usage import SystemUsage
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
+from .tray_display import normalize_tray_order, parse_tray_order_text, ordered_tray_parts
 
 
 
@@ -77,6 +78,19 @@ class SystemTrayApp:
             self.visibility_settings['language'] = detect_system_language()
             self.save_settings()
         set_language(self.visibility_settings['language'])
+        self.visibility_settings['tray_display_order'] = normalize_tray_order(
+            self.visibility_settings.get('tray_display_order')
+        )
+        self.visibility_settings['tray_cycle_enabled'] = bool(self.visibility_settings.get('tray_cycle_enabled', False))
+        try:
+            cycle_interval = int(self.visibility_settings.get('tray_cycle_interval_sec', 3))
+        except (TypeError, ValueError):
+            cycle_interval = 3
+        self.visibility_settings['tray_cycle_interval_sec'] = max(1, min(cycle_interval, 3600))
+
+        self._tray_cycle_index = 0
+        self._last_tray_cycle_at = 0.0
+
 
         self.indicator = AppInd.Indicator.new(APP_ID, ICON_FALLBACK, AppInd.IndicatorCategory.SYSTEM_SERVICES)
         icon_candidates = [
@@ -417,6 +431,7 @@ class SystemTrayApp:
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
+            'tray_display_order': ['cpu', 'ram'], 'tray_cycle_enabled': False, 'tray_cycle_interval_sec': 3,
         }
         try:
             if self.settings_file.exists():
@@ -501,6 +516,11 @@ class SystemTrayApp:
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['ping_network'] = dialog.ping_check.get_active()
                 vs['show_system_info'] = dialog.system_info_check.get_active()
+                vs['tray_cycle_enabled'] = dialog.tray_cycle_check.get_active()
+                vs['tray_cycle_interval_sec'] = int(dialog.tray_cycle_interval_spin.get_value())
+                vs['tray_display_order'] = parse_tray_order_text(dialog.tray_order_entry.get_text())
+                self._tray_cycle_index = 0
+                self._last_tray_cycle_at = 0.0
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
 
                 tel_enabled_before = getattr(self, 'telegram_notifier', TelegramNotifier()).enabled
@@ -1705,14 +1725,31 @@ class SystemTrayApp:
             if self.visibility_settings.get('mouse_clicks', True):
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
 
-            tray_parts = []
+            parts_by_key = {}
             if self.visibility_settings.get('tray_cpu', True):
-                tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
+                parts_by_key['cpu'] = f"{tr('cpu_info')}: {cpu_usage:.0f}%"
             if self.visibility_settings.get('tray_ram', True):
-                tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
-            tray_text = "  ".join(tray_parts)
+                parts_by_key['ram'] = f"{tr('ram_loading')}: {ram_used:.1f}GB"
+
+            tray_parts = ordered_tray_parts(parts_by_key, self.visibility_settings.get('tray_display_order'))
+
+            tray_text = ""
+            if tray_parts:
+                if self.visibility_settings.get('tray_cycle_enabled', False):
+                    now = time.time()
+                    interval = max(1, int(self.visibility_settings.get('tray_cycle_interval_sec', 3)))
+                    if self._last_tray_cycle_at <= 0:
+                        self._tray_cycle_index = 0
+                        self._last_tray_cycle_at = now
+                    elif now - self._last_tray_cycle_at >= interval:
+                        self._tray_cycle_index = (self._tray_cycle_index + 1) % len(tray_parts)
+                        self._last_tray_cycle_at = now
+                    tray_text = tray_parts[self._tray_cycle_index % len(tray_parts)]
+                else:
+                    tray_text = "  ".join(tray_parts)
+
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
-                tray_text = "⤴  " + tray_text
+                tray_text = ("⤴  " + tray_text) if tray_text else "⤴"
             self.indicator.set_label(tray_text, "")
         except Exception as e:
             print(f"Ошибка в _update_ui: {e}")

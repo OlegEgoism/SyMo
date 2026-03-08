@@ -2,6 +2,9 @@ LANGUAGES = {
     'ru': {
         'cpu_tray': "ЦПУ в трее",
         'ram_tray': "ОЗУ в трее",
+        'tray_cycle_enabled': 'Очередь в трее',
+        'tray_cycle_interval_sec': 'Интервал очереди (сек.):',
+        'tray_order': 'Порядок в трее (cpu, ram):',
         'cpu_info': " ЦПУ",
         'ram_loading': "ОЗУ",
         'swap_loading': "Подкачка",
@@ -105,6 +108,9 @@ LANGUAGES = {
     'en': {
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
+        'tray_cycle_enabled': 'Queue mode in tray',
+        'tray_cycle_interval_sec': 'Queue interval (sec.):',
+        'tray_order': 'Tray order (cpu, ram):',
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
@@ -208,6 +214,9 @@ LANGUAGES = {
     'cn': {
         'cpu_tray': "CPU在托盘",
         'ram_tray': "内存托盘显示",
+        'tray_cycle_enabled': '托盘队列模式',
+        'tray_cycle_interval_sec': '队列间隔（秒）:',
+        'tray_order': '托盘顺序（cpu, ram）:',
         'cpu_info': " 处理器",
         'ram_loading': "内存",
         'swap_loading': "交换分区",
@@ -311,6 +320,9 @@ LANGUAGES = {
     'de': {
         'cpu_tray': "CPU im Tray",
         'ram_tray': "RAM im Tray",
+        'tray_cycle_enabled': 'Warteschlange im Tray',
+        'tray_cycle_interval_sec': 'Intervall der Warteschlange (Sek.):',
+        'tray_order': 'Reihenfolge im Tray (cpu, ram):',
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Auslagerung",
@@ -415,6 +427,9 @@ LANGUAGES = {
     'it': {
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
+        'tray_cycle_enabled': 'Queue mode in tray',
+        'tray_cycle_interval_sec': 'Queue interval (sec.):',
+        'tray_order': 'Tray order (cpu, ram):',
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
@@ -518,6 +533,9 @@ LANGUAGES = {
     'es': {
         'cpu_tray': "CPU en bandeja",
         'ram_tray': "RAM en bandeja",
+        'tray_cycle_enabled': 'Modo cola en bandeja',
+        'tray_cycle_interval_sec': 'Intervalo de cola (seg.):',
+        'tray_order': 'Orden en bandeja (cpu, ram):',
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
@@ -621,6 +639,9 @@ LANGUAGES = {
     'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
         'ram_tray': "Sistem çekmecesinde RAM",
+        'tray_cycle_enabled': 'Tepside sıra modu',
+        'tray_cycle_interval_sec': 'Sıra aralığı (sn):',
+        'tray_order': 'Tepsi sırası (cpu, ram):',
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Takas",
@@ -724,6 +745,9 @@ LANGUAGES = {
     'fr': {
         'cpu_tray': "CPU dans la barre",
         'ram_tray': "RAM dans la barre",
+        'tray_cycle_enabled': 'Mode file dans la barre',
+        'tray_cycle_interval_sec': 'Intervalle de file (sec.) :',
+        'tray_order': 'Ordre dans la barre (cpu, ram) :',
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
