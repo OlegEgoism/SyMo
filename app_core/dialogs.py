@@ -12,26 +12,8 @@ from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
 
 
-class ReorderRow(Gtk.ListBoxRow):
-    def __init__(self, label: str, key: str):
-        super().__init__()
-        self.key = key
-
-        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        row_box.set_margin_top(4)
-        row_box.set_margin_bottom(4)
-        row_box.set_margin_start(6)
-        row_box.set_margin_end(6)
-
-        drag_hint = Gtk.Label(label="↕")
-        drag_hint.set_xalign(0)
-        row_box.pack_start(drag_hint, False, False, 0)
-
-        title = Gtk.Label(label=label)
-        title.set_xalign(0)
-        row_box.pack_start(title, True, True, 0)
-
-        self.add(row_box)
+MENU_ORDER_LABEL_COLUMN = 0
+MENU_ORDER_KEY_COLUMN = 1
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -95,10 +77,7 @@ class SettingsDialog(Gtk.Dialog):
         reorder_hint.get_style_context().add_class('dim-label')
         box.add(reorder_hint)
 
-        self.menu_order_list = Gtk.ListBox()
-        self.menu_order_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
-        self.menu_order_list.set_reorderable(True)
-        self.menu_order_list.connect('row-selected', self._on_menu_row_selected)
+        self.menu_order_store = Gtk.ListStore(str, str)
 
         order_labels = [
             ('cpu_info', 'cpu'),
@@ -121,13 +100,22 @@ class SettingsDialog(Gtk.Dialog):
         current_order = self._normalize_menu_order(self.visibility_settings.get('menu_order'))
         for key in current_order:
             label_key = display_map.get(key, key)
-            self.menu_order_list.add(ReorderRow(tr(label_key), key))
+            self.menu_order_store.append([tr(label_key), key])
+
+        self.menu_order_view = Gtk.TreeView(model=self.menu_order_store)
+        self.menu_order_view.set_headers_visible(False)
+        self.menu_order_view.set_reorderable(True)
+        self.menu_order_selection = self.menu_order_view.get_selection()
+
+        renderer = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn('', renderer, text=MENU_ORDER_LABEL_COLUMN)
+        self.menu_order_view.append_column(column)
 
         order_scroll = Gtk.ScrolledWindow()
         order_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         order_scroll.set_min_content_height(210)
         order_scroll.set_shadow_type(Gtk.ShadowType.IN)
-        order_scroll.add(self.menu_order_list)
+        order_scroll.add(self.menu_order_view)
         box.add(order_scroll)
 
         order_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -261,33 +249,34 @@ class SettingsDialog(Gtk.Dialog):
                 unique.append(key)
         return unique
 
-    def _on_menu_row_selected(self, _listbox, row):
-        self._selected_order_row = row if isinstance(row, ReorderRow) else None
-
     def _move_selected_order_row(self, delta: int):
-        row = getattr(self, '_selected_order_row', None)
-        if not row:
-            return
-        children = self.menu_order_list.get_children()
-        if row not in children:
+        selected = self.menu_order_selection.get_selected()
+        if not selected:
             return
 
-        current_index = children.index(row)
+        model, tree_iter = selected
+        if tree_iter is None:
+            return
+
+        path = model.get_path(tree_iter)
+        if path is None:
+            return
+
+        current_index = path.get_indices()[0]
         new_index = current_index + delta
-        if new_index < 0 or new_index >= len(children):
+        if new_index < 0 or new_index >= len(model):
             return
 
-        self.menu_order_list.remove(row)
-        self.menu_order_list.insert(row, new_index)
-        self.menu_order_list.select_row(row)
-        self.menu_order_list.show_all()
+        model.move_before(tree_iter, model.get_iter((new_index,)))
+
+        new_iter = model.get_iter((new_index,))
+        self.menu_order_selection.select_iter(new_iter)
+        self.menu_order_view.scroll_to_cell(model.get_path(new_iter), None, False, 0, 0)
 
     def get_menu_order(self) -> list[str]:
         keys = []
-        for row in self.menu_order_list.get_children():
-            key = getattr(row, 'key', None)
-            if key:
-                keys.append(key)
+        for row in self.menu_order_store:
+            keys.append(row[MENU_ORDER_KEY_COLUMN])
         return self._normalize_menu_order(keys)
 
     def _prefill_configs(self):
