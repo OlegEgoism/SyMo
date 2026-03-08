@@ -17,10 +17,18 @@ def test_tray_order_setting_is_saved_and_applied():
     assert "order = self._normalize_info_menu_order(self.visibility_settings.get('info_menu_order'))" in app_code
     assert "if self.visibility_settings.get(key, True):" in app_code
 
+    assert "info_visibility = dialog.get_info_menu_visibility()" in app_code
+    assert "vs['cpu'] = info_visibility.get('cpu', dialog.cpu_check.get_active())" in app_code
+    assert "vs['keyboard_clicks'] = info_visibility.get('keyboard_clicks', dialog.keyboard_check.get_active())" in app_code
+
     assert "self.info_order_list = Gtk.ListBox()" in dialogs_code
     assert "def get_info_menu_order(self) -> list[str]:" in dialogs_code
     assert "def _move_info_order_up(self, _btn) -> None:" in dialogs_code
     assert "def _move_info_order_down(self, _btn) -> None:" in dialogs_code
+
+    assert "enabled_check = Gtk.CheckButton()" in dialogs_code
+    assert "enabled_check.set_active(bool(self.visibility_settings.get(key, True)))" in dialogs_code
+    assert "def get_info_menu_visibility(self) -> dict:" in dialogs_code
     assert "self.tray_order_combo = Gtk.ComboBoxText()" in dialogs_code
     assert "self.tray_order_combo.append('cpu_ram', tr('tray_order_cpu_ram'))" in dialogs_code
     assert "self.tray_order_combo.append('ram_cpu', tr('tray_order_ram_cpu'))" in dialogs_code

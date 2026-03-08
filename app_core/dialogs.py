@@ -83,6 +83,7 @@ class SettingsDialog(Gtk.Dialog):
             'mouse_clicks': 'mouse_clicks',
             'uptime': 'uptime_label',
         }
+        self.info_order_checks = {}
         self.info_order_keys = []
 
         saved_order = self.visibility_settings.get(
@@ -234,14 +235,26 @@ class SettingsDialog(Gtk.Dialog):
     def _append_info_order_row(self, key: str) -> None:
         row = Gtk.ListBoxRow()
         row.metric_key = key
+
+        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         label = Gtk.Label(label=tr(self._info_order_labels[key]))
         label.set_xalign(0)
+        label.set_hexpand(True)
         label.set_margin_start(6)
         label.set_margin_end(6)
         label.set_margin_top(3)
         label.set_margin_bottom(3)
-        row.add(label)
+
+        enabled_check = Gtk.CheckButton()
+        enabled_check.set_active(bool(self.visibility_settings.get(key, True)))
+        enabled_check.set_margin_end(6)
+
+        row_box.pack_start(label, True, True, 0)
+        row_box.pack_end(enabled_check, False, False, 0)
+        row.add(row_box)
+
         self.info_order_list.add(row)
+        self.info_order_checks[key] = enabled_check
         self.info_order_keys.append(key)
 
     def _rebuild_info_order_rows(self) -> None:
@@ -249,6 +262,7 @@ class SettingsDialog(Gtk.Dialog):
             self.info_order_list.remove(child)
         keys = list(self.info_order_keys)
         self.info_order_keys = []
+        self.info_order_checks = {}
         for key in keys:
             self._append_info_order_row(key)
         self.info_order_list.show_all()
@@ -277,6 +291,12 @@ class SettingsDialog(Gtk.Dialog):
 
     def get_info_menu_order(self) -> list[str]:
         return list(self.info_order_keys)
+
+    def get_info_menu_visibility(self) -> dict:
+        return {
+            key: bool(check.get_active())
+            for key, check in self.info_order_checks.items()
+        }
 
 
     def get_tray_info_order(self) -> list[str]:
