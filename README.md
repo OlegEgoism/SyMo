@@ -2,73 +2,73 @@
 
 <img src="logo.png" width="96" alt="SyMo logo" />
 
-SyMo — это GTK‑утилита в системном трее для Linux, которая показывает метрики системы в реальном времени, поддерживает быстрые power‑действия и может отправлять периодические уведомления в Telegram/Discord.
+SyMo is a GTK-based Linux system tray utility that shows real-time system metrics, supports quick power actions, and can send periodic notifications to Telegram/Discord.
 
-## Возможности
+## Features
 
-- Мониторинг в реальном времени:
-  - загрузка CPU + температура;
-  - RAM и SWAP;
-  - диск;
-  - скорость сети (входящая/исходящая);
+- Real-time monitoring:
+  - CPU usage + temperature;
+  - RAM and SWAP;
+  - disk usage;
+  - network speed (download/upload);
   - uptime;
-  - счётчики нажатий клавиатуры и кликов мыши.
-- Контекстное меню трея с гибкой настройкой видимости пунктов.
-- Окна графиков по клику на метрики (CPU, RAM, SWAP, Disk, Network, Keyboard, Mouse).
-- Power‑действия:
-  - выключение;
-  - перезагрузка;
-  - блокировка экрана;
-  - отложенное выполнение с таймером.
-- Уведомления:
+  - keyboard and mouse click counters.
+- Tray context menu with flexible visibility settings.
+- Graph windows on metric click (CPU, RAM, SWAP, Disk, Network, Keyboard, Mouse).
+- Power actions:
+  - power off;
+  - reboot;
+  - lock screen;
+  - delayed execution with timer.
+- Notifications:
   - Telegram bot;
   - Discord webhook.
-- Локализация интерфейса.
+- Interface localization.
 
-## Поддерживаемые языки интерфейса
+## Supported UI Languages
 
-- 🇷🇺 Русский (`ru`)
+- 🇷🇺 Russian (`ru`)
 - 🇬🇧 English (`en`)
-- 🇨🇳 中文 (`cn`)
-- 🇩🇪 Deutsch (`de`)
-- 🇮🇹 Italiano (`it`)
-- 🇪🇸 Español (`es`)
-- 🇹🇷 Türkçe (`tr`)
-- 🇫🇷 Français (`fr`)
+- 🇨🇳 Chinese (`cn`)
+- 🇩🇪 German (`de`)
+- 🇮🇹 Italian (`it`)
+- 🇪🇸 Spanish (`es`)
+- 🇹🇷 Turkish (`tr`)
+- 🇫🇷 French (`fr`)
 
-## Структура репозитория
+## Repository Structure
 
 ```text
 SyMo/
-├─ app.py                    # тонкий launcher
-├─ app_core/                 # core-логика приложения
-│  ├─ app.py                 # runtime, tray, меню, графики, обновления
-│  ├─ dialogs.py             # окно настроек
-│  ├─ power_control.py       # power-команды и таймеры
-│  ├─ system_usage.py        # сбор системных метрик
-│  ├─ click_tracker.py       # подсчёт клавиатуры/мыши
-│  ├─ localization.py        # i18n функции
-│  ├─ language.py            # словари переводов
-│  ├─ constants.py           # константы и пути к конфигам/логам
-│  └─ logging_utils.py       # ротация логов
+├─ app.py                    # thin launcher
+├─ app_core/                 # core application logic
+│  ├─ app.py                 # runtime, tray, menu, graphs, updates
+│  ├─ dialogs.py             # settings dialog
+│  ├─ power_control.py       # power commands and timers
+│  ├─ system_usage.py        # system metrics collection
+│  ├─ click_tracker.py       # keyboard/mouse counters
+│  ├─ localization.py        # i18n helpers
+│  ├─ language.py            # translation dictionaries
+│  ├─ constants.py           # constants and config/log paths
+│  └─ logging_utils.py       # log rotation helpers
 ├─ notifications/
-│  ├─ telegram.py            # Telegram notifier + polling команд
+│  ├─ telegram.py            # Telegram notifier + command polling
 │  └─ discord.py             # Discord webhook notifier
-├─ tests/                    # тесты pytest
-├─ build.sh                  # сборка Nuitka (standalone + onefile)
-├─ uninstall-symo.sh         # удаление артефактов/ярлыков/бинарей
+├─ tests/                    # pytest suites
+├─ build.sh                  # Nuitka build (standalone + onefile)
+├─ uninstall-symo.sh         # removes artifacts/desktop files/binaries
 ├─ requirements.txt
 ├─ logo.png
 ├─ img.png
 └─ README.md
 ```
 
-## Требования
+## Requirements
 
-- Linux desktop environment с GTK3/AppIndicator (или Ayatana AppIndicator).
-- Python 3.10+ (рекомендуется).
+- Linux desktop environment with GTK3/AppIndicator (or Ayatana AppIndicator).
+- Python 3.10+ (recommended).
 
-### Базовые системные пакеты (Debian/Ubuntu)
+### Base system packages (Debian/Ubuntu)
 
 ```bash
 sudo apt update
@@ -79,51 +79,51 @@ sudo apt install -y \
   gobject-introspection pkg-config libcairo2-dev
 ```
 
-### Python‑зависимости
+### Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Запуск в режиме разработки
+## Run in Development Mode
 
 ```bash
 python3 app.py
 ```
 
-## Конфигурационные файлы и лог
+## Configuration Files and Log
 
-Приложение использует файлы в домашней директории пользователя:
+The app uses files in the user home directory:
 
-- `~/.symo_settings.json` — настройки отображения/поведения;
-- `~/.symo_telegram.json` — настройки Telegram;
-- `~/.symo_discord.json` — настройки Discord;
-- `~/.symo_log.txt` — журнал метрик.
+- `~/.symo_settings.json` — display/behavior settings;
+- `~/.symo_telegram.json` — Telegram settings;
+- `~/.symo_discord.json` — Discord settings;
+- `~/.symo_log.txt` — metrics log.
 
-## Сборка
+## Build
 
-Скрипт `build.sh` выполняет:
+The `build.sh` script performs:
 
-1. сборку `standalone` через Nuitka;
-2. попытку сборки `onefile`;
-3. создание launcher-скриптов;
-4. упаковку артефактов в каталог `SyMo-bundle/`;
-5. создание desktop entry и autostart entry.
+1. `standalone` build via Nuitka;
+2. attempted `onefile` build;
+3. launcher script generation;
+4. artifact bundling into `SyMo-bundle/`;
+5. desktop entry + autostart entry creation.
 
-Запуск:
+Run:
 
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
 
-Проверка результатов:
+Check output:
 
 ```bash
 ls -la SyMo-bundle
 ```
 
-Ожидаемые артефакты (в зависимости от успешности onefile-сборки):
+Expected artifacts (depending on onefile build success):
 
 - `app.build`
 - `app.dist`
@@ -134,28 +134,28 @@ ls -la SyMo-bundle
 - `SyMo-launch`
 - `SyMo-run`
 
-## Удаление
+## Uninstall
 
 ```bash
 chmod +x uninstall-symo.sh
 ./uninstall-symo.sh
 ```
 
-Скрипт удаляет:
+The script removes:
 
-- локальные build-артефакты рядом с репозиторием;
-- desktop/autostart entries (`SyMo.desktop` и `symo.desktop`);
-- возможные установленные бинарники/каталоги SyMo.
+- local build artifacts near the repository;
+- desktop/autostart entries (`SyMo.desktop` and `symo.desktop`);
+- possible installed SyMo binaries/directories.
 
-## Тесты
+## Tests
 
 ```bash
 pytest -q
 ```
 
-## Обратная связь
+## Contact
 
-- Автор: [OlegEgoism](https://github.com/OlegEgoism)
-- Репозиторий: <https://github.com/OlegEgoism/SyMo>
+- Author: [OlegEgoism](https://github.com/OlegEgoism)
+- Repository: <https://github.com/OlegEgoism/SyMo>
 
 <img src="img.png" width="560" alt="SyMo preview" />
