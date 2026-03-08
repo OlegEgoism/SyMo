@@ -2,28 +2,30 @@
 
 <img src="logo.png" width="96" alt="SyMo logo" />
 
-SyMo is a GTK-based Linux system tray utility that shows real-time system metrics, supports quick power actions, and can send periodic notifications to Telegram/Discord.
+SyMo is a GTK-based Linux system tray monitor that displays live system metrics, provides quick power controls, and can send periodic status notifications to Telegram and Discord.
 
 ## Features
 
-- Real-time monitoring:
-  - CPU usage + temperature;
-  - RAM and SWAP;
+- Live system monitoring:
+  - CPU load and temperature;
+  - RAM and swap usage;
   - disk usage;
   - network speed (download/upload);
   - uptime;
-  - keyboard and mouse click counters.
-- Tray context menu with flexible visibility settings.
-- Graph windows on metric click (CPU, RAM, SWAP, Disk, Network, Keyboard, Mouse).
-- Power actions:
-  - power off;
+  - keyboard and mouse activity counters.
+- Configurable tray menu:
+  - show/hide menu items;
+  - reorder menu items by drag-and-drop in Settings.
+- Per-metric graph windows (CPU, RAM, Swap, Disk, Network, Keyboard, Mouse).
+- Power controls:
+  - shutdown;
   - reboot;
   - lock screen;
-  - delayed execution with timer.
+  - delayed execution with scheduler/timer.
 - Notifications:
-  - Telegram bot;
-  - Discord webhook.
-- Interface localization.
+  - Telegram bot integration;
+  - Discord webhook integration.
+- Multi-language interface.
 
 ## Supported UI Languages
 
@@ -65,7 +67,7 @@ SyMo/
 
 ## Requirements
 
-- Linux desktop environment with GTK3/AppIndicator (or Ayatana AppIndicator).
+- Linux desktop environment with GTK3 + AppIndicator (or Ayatana AppIndicator).
 - Python 3.10+ (recommended).
 
 ### Base system packages (Debian/Ubuntu)
@@ -93,13 +95,13 @@ python3 app.py
 
 ## Build
 
-The `build.sh` script performs:
+`build.sh` performs:
 
-1. `standalone` build via Nuitka;
-2. attempted `onefile` build;
+1. Nuitka `standalone` build;
+2. attempted Nuitka `onefile` build;
 3. launcher script generation;
 4. artifact bundling into `SyMo-bundle/`;
-5. desktop entry + autostart entry creation.
+5. desktop and autostart entry creation.
 
 Run:
 
@@ -114,7 +116,7 @@ Check output:
 ls -la SyMo-bundle
 ```
 
-Expected artifacts (depending on onefile build success):
+Typical artifacts (depending on onefile build success):
 
 - `app.build`
 - `app.dist`
