@@ -104,16 +104,6 @@ class SettingsDialog(Gtk.Dialog):
         order_scroll.add(self.menu_order_view)
         box.add(order_scroll)
 
-        order_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        order_buttons.set_halign(Gtk.Align.END)
-        self.order_up_button = Gtk.Button(label='↑')
-        self.order_up_button.connect('clicked', lambda *_: self._move_selected_order_row(-1))
-        self.order_down_button = Gtk.Button(label='↓')
-        self.order_down_button.connect('clicked', lambda *_: self._move_selected_order_row(1))
-        order_buttons.pack_start(self.order_up_button, False, False, 0)
-        order_buttons.pack_start(self.order_down_button, False, False, 0)
-        box.add(order_buttons)
-
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         logging_box = Gtk.Box(spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
@@ -240,30 +230,6 @@ class SettingsDialog(Gtk.Dialog):
         tree_iter = self.menu_order_store.get_iter(path)
         current = bool(self.menu_order_store.get_value(tree_iter, MENU_ORDER_ENABLED_COLUMN))
         self.menu_order_store.set_value(tree_iter, MENU_ORDER_ENABLED_COLUMN, not current)
-
-    def _move_selected_order_row(self, delta: int):
-        selected = self.menu_order_selection.get_selected()
-        if not selected:
-            return
-
-        model, tree_iter = selected
-        if tree_iter is None:
-            return
-
-        path = model.get_path(tree_iter)
-        if path is None:
-            return
-
-        current_index = path.get_indices()[0]
-        new_index = current_index + delta
-        if new_index < 0 or new_index >= len(model):
-            return
-
-        model.move_before(tree_iter, model.get_iter((new_index,)))
-
-        new_iter = model.get_iter((new_index,))
-        self.menu_order_selection.select_iter(new_iter)
-        self.menu_order_view.scroll_to_cell(model.get_path(new_iter), None, False, 0, 0)
 
     def get_menu_order(self) -> list[str]:
         keys = []
