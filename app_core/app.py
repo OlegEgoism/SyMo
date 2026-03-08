@@ -414,6 +414,7 @@ class SystemTrayApp:
         default = {
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
+            'tray_info_order': ['cpu', 'ram'],
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
@@ -424,7 +425,21 @@ class SystemTrayApp:
                 default.update(saved)
         except Exception as e:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
+        default['tray_info_order'] = self._normalize_tray_order(default.get('tray_info_order'))
         return default
+
+    @staticmethod
+    def _normalize_tray_order(order) -> list[str]:
+        allowed = ('cpu', 'ram')
+        result = []
+        if isinstance(order, list):
+            for item in order:
+                if item in allowed and item not in result:
+                    result.append(item)
+        for item in allowed:
+            if item not in result:
+                result.append(item)
+        return result
 
     def save_settings(self) -> None:
         try:
@@ -492,6 +507,7 @@ class SystemTrayApp:
                 vs['uptime'] = dialog.uptime_check.get_active()
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
+                vs['tray_info_order'] = self._normalize_tray_order(dialog.get_tray_info_order())
                 vs['keyboard_clicks'] = dialog.keyboard_check.get_active()
                 vs['mouse_clicks'] = dialog.mouse_check.get_active()
                 vs['show_power_off'] = dialog.power_off_check.get_active()
@@ -1706,10 +1722,12 @@ class SystemTrayApp:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
 
             tray_parts = []
-            if self.visibility_settings.get('tray_cpu', True):
-                tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
-            if self.visibility_settings.get('tray_ram', True):
-                tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
+            order = self._normalize_tray_order(self.visibility_settings.get('tray_info_order'))
+            for metric in order:
+                if metric == 'cpu' and self.visibility_settings.get('tray_cpu', True):
+                    tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
+                if metric == 'ram' and self.visibility_settings.get('tray_ram', True):
+                    tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text

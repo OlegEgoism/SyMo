@@ -2,6 +2,9 @@ LANGUAGES = {
     'ru': {
         'cpu_tray': "ЦПУ в трее",
         'ram_tray': "ОЗУ в трее",
+        'tray_order': "Порядок в трее",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " ЦПУ",
         'ram_loading': "ОЗУ",
         'swap_loading': "Подкачка",
@@ -105,6 +108,9 @@ LANGUAGES = {
     'en': {
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
+        'tray_order': "Tray order",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
@@ -208,6 +214,9 @@ LANGUAGES = {
     'cn': {
         'cpu_tray': "CPU在托盘",
         'ram_tray': "内存托盘显示",
+        'tray_order': "Tray order",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " 处理器",
         'ram_loading': "内存",
         'swap_loading': "交换分区",
@@ -311,6 +320,9 @@ LANGUAGES = {
     'de': {
         'cpu_tray': "CPU im Tray",
         'ram_tray': "RAM im Tray",
+        'tray_order': "Tray order",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Auslagerung",
@@ -415,6 +427,9 @@ LANGUAGES = {
     'it': {
         'cpu_tray': "CPU in tray",
         'ram_tray': "RAM in tray",
+        'tray_order': "Tray order",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
@@ -518,6 +533,9 @@ LANGUAGES = {
     'es': {
         'cpu_tray': "CPU en bandeja",
         'ram_tray': "RAM en bandeja",
+        'tray_order': "Tray order",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",
@@ -621,6 +639,9 @@ LANGUAGES = {
     'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
         'ram_tray': "Sistem çekmecesinde RAM",
+        'tray_order': "Tray order",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Takas",
@@ -724,6 +745,9 @@ LANGUAGES = {
     'fr': {
         'cpu_tray': "CPU dans la barre",
         'ram_tray': "RAM dans la barre",
+        'tray_order': "Tray order",
+        'tray_order_cpu_ram': "CPU → RAM",
+        'tray_order_ram_cpu': "RAM → CPU",
         'cpu_info': " CPU",
         'ram_loading': "RAM",
         'swap_loading': "Swap",

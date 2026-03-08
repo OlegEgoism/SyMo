@@ -40,6 +40,19 @@ class SettingsDialog(Gtk.Dialog):
 
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
+
+        tray_order_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        tray_order_label = Gtk.Label(label=tr('tray_order'))
+        tray_order_label.set_xalign(0)
+        self.tray_order_combo = Gtk.ComboBoxText()
+        self.tray_order_combo.append('cpu_ram', tr('tray_order_cpu_ram'))
+        self.tray_order_combo.append('ram_cpu', tr('tray_order_ram_cpu'))
+        order = self.visibility_settings.get('tray_info_order', ['cpu', 'ram'])
+        self.tray_order_combo.set_active_id('ram_cpu' if order and order[0] == 'ram' else 'cpu_ram')
+        tray_order_box.pack_start(tray_order_label, False, False, 0)
+        tray_order_box.pack_start(self.tray_order_combo, False, False, 0)
+        box.add(tray_order_box)
+
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
         self.cpu_check = add_check('cpu_info', 'cpu')
@@ -171,6 +184,13 @@ class SettingsDialog(Gtk.Dialog):
 
         self._prefill_configs()
         self.show_all()
+
+
+    def get_tray_info_order(self) -> list[str]:
+        active_id = self.tray_order_combo.get_active_id()
+        if active_id == 'ram_cpu':
+            return ['ram', 'cpu']
+        return ['cpu', 'ram']
 
     def _prefill_configs(self):
         try:
