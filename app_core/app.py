@@ -415,6 +415,7 @@ class SystemTrayApp:
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
             'tray_info_order': ['cpu', 'ram'],
+            'info_menu_order': ['cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime'],
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
@@ -426,11 +427,25 @@ class SystemTrayApp:
         except Exception as e:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
         default['tray_info_order'] = self._normalize_tray_order(default.get('tray_info_order'))
+        default['info_menu_order'] = self._normalize_info_menu_order(default.get('info_menu_order'))
         return default
 
     @staticmethod
     def _normalize_tray_order(order) -> list[str]:
         allowed = ('cpu', 'ram')
+        result = []
+        if isinstance(order, list):
+            for item in order:
+                if item in allowed and item not in result:
+                    result.append(item)
+        for item in allowed:
+            if item not in result:
+                result.append(item)
+        return result
+
+    @staticmethod
+    def _normalize_info_menu_order(order) -> list[str]:
+        allowed = ('cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime')
         result = []
         if isinstance(order, list):
             for item in order:
@@ -470,18 +485,20 @@ class SystemTrayApp:
                 except Exception:
                     pass
 
-        def prepend_if(flag_key: str, item: Gtk.MenuItem):
-            if self.visibility_settings.get(flag_key, True):
-                self.menu.prepend(item)
-
-        prepend_if('uptime', self.uptime_item)
-        prepend_if('mouse_clicks', self.mouse_item)
-        prepend_if('keyboard_clicks', self.keyboard_item)
-        prepend_if('net', self.net_item)
-        prepend_if('disk', self.disk_item)
-        prepend_if('swap', self.swap_item)
-        prepend_if('ram', self.ram_item)
-        prepend_if('cpu', self.cpu_temp_item)
+        items_map = {
+            'cpu': self.cpu_temp_item,
+            'ram': self.ram_item,
+            'swap': self.swap_item,
+            'disk': self.disk_item,
+            'net': self.net_item,
+            'keyboard_clicks': self.keyboard_item,
+            'mouse_clicks': self.mouse_item,
+            'uptime': self.uptime_item,
+        }
+        order = self._normalize_info_menu_order(self.visibility_settings.get('info_menu_order'))
+        for key in order:
+            if self.visibility_settings.get(key, True):
+                self.menu.append(items_map[key])
 
         self.menu.show_all()
 
@@ -508,6 +525,7 @@ class SystemTrayApp:
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
                 vs['tray_info_order'] = self._normalize_tray_order(dialog.get_tray_info_order())
+                vs['info_menu_order'] = self._normalize_info_menu_order(dialog.get_info_menu_order())
                 vs['keyboard_clicks'] = dialog.keyboard_check.get_active()
                 vs['mouse_clicks'] = dialog.mouse_check.get_active()
                 vs['show_power_off'] = dialog.power_off_check.get_active()

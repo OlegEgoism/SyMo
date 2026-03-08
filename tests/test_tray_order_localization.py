@@ -5,6 +5,7 @@ TRAY_ORDER_KEYS = {
     'tray_order',
     'tray_order_cpu_ram',
     'tray_order_ram_cpu',
+    'menu_info_order',
 }
 
 

@@ -64,6 +64,51 @@ class SettingsDialog(Gtk.Dialog):
         self.mouse_check = add_check('mouse_clicks', 'mouse_clicks')
         self.uptime_check = add_check('uptime_label', 'uptime')
 
+
+        order_label = Gtk.Label(label=tr('menu_info_order'))
+        order_label.set_xalign(0)
+        order_label.set_margin_top(6)
+        box.add(order_label)
+
+        order_controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.info_order_list = Gtk.ListBox()
+        self.info_order_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self._info_order_labels = {
+            'cpu': 'cpu_info',
+            'ram': 'ram_loading',
+            'swap': 'swap_loading',
+            'disk': 'disk_loading',
+            'net': 'lan_speed',
+            'keyboard_clicks': 'keyboard_clicks',
+            'mouse_clicks': 'mouse_clicks',
+            'uptime': 'uptime_label',
+        }
+        self.info_order_keys = []
+
+        saved_order = self.visibility_settings.get(
+            'info_menu_order',
+            ['cpu', 'ram', 'swap', 'disk', 'net', 'keyboard_clicks', 'mouse_clicks', 'uptime']
+        )
+        for key in saved_order:
+            if key in self._info_order_labels and key not in self.info_order_keys:
+                self._append_info_order_row(key)
+        for key in self._info_order_labels:
+            if key not in self.info_order_keys:
+                self._append_info_order_row(key)
+
+        order_controls.pack_start(self.info_order_list, True, True, 0)
+
+        buttons_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.order_up_btn = Gtk.Button(label='↑')
+        self.order_up_btn.connect('clicked', self._move_info_order_up)
+        self.order_down_btn = Gtk.Button(label='↓')
+        self.order_down_btn.connect('clicked', self._move_info_order_down)
+        buttons_box.pack_start(self.order_up_btn, False, False, 0)
+        buttons_box.pack_start(self.order_down_btn, False, False, 0)
+        order_controls.pack_start(buttons_box, False, False, 0)
+
+        box.add(order_controls)
+
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         self.power_off_check = add_check('power_off', 'show_power_off')
         self.reboot_check = add_check('reboot', 'show_reboot')
@@ -184,6 +229,54 @@ class SettingsDialog(Gtk.Dialog):
 
         self._prefill_configs()
         self.show_all()
+
+
+    def _append_info_order_row(self, key: str) -> None:
+        row = Gtk.ListBoxRow()
+        row.metric_key = key
+        label = Gtk.Label(label=tr(self._info_order_labels[key]))
+        label.set_xalign(0)
+        label.set_margin_start(6)
+        label.set_margin_end(6)
+        label.set_margin_top(3)
+        label.set_margin_bottom(3)
+        row.add(label)
+        self.info_order_list.add(row)
+        self.info_order_keys.append(key)
+
+    def _rebuild_info_order_rows(self) -> None:
+        for child in self.info_order_list.get_children():
+            self.info_order_list.remove(child)
+        keys = list(self.info_order_keys)
+        self.info_order_keys = []
+        for key in keys:
+            self._append_info_order_row(key)
+        self.info_order_list.show_all()
+
+    def _move_info_order_up(self, _btn) -> None:
+        row = self.info_order_list.get_selected_row()
+        if row is None:
+            return
+        index = row.get_index()
+        if index <= 0:
+            return
+        self.info_order_keys[index - 1], self.info_order_keys[index] = self.info_order_keys[index], self.info_order_keys[index - 1]
+        self._rebuild_info_order_rows()
+        self.info_order_list.select_row(self.info_order_list.get_row_at_index(index - 1))
+
+    def _move_info_order_down(self, _btn) -> None:
+        row = self.info_order_list.get_selected_row()
+        if row is None:
+            return
+        index = row.get_index()
+        if index < 0 or index >= len(self.info_order_keys) - 1:
+            return
+        self.info_order_keys[index + 1], self.info_order_keys[index] = self.info_order_keys[index], self.info_order_keys[index + 1]
+        self._rebuild_info_order_rows()
+        self.info_order_list.select_row(self.info_order_list.get_row_at_index(index + 1))
+
+    def get_info_menu_order(self) -> list[str]:
+        return list(self.info_order_keys)
 
 
     def get_tray_info_order(self) -> list[str]:
