@@ -12,8 +12,9 @@ from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
 
 
-MENU_ORDER_LABEL_COLUMN = 0
-MENU_ORDER_KEY_COLUMN = 1
+MENU_ORDER_ENABLED_COLUMN = 0
+MENU_ORDER_LABEL_COLUMN = 1
+MENU_ORDER_KEY_COLUMN = 2
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -46,27 +47,6 @@ class SettingsDialog(Gtk.Dialog):
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
-        self.cpu_check = add_check('cpu_info', 'cpu')
-        self.ram_check = add_check('ram_loading', 'ram')
-        self.swap_check = add_check('swap_loading', 'swap')
-        self.disk_check = add_check('disk_loading', 'disk')
-        self.net_check = add_check('lan_speed', 'net')
-        self.keyboard_check = add_check('keyboard_clicks', 'keyboard_clicks')
-        self.mouse_check = add_check('mouse_clicks', 'mouse_clicks')
-        self.uptime_check = add_check('uptime_label', 'uptime')
-
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        self.power_off_check = add_check('power_off', 'show_power_off')
-        self.reboot_check = add_check('reboot', 'show_reboot')
-        self.lock_check = add_check('lock', 'show_lock')
-        self.timer_check = add_check('settings', 'show_timer')
-
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        self.ping_check = add_check('ping_network', 'ping_network')
-        self.system_info_check = add_check('system_info', 'show_system_info')
-
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-
         reorder_title = Gtk.Label(label=tr('menu_order_title'))
         reorder_title.set_xalign(0)
         box.add(reorder_title)
@@ -77,7 +57,7 @@ class SettingsDialog(Gtk.Dialog):
         reorder_hint.get_style_context().add_class('dim-label')
         box.add(reorder_hint)
 
-        self.menu_order_store = Gtk.ListStore(str, str)
+        self.menu_order_store = Gtk.ListStore(bool, str, str)
 
         order_labels = [
             ('cpu_info', 'cpu'),
@@ -100,12 +80,18 @@ class SettingsDialog(Gtk.Dialog):
         current_order = self._normalize_menu_order(self.visibility_settings.get('menu_order'))
         for key in current_order:
             label_key = display_map.get(key, key)
-            self.menu_order_store.append([tr(label_key), key])
+            self.menu_order_store.append([bool(self.visibility_settings.get(key, True)), tr(label_key), key])
 
         self.menu_order_view = Gtk.TreeView(model=self.menu_order_store)
         self.menu_order_view.set_headers_visible(False)
         self.menu_order_view.set_reorderable(True)
         self.menu_order_selection = self.menu_order_view.get_selection()
+
+        toggle_renderer = Gtk.CellRendererToggle()
+        toggle_renderer.set_activatable(True)
+        toggle_renderer.connect('toggled', self._on_menu_item_toggled)
+        toggle_column = Gtk.TreeViewColumn('', toggle_renderer, active=MENU_ORDER_ENABLED_COLUMN)
+        self.menu_order_view.append_column(toggle_column)
 
         renderer = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn('', renderer, text=MENU_ORDER_LABEL_COLUMN)
@@ -249,6 +235,12 @@ class SettingsDialog(Gtk.Dialog):
                 unique.append(key)
         return unique
 
+
+    def _on_menu_item_toggled(self, _renderer, path: str):
+        tree_iter = self.menu_order_store.get_iter(path)
+        current = bool(self.menu_order_store.get_value(tree_iter, MENU_ORDER_ENABLED_COLUMN))
+        self.menu_order_store.set_value(tree_iter, MENU_ORDER_ENABLED_COLUMN, not current)
+
     def _move_selected_order_row(self, delta: int):
         selected = self.menu_order_selection.get_selected()
         if not selected:
@@ -278,6 +270,12 @@ class SettingsDialog(Gtk.Dialog):
         for row in self.menu_order_store:
             keys.append(row[MENU_ORDER_KEY_COLUMN])
         return self._normalize_menu_order(keys)
+
+    def get_menu_visibility(self) -> Dict[str, bool]:
+        values: Dict[str, bool] = {}
+        for row in self.menu_order_store:
+            values[row[MENU_ORDER_KEY_COLUMN]] = bool(row[MENU_ORDER_ENABLED_COLUMN])
+        return values
 
     def _prefill_configs(self):
         try:

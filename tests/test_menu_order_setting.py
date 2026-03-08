@@ -13,3 +13,5 @@ def test_menu_order_setting_is_wired_in_app_and_dialog():
 
     assert "self.menu_order_view.set_reorderable(True)" in dialogs_code
     assert "def get_menu_order(self) -> list[str]:" in dialogs_code
+    assert "def get_menu_visibility(self) -> Dict[str, bool]:" in dialogs_code
+    assert "Gtk.ListStore(bool, str, str)" in dialogs_code
