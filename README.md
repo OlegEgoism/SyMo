@@ -91,15 +91,6 @@ pip install -r requirements.txt
 python3 app.py
 ```
 
-## Configuration Files and Log
-
-The app uses files in the user home directory:
-
-- `~/.symo_settings.json` — display/behavior settings;
-- `~/.symo_telegram.json` — Telegram settings;
-- `~/.symo_discord.json` — Discord settings;
-- `~/.symo_log.txt` — metrics log.
-
 ## Build
 
 The `build.sh` script performs:
