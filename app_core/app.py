@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import html
 import platform
 from collections import deque
 from datetime import datetime
@@ -70,6 +71,12 @@ LANGUAGE_FLAGS = {
 
 
 class SystemTrayApp:
+    CPU_ALERT_THRESHOLD = 90.0
+    CPU_TEMP_ALERT_THRESHOLD = 80
+    RAM_ALERT_THRESHOLD = 90.0
+    DISK_ALERT_THRESHOLD = 90.0
+    SWAP_ALERT_THRESHOLD = 90.0
+
     def __init__(self):
         self.settings_file = SETTINGS_FILE
         self.visibility_settings = self.load_settings()
@@ -1688,14 +1695,35 @@ class SystemTrayApp:
             if self.mouse_graph_area:
                 self.mouse_graph_area.queue_draw()
 
+            ram_usage_percent = (ram_used / ram_total * 100) if ram_total > 0 else 0.0
+            swap_usage_percent = (swap_used / swap_total * 100) if swap_total > 0 else 0.0
+            disk_usage_percent = (disk_used / disk_total * 100) if disk_total > 0 else 0.0
+
             if self.visibility_settings.get('cpu', True):
-                self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
+                cpu_alert = cpu_usage > self.CPU_ALERT_THRESHOLD or cpu_temp > self.CPU_TEMP_ALERT_THRESHOLD
+                self._set_menu_item_alert_label(
+                    self.cpu_temp_item,
+                    f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C",
+                    cpu_alert,
+                )
             if self.visibility_settings.get('ram', True):
-                self.ram_item.set_label(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
+                self._set_menu_item_alert_label(
+                    self.ram_item,
+                    f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB",
+                    ram_usage_percent > self.RAM_ALERT_THRESHOLD,
+                )
             if self.visibility_settings.get('swap', True):
-                self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
+                self._set_menu_item_alert_label(
+                    self.swap_item,
+                    f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB",
+                    swap_usage_percent > self.SWAP_ALERT_THRESHOLD,
+                )
             if self.visibility_settings.get('disk', True):
-                self.disk_item.set_label(f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB")
+                self._set_menu_item_alert_label(
+                    self.disk_item,
+                    f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB",
+                    disk_usage_percent > self.DISK_ALERT_THRESHOLD,
+                )
             if self.visibility_settings.get('net', True):
                 self.net_item.set_label(f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s")
             if self.visibility_settings.get('uptime', True):
@@ -1716,6 +1744,18 @@ class SystemTrayApp:
             self.indicator.set_label(tray_text, "")
         except Exception as e:
             print(f"Ошибка в _update_ui: {e}")
+
+    @staticmethod
+    def _set_menu_item_alert_label(item: Gtk.MenuItem, text: str, is_alert: bool) -> None:
+        label_widget = item.get_child()
+        if isinstance(label_widget, Gtk.Label):
+            escaped_text = html.escape(text)
+            if is_alert:
+                label_widget.set_markup(f'<span foreground="red">{escaped_text}</span>')
+            else:
+                label_widget.set_markup(escaped_text)
+            return
+        item.set_label(text)
 
     def quit(self, *args):
         if self.telegram_notifier:
