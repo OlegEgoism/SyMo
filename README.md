@@ -7,24 +7,24 @@ SyMo is a GTK-based Linux system tray monitor that displays live system metrics,
 ## Features
 
 - Live system monitoring:
-  - CPU load and temperature;
-  - RAM and swap usage;
-  - disk usage;
-  - network speed (download/upload);
-  - uptime;
-  - keyboard and mouse activity counters.
+    - CPU load and temperature;
+    - RAM and swap usage;
+    - disk usage;
+    - network speed (download/upload);
+    - uptime;
+    - keyboard and mouse activity counters.
 - Configurable tray menu:
-  - show/hide menu items;
-  - reorder menu items by drag-and-drop in Settings.
+    - show/hide menu items;
+    - reorder menu items by drag-and-drop in Settings.
 - Per-metric graph windows (CPU, RAM, Swap, Disk, Network, Keyboard, Mouse).
 - Power controls:
-  - shutdown;
-  - reboot;
-  - lock screen;
-  - delayed execution with scheduler/timer.
+    - shutdown;
+    - reboot;
+    - lock screen;
+    - delayed execution with scheduler/timer.
 - Notifications:
-  - Telegram bot integration;
-  - Discord webhook integration.
+    - Telegram bot integration;
+    - Discord webhook integration.
 - Multi-language interface.
 
 ## Supported UI Languages
@@ -116,29 +116,12 @@ Check output:
 ls -la SyMo-bundle
 ```
 
-Typical artifacts (depending on onefile build success):
-
-- `app.build`
-- `app.dist`
-- `app.onefile-build`
-- `build_standalone`
-- `SyMo-standalone`
-- `SyMo-onefile`
-- `SyMo-launch`
-- `SyMo-run`
-
 ## Uninstall
 
 ```bash
 chmod +x uninstall-symo.sh
 ./uninstall-symo.sh
 ```
-
-The script removes:
-
-- local build artifacts near the repository;
-- desktop/autostart entries (`SyMo.desktop` and `symo.desktop`);
-- possible installed SyMo binaries/directories.
 
 ## Tests
 
@@ -150,11 +133,10 @@ pytest -q
 
 - Author: [OlegEgoism](https://github.com/OlegEgoism)
 - Repository: <https://github.com/OlegEgoism/SyMo>
+- Telegram: [@OlegEgoism](https://t.me/OlegEgoism)
 - Email: olegpustovalov220@gmail.com
-- Telegram: @OlegEgoism
 
 <img src="img.png" width="560" alt="SyMo preview" />
-
 
 ## Video on YouTube:
 
