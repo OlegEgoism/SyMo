@@ -127,6 +127,36 @@ Typical artifacts (depending on onefile build success):
 - `SyMo-launch`
 - `SyMo-run`
 
+## Package Build (DEB/RPM, without `build.sh`)
+
+For distro-native package installation, use dedicated scripts:
+
+### Build `.deb`
+
+```bash
+chmod +x scripts/create-deb-package.sh
+./scripts/create-deb-package.sh 1.0.0
+```
+
+Install:
+
+```bash
+sudo dpkg -i symo_1.0.0_$(dpkg --print-architecture).deb
+```
+
+### Build `.rpm`
+
+```bash
+chmod +x scripts/create-rpm-package.sh
+./scripts/create-rpm-package.sh 1.0.0 1
+```
+
+Generated RPM files will be placed under:
+
+```bash
+packaging/rpm/rpmbuild/RPMS/
+```
+
 ## Uninstall
 
 ```bash
