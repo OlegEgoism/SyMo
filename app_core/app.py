@@ -24,7 +24,7 @@ except (ValueError, ImportError):
 gi.require_version("Gtk", "3.0")
 
 import psutil
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gdk
 from pynput import keyboard, mouse
 
 from .constants import (
@@ -1746,14 +1746,36 @@ class SystemTrayApp:
             print(f"Ошибка в _update_ui: {e}")
 
     @staticmethod
-    def _set_menu_item_alert_label(item: Gtk.MenuItem, text: str, is_alert: bool) -> None:
-        label_widget = item.get_child()
+    def _find_menu_item_label(item: Gtk.MenuItem) -> Optional[Gtk.Label]:
+        child = item.get_child()
+        if isinstance(child, Gtk.Label):
+            return child
+        if isinstance(child, Gtk.Container):
+            stack = list(child.get_children())
+            while stack:
+                node = stack.pop()
+                if isinstance(node, Gtk.Label):
+                    return node
+                if isinstance(node, Gtk.Container):
+                    stack.extend(node.get_children())
+        return None
+
+    @classmethod
+    def _set_menu_item_alert_label(cls, item: Gtk.MenuItem, text: str, is_alert: bool) -> None:
+        label_widget = cls._find_menu_item_label(item)
         if isinstance(label_widget, Gtk.Label):
             escaped_text = html.escape(text)
             if is_alert:
-                label_widget.set_markup(f'<span foreground="red">{escaped_text}</span>')
+                label_widget.set_use_markup(True)
+                label_widget.set_markup(f'<span color="#ff3b30"><b>{escaped_text}</b></span>')
+                alert_color = Gdk.RGBA(1.0, 0.23, 0.19, 1.0)
+                label_widget.override_color(Gtk.StateFlags.NORMAL, alert_color)
+                label_widget.override_color(Gtk.StateFlags.PRELIGHT, alert_color)
             else:
-                label_widget.set_markup(escaped_text)
+                label_widget.override_color(Gtk.StateFlags.NORMAL, None)
+                label_widget.override_color(Gtk.StateFlags.PRELIGHT, None)
+                label_widget.set_use_markup(False)
+                label_widget.set_text(text)
             return
         item.set_label(text)
 
