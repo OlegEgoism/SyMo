@@ -1,18 +1,30 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 remove_path() {
   local target="$1"
-  if [ -e "$target" ] || [ -L "$target" ]; then
-    if [ -w "$target" ] || [ -w "$(dirname "$target")" ]; then
-      rm -rf "$target"
-    else
-      sudo rm -rf "$target"
-    fi
-    echo "Removed $target"
+  if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+    return 0
   fi
+
+  if [ -w "$target" ] || [ -w "$(dirname "$target")" ]; then
+    if rm -rf "$target"; then
+      echo "Removed $target"
+      return 0
+    fi
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    if sudo -n rm -rf "$target" 2>/dev/null; then
+      echo "Removed $target (sudo)"
+      return 0
+    fi
+  fi
+
+  echo "Warning: unable to remove $target (insufficient permissions)" >&2
+  return 0
 }
 
 echo "Removing SyMo binaries (if present)..."
@@ -21,6 +33,7 @@ BINARIES=(
   "/usr/local/bin/SyMo-launch"
   "/usr/local/bin/SyMo-run"
   "/usr/local/bin/symo"
+  "/usr/bin/symo"
   "$HOME/.local/bin/SyMo-onefile"
   "$HOME/.local/bin/SyMo-launch"
   "$HOME/.local/bin/SyMo-run"
@@ -47,6 +60,7 @@ echo "Removing installed SyMo folders (if present)..."
 INSTALL_DIRS=(
   "/opt/SyMo"
   "/opt/SyMo-bundle"
+  "/opt/symo"
   "$HOME/.local/opt/SyMo"
   "$HOME/.local/opt/SyMo-bundle"
 )
