@@ -70,6 +70,37 @@ LANGUAGE_FLAGS = {
 
 
 class SystemTrayApp:
+    @staticmethod
+    def _usage_percent(used: object, total: object) -> float:
+        try:
+            used_val = float(used)
+            total_val = float(total)
+        except (TypeError, ValueError):
+            return 0.0
+        if total_val <= 0:
+            return 0.0
+        return max(0.0, min(100.0, (used_val / total_val) * 100.0))
+
+    @staticmethod
+    def _set_menu_item_label(item: Gtk.MenuItem, text: str, is_critical: bool = False) -> None:
+        child = item.get_child()
+        if isinstance(child, Gtk.Label):
+            child.set_use_markup(True)
+            if is_critical:
+                escaped = GLib.markup_escape_text(text)
+                child.set_markup(f"<span foreground='red'>{escaped}</span>")
+            else:
+                child.set_markup(GLib.markup_escape_text(text))
+            return
+        item.set_label(text)
+
+    @staticmethod
+    def _to_float(value: object, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
     def __init__(self):
         self.settings_file = SETTINGS_FILE
         self.visibility_settings = self.load_settings()
@@ -1688,14 +1719,24 @@ class SystemTrayApp:
             if self.mouse_graph_area:
                 self.mouse_graph_area.queue_draw()
 
+            ram_percent = self._usage_percent(ram_used, ram_total)
+            swap_percent = self._usage_percent(swap_used, swap_total)
+            disk_percent = self._usage_percent(disk_used, disk_total)
+            is_cpu_critical = self._to_float(cpu_usage) > 90.0
+            is_temp_critical = self._to_float(cpu_temp) > 80.0
+
             if self.visibility_settings.get('cpu', True):
-                self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
+                cpu_text = f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"
+                self._set_menu_item_label(self.cpu_temp_item, cpu_text, is_cpu_critical or is_temp_critical)
             if self.visibility_settings.get('ram', True):
-                self.ram_item.set_label(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
+                ram_text = f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"
+                self._set_menu_item_label(self.ram_item, ram_text, ram_percent > 90.0)
             if self.visibility_settings.get('swap', True):
-                self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
+                swap_text = f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB"
+                self._set_menu_item_label(self.swap_item, swap_text, swap_percent > 90.0)
             if self.visibility_settings.get('disk', True):
-                self.disk_item.set_label(f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB")
+                disk_text = f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"
+                self._set_menu_item_label(self.disk_item, disk_text, disk_percent > 90.0)
             if self.visibility_settings.get('net', True):
                 self.net_item.set_label(f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s")
             if self.visibility_settings.get('uptime', True):
