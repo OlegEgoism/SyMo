@@ -1662,18 +1662,20 @@ class SystemTrayApp:
         d.run()
         d.destroy()
 
-    def _set_menu_item_text(self, item: Gtk.MenuItem, text: str, is_alert: bool = False) -> None:
-        if not is_alert:
-            item.set_label(text)
-            return
-
+    def _set_menu_item_markup_text(self, item: Gtk.MenuItem, markup_text: str, plain_text: str) -> None:
         child = item.get_child() if hasattr(item, 'get_child') else None
         if isinstance(child, Gtk.Label):
             child.set_use_markup(True)
-            child.set_markup(f"<span foreground='red'>{escape(text)}</span>")
+            child.set_markup(markup_text)
             return
+        item.set_label(plain_text)
 
-        item.set_label(f"🔴 {text}")
+    @staticmethod
+    def _alert_markup_value(text: str, is_alert: bool) -> str:
+        safe_text = escape(text)
+        if is_alert:
+            return f"<span foreground='red'>{safe_text}</span>"
+        return safe_text
 
     def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
                    disk_used, disk_total, swap_used, swap_total,
@@ -1706,14 +1708,25 @@ class SystemTrayApp:
             temp_alert = cpu_temp > 80
             ram_percent = (ram_used / ram_total * 100) if ram_total else 0
             ram_alert = ram_percent > 90
-            cpu_or_temp_alert = cpu_alert or temp_alert
 
             if self.visibility_settings.get('cpu', True):
-                cpu_text = f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"
-                self._set_menu_item_text(self.cpu_temp_item, cpu_text, cpu_or_temp_alert)
+                cpu_usage_text = f"{cpu_usage:.0f}%"
+                cpu_temp_text = f"{cpu_temp}°C"
+                cpu_text_plain = f"{tr('cpu_info')}: {cpu_usage_text}  🌡{cpu_temp_text}"
+                cpu_text_markup = (
+                    f"{escape(tr('cpu_info'))}: "
+                    f"{self._alert_markup_value(cpu_usage_text, cpu_alert)}  "
+                    f"🌡{self._alert_markup_value(cpu_temp_text, temp_alert)}"
+                )
+                self._set_menu_item_markup_text(self.cpu_temp_item, cpu_text_markup, cpu_text_plain)
             if self.visibility_settings.get('ram', True):
-                ram_text = f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"
-                self._set_menu_item_text(self.ram_item, ram_text, ram_alert)
+                ram_text_plain = f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"
+                ram_usage_text = f"{ram_used:.1f}"
+                ram_text_markup = (
+                    f"{escape(tr('ram_loading'))}: "
+                    f"{self._alert_markup_value(ram_usage_text, ram_alert)}/{escape(f'{ram_total:.1f}')} GB"
+                )
+                self._set_menu_item_markup_text(self.ram_item, ram_text_markup, ram_text_plain)
             if self.visibility_settings.get('swap', True):
                 self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
             if self.visibility_settings.get('disk', True):
@@ -1729,11 +1742,9 @@ class SystemTrayApp:
 
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
-                cpu_prefix = "🔴 " if cpu_or_temp_alert else ""
-                tray_parts.append(f"{cpu_prefix}{tr('cpu_info')}: {cpu_usage:.0f}% 🌡{cpu_temp}°C")
+                tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}% 🌡{cpu_temp}°C")
             if self.visibility_settings.get('tray_ram', True):
-                ram_prefix = "🔴 " if ram_alert else ""
-                tray_parts.append(f"{ram_prefix}{tr('ram_loading')}: {ram_used:.1f}GB")
+                tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
