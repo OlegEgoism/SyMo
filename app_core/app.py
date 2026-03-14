@@ -4,6 +4,7 @@ import json
 import platform
 from collections import deque
 from datetime import datetime
+from html import escape
 import signal
 import subprocess
 import threading
@@ -1706,10 +1707,24 @@ class SystemTrayApp:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
 
             tray_parts = []
+            cpu_alert = cpu_usage > 80
+            temp_alert = cpu_temp > 80
+            ram_percent = (ram_used / ram_total * 100) if ram_total else 0
+            ram_alert = ram_percent > 90
+
+            def tray_value(text: str, is_alert: bool) -> str:
+                safe_text = escape(text)
+                if is_alert:
+                    return f"<span foreground='red'>{safe_text}</span>"
+                return safe_text
+
             if self.visibility_settings.get('tray_cpu', True):
-                tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
+                cpu_usage_text = tray_value(f"{cpu_usage:.0f}%", cpu_alert)
+                cpu_temp_text = tray_value(f"🌡{cpu_temp}°C", temp_alert)
+                tray_parts.append(f"{escape(tr('cpu_info'))}: {cpu_usage_text} {cpu_temp_text}")
             if self.visibility_settings.get('tray_ram', True):
-                tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
+                ram_text = tray_value(f"{ram_used:.1f}GB", ram_alert)
+                tray_parts.append(f"{escape(tr('ram_loading'))}: {ram_text}")
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
