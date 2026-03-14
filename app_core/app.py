@@ -1662,6 +1662,19 @@ class SystemTrayApp:
         d.run()
         d.destroy()
 
+    def _set_menu_item_text(self, item: Gtk.MenuItem, text: str, is_alert: bool = False) -> None:
+        if not is_alert:
+            item.set_label(text)
+            return
+
+        child = item.get_child() if hasattr(item, 'get_child') else None
+        if isinstance(child, Gtk.Label):
+            child.set_use_markup(True)
+            child.set_markup(f"<span foreground='red'>{escape(text)}</span>")
+            return
+
+        item.set_label(f"🔴 {text}")
+
     def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
                    disk_used, disk_total, swap_used, swap_total,
                    net_recv_speed, net_sent_speed, uptime,
@@ -1689,10 +1702,18 @@ class SystemTrayApp:
             if self.mouse_graph_area:
                 self.mouse_graph_area.queue_draw()
 
+            cpu_alert = cpu_usage > 80
+            temp_alert = cpu_temp > 80
+            ram_percent = (ram_used / ram_total * 100) if ram_total else 0
+            ram_alert = ram_percent > 90
+            cpu_or_temp_alert = cpu_alert or temp_alert
+
             if self.visibility_settings.get('cpu', True):
-                self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
+                cpu_text = f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"
+                self._set_menu_item_text(self.cpu_temp_item, cpu_text, cpu_or_temp_alert)
             if self.visibility_settings.get('ram', True):
-                self.ram_item.set_label(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
+                ram_text = f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"
+                self._set_menu_item_text(self.ram_item, ram_text, ram_alert)
             if self.visibility_settings.get('swap', True):
                 self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
             if self.visibility_settings.get('disk', True):
@@ -1707,24 +1728,12 @@ class SystemTrayApp:
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
 
             tray_parts = []
-            cpu_alert = cpu_usage > 80
-            temp_alert = cpu_temp > 80
-            ram_percent = (ram_used / ram_total * 100) if ram_total else 0
-            ram_alert = ram_percent > 90
-
-            def tray_value(text: str, is_alert: bool) -> str:
-                safe_text = escape(text)
-                if is_alert:
-                    return f"<span foreground='red'>{safe_text}</span>"
-                return safe_text
-
             if self.visibility_settings.get('tray_cpu', True):
-                cpu_usage_text = tray_value(f"{cpu_usage:.0f}%", cpu_alert)
-                cpu_temp_text = tray_value(f"🌡{cpu_temp}°C", temp_alert)
-                tray_parts.append(f"{escape(tr('cpu_info'))}: {cpu_usage_text} {cpu_temp_text}")
+                cpu_prefix = "🔴 " if cpu_or_temp_alert else ""
+                tray_parts.append(f"{cpu_prefix}{tr('cpu_info')}: {cpu_usage:.0f}% 🌡{cpu_temp}°C")
             if self.visibility_settings.get('tray_ram', True):
-                ram_text = tray_value(f"{ram_used:.1f}GB", ram_alert)
-                tray_parts.append(f"{escape(tr('ram_loading'))}: {ram_text}")
+                ram_prefix = "🔴 " if ram_alert else ""
+                tray_parts.append(f"{ram_prefix}{tr('ram_loading')}: {ram_used:.1f}GB")
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
