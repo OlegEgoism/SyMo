@@ -1705,11 +1705,18 @@ class SystemTrayApp:
             if self.visibility_settings.get('mouse_clicks', True):
                 self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
 
+            ram_percent = (ram_used / ram_total * 100.0) if ram_total > 0 else 0.0
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
-                tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
+                cpu_value = f"{cpu_usage:.0f}%"
+                if cpu_usage > 80:
+                    cpu_value = f"<span foreground='red'>{cpu_value}</span>"
+                tray_parts.append(f"{tr('cpu_info')}: {cpu_value}")
             if self.visibility_settings.get('tray_ram', True):
-                tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
+                ram_value = f"{ram_used:.1f}GB"
+                if ram_percent > 80:
+                    ram_value = f"<span foreground='red'>{ram_value}</span>"
+                tray_parts.append(f"{tr('ram_loading')}: {ram_value}")
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
