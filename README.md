@@ -150,5 +150,12 @@ pytest -q
 
 - Author: [OlegEgoism](https://github.com/OlegEgoism)
 - Repository: <https://github.com/OlegEgoism/SyMo>
+- Email: olegpustovalov220@gmail.com
+- Telegram: @OlegEgoism
 
 <img src="img.png" width="560" alt="SyMo preview" />
+
+
+## Video on YouTube:
+
+[![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtube.com/shorts/X1tlQ4XuLSM?feature=share)
