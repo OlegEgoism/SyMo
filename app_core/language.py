@@ -75,6 +75,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Размер файла логов (МБ)',
         'graph_history_minutes': 'История графиков (мин.)',
+        'graph_history_hint': 'Укажите период, за который отображаются графики.',
 
         'ping_network': 'Проверить сеть',
         'ping_running': 'Выполняется проверка сети…',
@@ -82,6 +83,7 @@ LANGUAGES = {
         'ping_error': 'Ошибка при выполнении ping',
         'system_info': 'Информация о системе',
         'menu_order_title': 'Порядок отображения пунктов',
+        'menu_order_hint': 'Настройте порядок отображения элементов в трее и меню.',
         'display_section': 'Отображение',
         'logging_section': 'Логи и графики',
         'notification_section': 'Уведомления',
@@ -183,6 +185,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maximum log file size (MB)',
         'graph_history_minutes': 'Graph history (min)',
+        'graph_history_hint': 'Choose how much history is shown in graphs.',
 
         'ping_network': 'Ping network',
         'ping_running': 'Running network check…',
@@ -190,6 +193,7 @@ LANGUAGES = {
         'ping_error': 'Error running ping',
         'system_info': 'System information',
         'menu_order_title': 'Menu item order',
+        'menu_order_hint': 'Configure the display order of tray and menu items.',
         'display_section': 'Display',
         'logging_section': 'Logs and charts',
         'notification_section': 'Notifications',
@@ -291,6 +295,7 @@ LANGUAGES = {
 
         'max_log_size_mb': '日志文件的最大大小 (MB)',
         'graph_history_minutes': '图表历史记录（分钟）',
+        'graph_history_hint': '设置图表中显示的历史时长。',
 
         'ping_network': '网络连通性测试（ping）',
         'ping_running': '正在进行网络测试…',
@@ -298,6 +303,7 @@ LANGUAGES = {
         'ping_error': '执行 ping 时出错',
         'system_info': '系统信息',
         'menu_order_title': '菜单项顺序',
+        'menu_order_hint': '设置托盘和菜单项目的显示顺序。',
         'display_section': '显示',
         'logging_section': '日志和图表',
         'notification_section': '通知',
@@ -399,6 +405,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maximale Protokolldateigröße (MB)',
         'graph_history_minutes': 'Diagrammverlauf (Min.)',
+        'graph_history_hint': 'Legen Sie fest, wie viel Verlauf in Diagrammen angezeigt wird.',
 
         'ping_network': 'Netzwerk prüfen (Ping)',
         'show_ping': 'Ping-Schaltfläche im Tray anzeigen',
@@ -407,6 +414,7 @@ LANGUAGES = {
         'ping_error': 'Fehler beim Ausführen von Ping',
         'system_info': 'Systeminformationen',
         'menu_order_title': 'Reihenfolge der Menüpunkte',
+        'menu_order_hint': 'Legen Sie die Anzeigereihenfolge von Tray- und Menüeinträgen fest.',
         'display_section': 'Anzeige',
         'logging_section': 'Protokolle und Diagramme',
         'notification_section': 'Benachrichtigungen',
@@ -508,6 +516,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Dimensione massima del file di log (MB)',
         'graph_history_minutes': 'Cronologia grafici (min)',
+        'graph_history_hint': 'Scegli quanta cronologia mostrare nei grafici.',
 
         'ping_network': 'Verifica rete (ping)',
         'ping_running': 'Verifica della rete in corso…',
@@ -515,6 +524,7 @@ LANGUAGES = {
         'ping_error': 'Errore durante l\'esecuzione di ping',
         'system_info': 'Informazioni di sistema',
         'menu_order_title': 'Ordine delle voci del menu',
+        'menu_order_hint': 'Configura l’ordine di visualizzazione delle voci nel tray e nel menu.',
         'display_section': 'Visualizzazione',
         'logging_section': 'Log e grafici',
         'notification_section': 'Notifiche',
@@ -616,6 +626,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Tamaño máximo del archivo de registro (MB)',
         'graph_history_minutes': 'Historial de gráficos (min)',
+        'graph_history_hint': 'Elige cuánto historial mostrar en los gráficos.',
 
         'ping_network': 'Probar red (ping)',
         'ping_running': 'Comprobando la red…',
@@ -623,6 +634,7 @@ LANGUAGES = {
         'ping_error': 'Error al ejecutar ping',
         'system_info': 'Información del sistema',
         'menu_order_title': 'Orden de elementos del menú',
+        'menu_order_hint': 'Configura el orden de visualización de los elementos de bandeja y menú.',
         'display_section': 'Visualización',
         'logging_section': 'Registros y gráficos',
         'notification_section': 'Notificaciones',
@@ -724,6 +736,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maksimum günlük dosyası boyutu (MB)',
         'graph_history_minutes': 'Grafik geçmişi (dk.)',
+        'graph_history_hint': 'Grafiklerde ne kadar geçmiş gösterileceğini seçin.',
 
         'ping_network': 'Ağı kontrol et (ping)',
         'ping_running': 'Ağ kontrolü yapılıyor…',
@@ -731,6 +744,7 @@ LANGUAGES = {
         'ping_error': 'Ping çalıştırılırken hata oluştu',
         'system_info': 'Sistem bilgisi',
         'menu_order_title': 'Menü öğesi sırası',
+        'menu_order_hint': 'Tepsi ve menü öğelerinin görüntülenme sırasını yapılandırın.',
         'display_section': 'Görünüm',
         'logging_section': 'Günlükler ve grafikler',
         'notification_section': 'Bildirimler',
@@ -832,6 +846,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Taille maximale du fichier journal (Mo)',
         'graph_history_minutes': 'Historique des graphiques (min)',
+        'graph_history_hint': 'Choisissez la durée d’historique affichée dans les graphiques.',
 
         'ping_network': 'Vérifier le réseau (ping)',
         'ping_running': 'Vérification du réseau en cours…',
@@ -839,6 +854,7 @@ LANGUAGES = {
         'ping_error': 'Erreur lors de l\'exécution du ping',
         'system_info': 'Informations système',
         'menu_order_title': 'Ordre des éléments du menu',
+        'menu_order_hint': 'Configurez l’ordre d’affichage des éléments du tray et du menu.',
         'display_section': 'Affichage',
         'logging_section': 'Journaux et graphiques',
         'notification_section': 'Notifications',
