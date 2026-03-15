@@ -39,31 +39,48 @@ class SettingsDialog(Gtk.Dialog):
         box = self.get_content_area()
         box.set_border_width(10)
 
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_shadow_type(Gtk.ShadowType.NONE)
+        scroller.set_min_content_height(520)
+        box.add(scroller)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        content.set_border_width(2)
+        scroller.add(content)
+
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.set_halign(Gtk.Align.END)
         link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
         header.pack_start(link, False, False, 0)
-        box.add(header)
+        content.add(header)
+
+        def add_section_title(label_key: str):
+            title = Gtk.Label()
+            title.set_markup(f"<b>{tr(label_key)}</b>")
+            title.set_xalign(0)
+            content.add(title)
 
         def add_check(label_key: str, key: str):
             chk = Gtk.CheckButton(label=tr(label_key))
             chk.set_active(self.visibility_settings.get(key, True))
-            box.add(chk)
+            content.add(chk)
             return chk
 
+        add_section_title('display_section')
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        content.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
         reorder_title = Gtk.Label(label=tr('menu_order_title'))
         reorder_title.set_xalign(0)
-        box.add(reorder_title)
+        content.add(reorder_title)
 
         reorder_hint = Gtk.Label(label=tr('menu_order_hint'))
         reorder_hint.set_xalign(0)
         reorder_hint.set_line_wrap(True)
         reorder_hint.get_style_context().add_class('dim-label')
-        box.add(reorder_hint)
+        content.add(reorder_hint)
 
         self.menu_order_store = Gtk.ListStore(bool, str, str)
 
@@ -110,9 +127,10 @@ class SettingsDialog(Gtk.Dialog):
         order_scroll.set_min_content_height(210)
         order_scroll.set_shadow_type(Gtk.ShadowType.IN)
         order_scroll.add(self.menu_order_view)
-        box.add(order_scroll)
+        content.add(order_scroll)
 
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        content.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        add_section_title('logging_section')
         logging_box = Gtk.Box(spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
@@ -123,7 +141,7 @@ class SettingsDialog(Gtk.Dialog):
         self.download_button.connect("clicked", self.download_log_file)
         self.download_button.set_margin_bottom(3)
         logging_box.pack_end(self.download_button, False, False, 0)
-        box.add(logging_box)
+        content.add(logging_box)
 
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
@@ -132,7 +150,7 @@ class SettingsDialog(Gtk.Dialog):
         self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 5)))
         logsize_box.pack_start(logsize_label, False, False, 0)
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
-        box.add(logsize_box)
+        content.add(logsize_box)
 
         graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
@@ -147,9 +165,16 @@ class SettingsDialog(Gtk.Dialog):
         )
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
-        box.add(graph_history_box)
+        content.add(graph_history_box)
 
-        box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        graph_history_hint = Gtk.Label(label=tr('graph_history_hint'))
+        graph_history_hint.set_xalign(0)
+        graph_history_hint.set_line_wrap(True)
+        graph_history_hint.get_style_context().add_class('dim-label')
+        content.add(graph_history_hint)
+
+        content.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        add_section_title('notification_section')
 
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
@@ -158,7 +183,7 @@ class SettingsDialog(Gtk.Dialog):
         test_button.set_halign(Gtk.Align.END)
         test_button.connect("clicked", self.test_telegram)
         telegram_box.pack_end(test_button, False, False, 0)
-        box.add(telegram_box)
+        content.add(telegram_box)
 
         token_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         token_label = Gtk.Label(label=tr('token_bot'))
@@ -172,7 +197,7 @@ class SettingsDialog(Gtk.Dialog):
         token_toggle.set_relief(Gtk.ReliefStyle.NONE)
         token_toggle.connect("toggled", lambda btn: self.token_entry.set_visibility(btn.get_active()))
         token_box.pack_end(token_toggle, False, False, 0)
-        box.add(token_box)
+        content.add(token_box)
 
         chat_id_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         chat_id_label = Gtk.Label(label=tr('id_chat'))
@@ -186,7 +211,7 @@ class SettingsDialog(Gtk.Dialog):
         chat_id_toggle.set_relief(Gtk.ReliefStyle.NONE)
         chat_id_toggle.connect("toggled", lambda btn: self.chat_id_entry.set_visibility(btn.get_active()))
         chat_id_box.pack_end(chat_id_toggle, False, False, 0)
-        box.add(chat_id_box)
+        content.add(chat_id_box)
 
         interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         interval_label = Gtk.Label(label=tr('time_send'))
@@ -198,7 +223,7 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.set_margin_top(3)
         interval_box.set_margin_bottom(3)
         interval_box.set_margin_end(50)
-        box.add(interval_box)
+        content.add(interval_box)
 
         discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
@@ -207,7 +232,7 @@ class SettingsDialog(Gtk.Dialog):
         discord_test_button.set_halign(Gtk.Align.END)
         discord_test_button.connect("clicked", self.test_discord)
         discord_box.pack_end(discord_test_button, False, False, 0)
-        box.add(discord_box)
+        content.add(discord_box)
 
         webhook_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         webhook_label = Gtk.Label(label=tr('webhook_url'))
@@ -221,7 +246,7 @@ class SettingsDialog(Gtk.Dialog):
         webhook_toggle.set_relief(Gtk.ReliefStyle.NONE)
         webhook_toggle.connect("toggled", lambda btn: self.webhook_entry.set_visibility(btn.get_active()))
         webhook_box.pack_end(webhook_toggle, False, False, 0)
-        box.add(webhook_box)
+        content.add(webhook_box)
 
         discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         discord_interval_label = Gtk.Label(label=tr('time_send'))
@@ -233,7 +258,7 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.set_margin_top(3)
         discord_interval_box.set_margin_bottom(30)
         discord_interval_box.set_margin_end(50)
-        box.add(discord_interval_box)
+        content.add(discord_interval_box)
 
         self._prefill_configs()
         self.show_all()
