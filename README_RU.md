@@ -1,4 +1,4 @@
-# SyMo ([EN](README))
+# SyMo ([EN](README.md))
 
 <img src="logo.png" width="96" alt="Логотип SyMo" />
 
