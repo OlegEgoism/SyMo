@@ -93,6 +93,25 @@ pip install -r requirements.txt
 python3 app.py
 ```
 
+
+## GNOME Extensions upload package
+
+The repository now includes `gnome_extension/` with a minimal GNOME Shell extension (`metadata.json` and `extension.js`) that adds a panel launcher for SyMo.
+
+Build the zip archive for <https://extensions.gnome.org/upload/>:
+
+```bash
+chmod +x package-gnome-extension.sh
+./package-gnome-extension.sh
+```
+
+By default, the package is created at `dist/symo@olegegoism.github.io.zip`.
+
+Before uploading, verify:
+- UUID in `gnome_extension/metadata.json`;
+- supported `shell-version` values;
+- local install works (`gnome-extensions install --force dist/symo@olegegoism.github.io.zip`).
+
 ## Build
 
 `build.sh` performs:

@@ -93,6 +93,25 @@ pip install -r requirements.txt
 python3 app.py
 ```
 
+
+## Пакет для GNOME Extensions
+
+В репозитории добавлена папка `gnome_extension/` с минимальным GNOME Shell extension (`metadata.json` и `extension.js`) для запуска приложения SyMo из панели GNOME.
+
+Собрать zip-архив для загрузки на <https://extensions.gnome.org/upload/>:
+
+```bash
+chmod +x package-gnome-extension.sh
+./package-gnome-extension.sh
+```
+
+По умолчанию архив создаётся в `dist/symo@olegegoism.github.io.zip`.
+
+Перед загрузкой проверьте:
+- UUID в `gnome_extension/metadata.json`;
+- поддерживаемые версии `shell-version`;
+- что расширение корректно устанавливается локально (`gnome-extensions install --force dist/symo@olegegoism.github.io.zip`).
+
 ## Сборка
 
 `build.sh` выполняет:
