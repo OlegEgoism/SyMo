@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def test_readme_languages_match_supported_set():
-    readme = Path("README.md").read_text(encoding="utf-8")
+    readme = Path("README_EN.md").read_text(encoding="utf-8")
     assert "Arabic" not in readme
 
 
