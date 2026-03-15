@@ -32,6 +32,7 @@ class SettingsDialog(Gtk.Dialog):
                          flags=0)
         self.set_modal(True)
         self.set_destroy_with_parent(True)
+        self.set_default_size(560, 860)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
                          tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
@@ -42,10 +43,10 @@ class SettingsDialog(Gtk.Dialog):
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroller.set_shadow_type(Gtk.ShadowType.NONE)
-        scroller.set_min_content_height(520)
+        scroller.set_min_content_height(760)
         box.add(scroller)
 
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         content.set_border_width(2)
         scroller.add(content)
 
@@ -59,11 +60,15 @@ class SettingsDialog(Gtk.Dialog):
             title = Gtk.Label()
             title.set_markup(f"<b>{tr(label_key)}</b>")
             title.set_xalign(0)
+            title.set_margin_top(2)
+            title.set_margin_bottom(1)
             content.add(title)
 
         def add_check(label_key: str, key: str):
             chk = Gtk.CheckButton(label=tr(label_key))
             chk.set_active(self.visibility_settings.get(key, True))
+            chk.set_margin_top(1)
+            chk.set_margin_bottom(1)
             content.add(chk)
             return chk
 
@@ -80,6 +85,7 @@ class SettingsDialog(Gtk.Dialog):
         reorder_hint.set_xalign(0)
         reorder_hint.set_line_wrap(True)
         reorder_hint.get_style_context().add_class('dim-label')
+        reorder_hint.set_margin_bottom(2)
         content.add(reorder_hint)
 
         self.menu_order_store = Gtk.ListStore(bool, str, str)
@@ -124,7 +130,7 @@ class SettingsDialog(Gtk.Dialog):
 
         order_scroll = Gtk.ScrolledWindow()
         order_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        order_scroll.set_min_content_height(210)
+        order_scroll.set_min_content_height(180)
         order_scroll.set_shadow_type(Gtk.ShadowType.IN)
         order_scroll.add(self.menu_order_view)
         content.add(order_scroll)
@@ -143,7 +149,7 @@ class SettingsDialog(Gtk.Dialog):
         logging_box.pack_end(self.download_button, False, False, 0)
         content.add(logging_box)
 
-        logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
         logsize_label.set_xalign(0)
         self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
@@ -152,7 +158,7 @@ class SettingsDialog(Gtk.Dialog):
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         content.add(logsize_box)
 
-        graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
         graph_history_label.set_xalign(0)
         self.graph_history_spin = Gtk.SpinButton.new_with_range(
@@ -171,6 +177,7 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_hint.set_xalign(0)
         graph_history_hint.set_line_wrap(True)
         graph_history_hint.get_style_context().add_class('dim-label')
+        graph_history_hint.set_margin_bottom(2)
         content.add(graph_history_hint)
 
         content.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
@@ -213,15 +220,15 @@ class SettingsDialog(Gtk.Dialog):
         chat_id_box.pack_end(chat_id_toggle, False, False, 0)
         content.add(chat_id_box)
 
-        interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         interval_label = Gtk.Label(label=tr('time_send'))
         interval_label.set_xalign(0)
         self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
         self.interval_spin.set_value(3600)
         interval_box.pack_start(interval_label, False, False, 0)
         interval_box.pack_start(self.interval_spin, True, True, 0)
-        interval_box.set_margin_top(3)
-        interval_box.set_margin_bottom(3)
+        interval_box.set_margin_top(1)
+        interval_box.set_margin_bottom(1)
         interval_box.set_margin_end(50)
         content.add(interval_box)
 
@@ -248,15 +255,15 @@ class SettingsDialog(Gtk.Dialog):
         webhook_box.pack_end(webhook_toggle, False, False, 0)
         content.add(webhook_box)
 
-        discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         discord_interval_label = Gtk.Label(label=tr('time_send'))
         discord_interval_label.set_xalign(0)
         self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
         self.discord_interval_spin.set_value(3600)
         discord_interval_box.pack_start(discord_interval_label, False, False, 0)
         discord_interval_box.pack_start(self.discord_interval_spin, True, True, 0)
-        discord_interval_box.set_margin_top(3)
-        discord_interval_box.set_margin_bottom(30)
+        discord_interval_box.set_margin_top(1)
+        discord_interval_box.set_margin_bottom(8)
         discord_interval_box.set_margin_end(50)
         content.add(discord_interval_box)
 
