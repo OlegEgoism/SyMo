@@ -33,7 +33,9 @@ from .constants import (
     LOG_FILE,
     SETTINGS_FILE,
     TIME_UPDATE_SEC,
-    GRAPH_HISTORY_POINTS,
+    GRAPH_HISTORY_MINUTES_DEFAULT,
+    GRAPH_HISTORY_MINUTES_MIN,
+    GRAPH_HISTORY_MINUTES_MAX,
     SUPPORTED_LANGS,
     MENU_ORDER_DEFAULT,
 )
@@ -131,37 +133,38 @@ class SystemTrayApp:
         self.cpu_graph_window: Optional[Gtk.Window] = None
         self.cpu_graph_area: Optional[Gtk.DrawingArea] = None
         self.cpu_graph_hint_label: Optional[Gtk.Label] = None
-        self.cpu_history = deque(maxlen=GRAPH_HISTORY_POINTS)
+        graph_points = self._graph_history_points(self.visibility_settings['graph_history_minutes'])
+        self.cpu_history = deque(maxlen=graph_points)
 
         self.ram_graph_window: Optional[Gtk.Window] = None
         self.ram_graph_area: Optional[Gtk.DrawingArea] = None
         self.ram_graph_hint_label: Optional[Gtk.Label] = None
-        self.ram_history = deque(maxlen=GRAPH_HISTORY_POINTS)
+        self.ram_history = deque(maxlen=graph_points)
 
         self.swap_graph_window: Optional[Gtk.Window] = None
         self.swap_graph_area: Optional[Gtk.DrawingArea] = None
         self.swap_graph_hint_label: Optional[Gtk.Label] = None
-        self.swap_history = deque(maxlen=GRAPH_HISTORY_POINTS)
+        self.swap_history = deque(maxlen=graph_points)
 
         self.disk_graph_window: Optional[Gtk.Window] = None
         self.disk_graph_area: Optional[Gtk.DrawingArea] = None
         self.disk_graph_hint_label: Optional[Gtk.Label] = None
-        self.disk_history = deque(maxlen=GRAPH_HISTORY_POINTS)
+        self.disk_history = deque(maxlen=graph_points)
 
         self.net_graph_window: Optional[Gtk.Window] = None
         self.net_graph_area: Optional[Gtk.DrawingArea] = None
         self.net_graph_hint_label: Optional[Gtk.Label] = None
-        self.net_history = deque(maxlen=GRAPH_HISTORY_POINTS)
+        self.net_history = deque(maxlen=graph_points)
 
         self.keyboard_graph_window: Optional[Gtk.Window] = None
         self.keyboard_graph_area: Optional[Gtk.DrawingArea] = None
         self.keyboard_graph_hint_label: Optional[Gtk.Label] = None
-        self.keyboard_history = deque(maxlen=GRAPH_HISTORY_POINTS)
+        self.keyboard_history = deque(maxlen=graph_points)
 
         self.mouse_graph_window: Optional[Gtk.Window] = None
         self.mouse_graph_area: Optional[Gtk.DrawingArea] = None
         self.mouse_graph_hint_label: Optional[Gtk.Label] = None
-        self.mouse_history = deque(maxlen=GRAPH_HISTORY_POINTS)
+        self.mouse_history = deque(maxlen=graph_points)
 
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
             try:
@@ -394,6 +397,7 @@ class SystemTrayApp:
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
+            'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
             'menu_order': MENU_ORDER_DEFAULT.copy(),
         }
         try:
@@ -402,8 +406,34 @@ class SystemTrayApp:
                 default.update(saved)
         except Exception as e:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
+        default['graph_history_minutes'] = self._sanitize_graph_history_minutes(default.get('graph_history_minutes'))
         default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))
         return default
+
+    @staticmethod
+    def _sanitize_graph_history_minutes(value) -> int:
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            minutes = GRAPH_HISTORY_MINUTES_DEFAULT
+        return max(GRAPH_HISTORY_MINUTES_MIN, min(GRAPH_HISTORY_MINUTES_MAX, minutes))
+
+    @staticmethod
+    def _graph_history_points(minutes: int) -> int:
+        return max(1, minutes * 60 // TIME_UPDATE_SEC)
+
+    def _set_graph_history_window(self, minutes) -> None:
+        sanitized_minutes = self._sanitize_graph_history_minutes(minutes)
+        self.visibility_settings['graph_history_minutes'] = sanitized_minutes
+        maxlen = self._graph_history_points(sanitized_minutes)
+
+        self.cpu_history = deque(self.cpu_history, maxlen=maxlen)
+        self.ram_history = deque(self.ram_history, maxlen=maxlen)
+        self.swap_history = deque(self.swap_history, maxlen=maxlen)
+        self.disk_history = deque(self.disk_history, maxlen=maxlen)
+        self.net_history = deque(self.net_history, maxlen=maxlen)
+        self.keyboard_history = deque(self.keyboard_history, maxlen=maxlen)
+        self.mouse_history = deque(self.mouse_history, maxlen=maxlen)
 
     def save_settings(self) -> None:
         try:
@@ -503,6 +533,7 @@ class SystemTrayApp:
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
+                self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
 
                 tel_enabled_before = getattr(self, 'telegram_notifier', TelegramNotifier()).enabled
                 if self.telegram_notifier.save_config(

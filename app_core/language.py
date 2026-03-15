@@ -74,6 +74,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Размер файла логов (МБ)',
+        'graph_history_minutes': 'История графиков (мин.)',
 
         'ping_network': 'Проверить сеть',
         'ping_running': 'Выполняется проверка сети…',
@@ -179,6 +180,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Maximum log file size (MB)',
+        'graph_history_minutes': 'Graph history (min)',
 
         'ping_network': 'Ping network',
         'ping_running': 'Running network check…',
@@ -284,6 +286,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': '日志文件的最大大小 (MB)',
+        'graph_history_minutes': '图表历史记录（分钟）',
 
         'ping_network': '网络连通性测试（ping）',
         'ping_running': '正在进行网络测试…',
@@ -389,6 +392,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Maximale Protokolldateigröße (MB)',
+        'graph_history_minutes': 'Diagrammverlauf (Min.)',
 
         'ping_network': 'Netzwerk prüfen (Ping)',
         'show_ping': 'Ping-Schaltfläche im Tray anzeigen',
@@ -495,6 +499,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Dimensione massima del file di log (MB)',
+        'graph_history_minutes': 'Cronologia grafici (min)',
 
         'ping_network': 'Verifica rete (ping)',
         'ping_running': 'Verifica della rete in corso…',
@@ -600,6 +605,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Tamaño máximo del archivo de registro (MB)',
+        'graph_history_minutes': 'Historial de gráficos (min)',
 
         'ping_network': 'Probar red (ping)',
         'ping_running': 'Comprobando la red…',
@@ -705,6 +711,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Maksimum günlük dosyası boyutu (MB)',
+        'graph_history_minutes': 'Grafik geçmişi (dk.)',
 
         'ping_network': 'Ağı kontrol et (ping)',
         'ping_running': 'Ağ kontrolü yapılıyor…',
@@ -810,6 +817,7 @@ LANGUAGES = {
         'temperature': '°C',
 
         'max_log_size_mb': 'Taille maximale du fichier journal (Mo)',
+        'graph_history_minutes': 'Historique des graphiques (min)',
 
         'ping_network': 'Vérifier le réseau (ping)',
         'ping_running': 'Vérification du réseau en cours…',

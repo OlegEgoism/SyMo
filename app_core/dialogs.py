@@ -7,7 +7,15 @@ from typing import Dict, Optional
 from gi.repository import Gtk
 
 from .click_tracker import get_counts
-from .constants import LOG_FILE, TELEGRAM_CONFIG_FILE, DISCORD_CONFIG_FILE, MENU_ORDER_DEFAULT
+from .constants import (
+    LOG_FILE,
+    TELEGRAM_CONFIG_FILE,
+    DISCORD_CONFIG_FILE,
+    MENU_ORDER_DEFAULT,
+    GRAPH_HISTORY_MINUTES_DEFAULT,
+    GRAPH_HISTORY_MINUTES_MIN,
+    GRAPH_HISTORY_MINUTES_MAX,
+)
 from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
 
@@ -125,6 +133,21 @@ class SettingsDialog(Gtk.Dialog):
         logsize_box.pack_start(logsize_label, False, False, 0)
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         box.add(logsize_box)
+
+        graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
+        graph_history_label.set_xalign(0)
+        self.graph_history_spin = Gtk.SpinButton.new_with_range(
+            GRAPH_HISTORY_MINUTES_MIN,
+            GRAPH_HISTORY_MINUTES_MAX,
+            1,
+        )
+        self.graph_history_spin.set_value(
+            int(self.visibility_settings.get('graph_history_minutes', GRAPH_HISTORY_MINUTES_DEFAULT))
+        )
+        graph_history_box.pack_start(graph_history_label, False, False, 0)
+        graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
+        box.add(graph_history_box)
 
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
