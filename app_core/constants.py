@@ -7,6 +7,7 @@ APP_ID = "SystemMonitor"
 APP_NAME = "SyMo"
 ICON_FALLBACK = "system-run-symbolic"
 TIME_UPDATE_SEC = 1
+GRAPH_HISTORY_POINTS = 300
 
 HOME = Path.home()
 LOG_FILE = HOME / ".symo_log.txt"

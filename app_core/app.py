@@ -33,6 +33,7 @@ from .constants import (
     LOG_FILE,
     SETTINGS_FILE,
     TIME_UPDATE_SEC,
+    GRAPH_HISTORY_POINTS,
     SUPPORTED_LANGS,
     MENU_ORDER_DEFAULT,
 )
@@ -130,37 +131,37 @@ class SystemTrayApp:
         self.cpu_graph_window: Optional[Gtk.Window] = None
         self.cpu_graph_area: Optional[Gtk.DrawingArea] = None
         self.cpu_graph_hint_label: Optional[Gtk.Label] = None
-        self.cpu_history = deque(maxlen=120)
+        self.cpu_history = deque(maxlen=GRAPH_HISTORY_POINTS)
 
         self.ram_graph_window: Optional[Gtk.Window] = None
         self.ram_graph_area: Optional[Gtk.DrawingArea] = None
         self.ram_graph_hint_label: Optional[Gtk.Label] = None
-        self.ram_history = deque(maxlen=120)
+        self.ram_history = deque(maxlen=GRAPH_HISTORY_POINTS)
 
         self.swap_graph_window: Optional[Gtk.Window] = None
         self.swap_graph_area: Optional[Gtk.DrawingArea] = None
         self.swap_graph_hint_label: Optional[Gtk.Label] = None
-        self.swap_history = deque(maxlen=120)
+        self.swap_history = deque(maxlen=GRAPH_HISTORY_POINTS)
 
         self.disk_graph_window: Optional[Gtk.Window] = None
         self.disk_graph_area: Optional[Gtk.DrawingArea] = None
         self.disk_graph_hint_label: Optional[Gtk.Label] = None
-        self.disk_history = deque(maxlen=120)
+        self.disk_history = deque(maxlen=GRAPH_HISTORY_POINTS)
 
         self.net_graph_window: Optional[Gtk.Window] = None
         self.net_graph_area: Optional[Gtk.DrawingArea] = None
         self.net_graph_hint_label: Optional[Gtk.Label] = None
-        self.net_history = deque(maxlen=120)
+        self.net_history = deque(maxlen=GRAPH_HISTORY_POINTS)
 
         self.keyboard_graph_window: Optional[Gtk.Window] = None
         self.keyboard_graph_area: Optional[Gtk.DrawingArea] = None
         self.keyboard_graph_hint_label: Optional[Gtk.Label] = None
-        self.keyboard_history = deque(maxlen=120)
+        self.keyboard_history = deque(maxlen=GRAPH_HISTORY_POINTS)
 
         self.mouse_graph_window: Optional[Gtk.Window] = None
         self.mouse_graph_area: Optional[Gtk.DrawingArea] = None
         self.mouse_graph_hint_label: Optional[Gtk.Label] = None
-        self.mouse_history = deque(maxlen=120)
+        self.mouse_history = deque(maxlen=GRAPH_HISTORY_POINTS)
 
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
             try:
