@@ -1,4 +1,4 @@
-# SyMo ([RU](README_RU))
+# SyMo ([RU](README_RU.md))
 
 <img src="logo.png" width="96" alt="SyMo logo" />
 
