@@ -19,7 +19,6 @@ from .constants import (
 from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
 
-
 MENU_ORDER_ENABLED_COLUMN = 0
 MENU_ORDER_LABEL_COLUMN = 1
 MENU_ORDER_KEY_COLUMN = 2
@@ -32,7 +31,7 @@ class SettingsDialog(Gtk.Dialog):
                          flags=0)
         self.set_modal(True)
         self.set_destroy_with_parent(True)
-        self.set_default_size(560, 860)
+        self.set_default_size(400, 800)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
                          tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
@@ -43,7 +42,7 @@ class SettingsDialog(Gtk.Dialog):
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroller.set_shadow_type(Gtk.ShadowType.NONE)
-        scroller.set_min_content_height(760)
+        scroller.set_min_content_height(800)
         box.add(scroller)
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -80,13 +79,6 @@ class SettingsDialog(Gtk.Dialog):
         reorder_title = Gtk.Label(label=tr('menu_order_title'))
         reorder_title.set_xalign(0)
         content.add(reorder_title)
-
-        reorder_hint = Gtk.Label(label=tr('menu_order_hint'))
-        reorder_hint.set_xalign(0)
-        reorder_hint.set_line_wrap(True)
-        reorder_hint.get_style_context().add_class('dim-label')
-        reorder_hint.set_margin_bottom(2)
-        content.add(reorder_hint)
 
         self.menu_order_store = Gtk.ListStore(bool, str, str)
 
@@ -172,13 +164,6 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         content.add(graph_history_box)
-
-        graph_history_hint = Gtk.Label(label=tr('graph_history_hint'))
-        graph_history_hint.set_xalign(0)
-        graph_history_hint.set_line_wrap(True)
-        graph_history_hint.get_style_context().add_class('dim-label')
-        graph_history_hint.set_margin_bottom(2)
-        content.add(graph_history_hint)
 
         content.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         add_section_title('notification_section')
@@ -279,7 +264,6 @@ class SettingsDialog(Gtk.Dialog):
             if key not in unique:
                 unique.append(key)
         return unique
-
 
     def _on_menu_item_toggled(self, _renderer, path: str):
         tree_iter = self.menu_order_store.get_iter(path)
