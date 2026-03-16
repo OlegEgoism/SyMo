@@ -23,7 +23,7 @@ except (ValueError, ImportError):
 gi.require_version("Gtk", "3.0")
 
 import psutil
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Gtk, GLib
 from pynput import keyboard, mouse
 
 from .constants import (
@@ -439,29 +439,33 @@ class SystemTrayApp:
         self.keyboard_history = deque(self.keyboard_history, maxlen=maxlen)
         self.mouse_history = deque(self.mouse_history, maxlen=maxlen)
 
-    def _configure_graph_area(self, area: Gtk.DrawingArea, graph_key: str) -> None:
-        area.add_events(Gdk.EventMask.SCROLL_MASK)
-        area.connect("scroll-event", self._on_graph_scroll, graph_key)
+    def _create_graph_zoom_control(self, graph_key: str) -> Gtk.Box:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        label = Gtk.Label(label=tr('graph_zoom_label'))
+        label.set_xalign(0)
+        row.pack_start(label, False, False, 0)
 
-    def _on_graph_scroll(self, widget, event, graph_key: str):
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1.0, 32.0, 0.5)
+        scale.set_hexpand(True)
+        scale.set_digits(1)
+        scale.set_draw_value(True)
+        scale.set_value(self.graph_zoom.get(graph_key, 1.0))
+        scale.connect("value-changed", self._on_graph_zoom_changed, graph_key)
+        row.pack_start(scale, True, True, 0)
+        return row
+
+    def _on_graph_zoom_changed(self, scale: Gtk.Scale, graph_key: str) -> None:
         if graph_key not in self.graph_zoom:
-            return False
+            return
 
-        zoom = self.graph_zoom[graph_key]
-        if event.direction == Gdk.ScrollDirection.UP:
-            zoom = min(32.0, zoom * 1.25)
-        elif event.direction == Gdk.ScrollDirection.DOWN:
-            zoom = max(1.0, zoom / 1.25)
-        elif event.direction == Gdk.ScrollDirection.SMOOTH:
-            if event.delta_y < 0:
-                zoom = min(32.0, zoom * 1.25)
-            elif event.delta_y > 0:
-                zoom = max(1.0, zoom / 1.25)
-
+        zoom = max(1.0, min(32.0, float(scale.get_value())))
         self.graph_zoom[graph_key] = zoom
-        widget.queue_draw()
+
+        area = getattr(self, f"{graph_key}_graph_area", None)
+        if area:
+            area.queue_draw()
+
         self._refresh_graph_hints()
-        return True
 
     def _get_zoomed_samples(self, history, graph_key: str):
         samples = list(history)
@@ -764,9 +768,11 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
+        zoom_control = self._create_graph_zoom_control("cpu")
+        box.pack_start(zoom_control, False, False, 0)
+
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
-        self._configure_graph_area(area, "cpu")
         area.connect("draw", self._draw_cpu_graph)
         box.pack_start(area, True, True, 0)
 
@@ -934,9 +940,11 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
+        zoom_control = self._create_graph_zoom_control("ram")
+        box.pack_start(zoom_control, False, False, 0)
+
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
-        self._configure_graph_area(area, "ram")
         area.connect("draw", self._draw_ram_graph)
         box.pack_start(area, True, True, 0)
 
@@ -1070,9 +1078,11 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
+        zoom_control = self._create_graph_zoom_control("swap")
+        box.pack_start(zoom_control, False, False, 0)
+
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
-        self._configure_graph_area(area, "swap")
         area.connect("draw", self._draw_swap_graph)
         box.pack_start(area, True, True, 0)
 
@@ -1206,9 +1216,11 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
+        zoom_control = self._create_graph_zoom_control("disk")
+        box.pack_start(zoom_control, False, False, 0)
+
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
-        self._configure_graph_area(area, "disk")
         area.connect("draw", self._draw_disk_graph)
         box.pack_start(area, True, True, 0)
 
@@ -1343,9 +1355,11 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
+        zoom_control = self._create_graph_zoom_control("net")
+        box.pack_start(zoom_control, False, False, 0)
+
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
-        self._configure_graph_area(area, "net")
         area.connect("draw", self._draw_net_graph)
         box.pack_start(area, True, True, 0)
 
@@ -1489,9 +1503,11 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
+        zoom_control = self._create_graph_zoom_control("keyboard")
+        box.pack_start(zoom_control, False, False, 0)
+
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
-        self._configure_graph_area(area, "keyboard")
         area.connect("draw", self._draw_keyboard_graph)
         box.pack_start(area, True, True, 0)
 
@@ -1623,9 +1639,11 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
+        zoom_control = self._create_graph_zoom_control("mouse")
+        box.pack_start(zoom_control, False, False, 0)
+
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
-        self._configure_graph_area(area, "mouse")
         area.connect("draw", self._draw_mouse_graph)
         box.pack_start(area, True, True, 0)
 
