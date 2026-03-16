@@ -17,6 +17,10 @@ SyMo is a GTK-based Linux system tray monitor that displays live system metrics,
     - show/hide menu items;
     - reorder menu items by drag-and-drop in Settings.
 - Per-metric graph windows (CPU, RAM, Swap, Disk, Network, Keyboard, Mouse).
+  - Interactive controls in graph windows:
+    - mouse wheel: horizontal zoom;
+    - left mouse button drag: horizontal pan;
+    - mouse hover: tooltip near cursor with timestamp and metric values for the nearest point.
 - Power controls:
     - shutdown;
     - reboot;
