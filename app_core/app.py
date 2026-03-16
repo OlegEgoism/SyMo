@@ -747,7 +747,7 @@ class SystemTrayApp:
         if self.cpu_graph_window:
             self.cpu_graph_window.set_title(f"{tr('cpu_info')} — {tr('system_status')}")
         if self.cpu_graph_hint_label:
-            self.cpu_graph_hint_label.set_text(self._zoom_hint_text())
+            self.cpu_graph_hint_label.set_text("")
         if self.cpu_graph_area:
             self.cpu_graph_area.queue_draw()
 
@@ -772,9 +772,6 @@ class SystemTrayApp:
     @staticmethod
     def _clamp(value: float, min_value: float, max_value: float) -> float:
         return max(min_value, min(max_value, value))
-
-    def _zoom_hint_text(self) -> str:
-        return "Колесо мыши: масштаб по горизонтали (точка под курсором)"
 
     def _visible_samples(self, graph_key: str, samples: list[tuple]) -> list[tuple]:
         if len(samples) <= 2:
@@ -989,7 +986,7 @@ class SystemTrayApp:
         if self.ram_graph_window:
             self.ram_graph_window.set_title(f"{tr('ram_loading')} — {tr('system_status')}")
         if self.ram_graph_hint_label:
-            self.ram_graph_hint_label.set_text(self._zoom_hint_text())
+            self.ram_graph_hint_label.set_text("")
         if self.ram_graph_area:
             self.ram_graph_area.queue_draw()
 
@@ -1126,7 +1123,7 @@ class SystemTrayApp:
         if self.swap_graph_window:
             self.swap_graph_window.set_title(f"{tr('swap_loading')} — {tr('system_status')}")
         if self.swap_graph_hint_label:
-            self.swap_graph_hint_label.set_text(self._zoom_hint_text())
+            self.swap_graph_hint_label.set_text("")
         if self.swap_graph_area:
             self.swap_graph_area.queue_draw()
 
@@ -1263,7 +1260,7 @@ class SystemTrayApp:
         if self.disk_graph_window:
             self.disk_graph_window.set_title(f"{tr('disk_loading')} — {tr('system_status')}")
         if self.disk_graph_hint_label:
-            self.disk_graph_hint_label.set_text(self._zoom_hint_text())
+            self.disk_graph_hint_label.set_text("")
         if self.disk_graph_area:
             self.disk_graph_area.queue_draw()
 
@@ -1401,7 +1398,7 @@ class SystemTrayApp:
         if self.net_graph_window:
             self.net_graph_window.set_title(f"{tr('lan_speed')} — {tr('system_status')}")
         if self.net_graph_hint_label:
-            self.net_graph_hint_label.set_text(self._zoom_hint_text())
+            self.net_graph_hint_label.set_text("")
         if self.net_graph_area:
             self.net_graph_area.queue_draw()
 
@@ -1548,7 +1545,7 @@ class SystemTrayApp:
         if self.keyboard_graph_window:
             self.keyboard_graph_window.set_title(f"{tr('keyboard_clicks')} — {tr('system_status')}")
         if self.keyboard_graph_hint_label:
-            self.keyboard_graph_hint_label.set_text(self._zoom_hint_text())
+            self.keyboard_graph_hint_label.set_text("")
         if self.keyboard_graph_area:
             self.keyboard_graph_area.queue_draw()
 
@@ -1683,7 +1680,7 @@ class SystemTrayApp:
         if self.mouse_graph_window:
             self.mouse_graph_window.set_title(f"{tr('mouse_clicks')} — {tr('system_status')}")
         if self.mouse_graph_hint_label:
-            self.mouse_graph_hint_label.set_text(self._zoom_hint_text())
+            self.mouse_graph_hint_label.set_text("")
         if self.mouse_graph_area:
             self.mouse_graph_area.queue_draw()
 
