@@ -751,13 +751,13 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
-        zoom_control = self._create_graph_zoom_control("cpu")
-        box.pack_start(zoom_control, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_cpu_graph)
         box.pack_start(area, True, True, 0)
+
+        zoom_control = self._create_graph_zoom_control("cpu")
+        box.pack_start(zoom_control, False, False, 0)
 
         window.add(box)
         window.connect("destroy", self._on_cpu_graph_destroy)
@@ -924,13 +924,13 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
-        zoom_control = self._create_graph_zoom_control("ram")
-        box.pack_start(zoom_control, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_ram_graph)
         box.pack_start(area, True, True, 0)
+
+        zoom_control = self._create_graph_zoom_control("ram")
+        box.pack_start(zoom_control, False, False, 0)
 
         window.add(box)
         window.connect("destroy", self._on_ram_graph_destroy)
@@ -1063,13 +1063,13 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
-        zoom_control = self._create_graph_zoom_control("swap")
-        box.pack_start(zoom_control, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_swap_graph)
         box.pack_start(area, True, True, 0)
+
+        zoom_control = self._create_graph_zoom_control("swap")
+        box.pack_start(zoom_control, False, False, 0)
 
         window.add(box)
         window.connect("destroy", self._on_swap_graph_destroy)
@@ -1202,13 +1202,13 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
-        zoom_control = self._create_graph_zoom_control("disk")
-        box.pack_start(zoom_control, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_disk_graph)
         box.pack_start(area, True, True, 0)
+
+        zoom_control = self._create_graph_zoom_control("disk")
+        box.pack_start(zoom_control, False, False, 0)
 
         window.add(box)
         window.connect("destroy", self._on_disk_graph_destroy)
@@ -1342,13 +1342,13 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
-        zoom_control = self._create_graph_zoom_control("net")
-        box.pack_start(zoom_control, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_net_graph)
         box.pack_start(area, True, True, 0)
+
+        zoom_control = self._create_graph_zoom_control("net")
+        box.pack_start(zoom_control, False, False, 0)
 
         window.add(box)
         window.connect("destroy", self._on_net_graph_destroy)
@@ -1491,13 +1491,13 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
-        zoom_control = self._create_graph_zoom_control("keyboard")
-        box.pack_start(zoom_control, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_keyboard_graph)
         box.pack_start(area, True, True, 0)
+
+        zoom_control = self._create_graph_zoom_control("keyboard")
+        box.pack_start(zoom_control, False, False, 0)
 
         window.add(box)
         window.connect("destroy", self._on_keyboard_graph_destroy)
@@ -1628,13 +1628,13 @@ class SystemTrayApp:
         hint.set_xalign(0)
         box.pack_start(hint, False, False, 0)
 
-        zoom_control = self._create_graph_zoom_control("mouse")
-        box.pack_start(zoom_control, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_mouse_graph)
         box.pack_start(area, True, True, 0)
+
+        zoom_control = self._create_graph_zoom_control("mouse")
+        box.pack_start(zoom_control, False, False, 0)
 
         window.add(box)
         window.connect("destroy", self._on_mouse_graph_destroy)
