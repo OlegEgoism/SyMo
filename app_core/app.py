@@ -9,7 +9,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import gi
 
@@ -167,13 +167,13 @@ class SystemTrayApp:
         self.mouse_history = deque(maxlen=graph_points)
 
         self.graph_zoom_state: Dict[str, Dict[str, float]] = {
-            'cpu': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
-            'ram': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
-            'swap': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
-            'disk': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
-            'net': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
-            'keyboard': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
-            'mouse': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
+            'cpu': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
+            'ram': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
+            'swap': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
+            'disk': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
+            'net': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
+            'keyboard': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
+            'mouse': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
         }
 
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
@@ -803,11 +803,13 @@ class SystemTrayApp:
             | Gdk.EventMask.BUTTON_RELEASE_MASK
             | Gdk.EventMask.POINTER_MOTION_MASK
             | Gdk.EventMask.BUTTON1_MOTION_MASK
+            | Gdk.EventMask.LEAVE_NOTIFY_MASK
         )
         area.connect('scroll-event', self._on_graph_scroll_event, graph_key)
         area.connect('button-press-event', self._on_graph_button_press_event, graph_key)
         area.connect('motion-notify-event', self._on_graph_motion_notify_event, graph_key)
         area.connect('button-release-event', self._on_graph_button_release_event, graph_key)
+        area.connect('leave-notify-event', self._on_graph_leave_notify_event, graph_key)
 
     def _on_graph_scroll_event(self, widget, event, graph_key: str):
         state = self.graph_zoom_state.get(graph_key)
@@ -859,7 +861,15 @@ class SystemTrayApp:
 
     def _on_graph_motion_notify_event(self, widget, event, graph_key: str):
         state = self.graph_zoom_state.get(graph_key)
-        if state is None or state.get('dragging', 0.0) < 0.5:
+        if state is None:
+            return False
+
+        state['hovering'] = 1.0
+        state['hover_x'] = float(getattr(event, 'x', 0.0))
+        state['hover_y'] = float(getattr(event, 'y', 0.0))
+
+        if state.get('dragging', 0.0) < 0.5:
+            widget.queue_draw()
             return False
 
         width = max(1, widget.get_allocated_width())
@@ -888,6 +898,82 @@ class SystemTrayApp:
             return False
         state['dragging'] = 0.0
         return True
+
+    def _on_graph_leave_notify_event(self, widget, _event, graph_key: str):
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return False
+        state['hovering'] = 0.0
+        widget.queue_draw()
+        return False
+
+    def _draw_graph_hover_info(self,
+                              widget,
+                              cr,
+                              graph_key: str,
+                              samples: list[tuple],
+                              margin_left: float,
+                              margin_top: float,
+                              plot_w: float,
+                              plot_h: float,
+                              formatter: Callable[[tuple], list[str]]) -> None:
+        state = self.graph_zoom_state.get(graph_key)
+        if not state or state.get('hovering', 0.0) < 0.5 or not samples:
+            return
+
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+        hover_x = self._clamp(float(state.get('hover_x', 0.0)), 0.0, float(width))
+        hover_y = self._clamp(float(state.get('hover_y', 0.0)), 0.0, float(height))
+
+        left = margin_left
+        right = margin_left + plot_w
+        top = margin_top
+        bottom = margin_top + plot_h
+        if hover_x < left or hover_x > right or hover_y < top or hover_y > bottom:
+            return
+
+        if len(samples) <= 1:
+            idx = 0
+            point_x = left
+        else:
+            ratio = self._clamp((hover_x - left) / max(1.0, plot_w), 0.0, 1.0)
+            idx = int(round(ratio * (len(samples) - 1)))
+            idx = max(0, min(len(samples) - 1, idx))
+            point_x = left + plot_w * idx / (len(samples) - 1)
+
+        sample = samples[idx]
+        lines = formatter(sample)
+        if not lines:
+            return
+
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.22)
+        cr.set_line_width(1)
+        cr.move_to(point_x, top)
+        cr.line_to(point_x, bottom)
+        cr.stroke()
+
+        cr.select_font_face("Sans", 0, 0)
+        cr.set_font_size(11)
+        padding = 6
+        line_height = 14
+        max_w = 0.0
+        for line in lines:
+            max_w = max(max_w, _text_width(cr.text_extents(line)))
+
+        box_w = max_w + padding * 2
+        box_h = line_height * len(lines) + padding * 2
+        box_x = self._clamp(hover_x + 12, 4.0, max(4.0, width - box_w - 4))
+        box_y = self._clamp(hover_y + 12, 4.0, max(4.0, height - box_h - 4))
+
+        cr.set_source_rgba(0.05, 0.05, 0.05, 0.88)
+        cr.rectangle(box_x, box_y, box_w, box_h)
+        cr.fill()
+
+        cr.set_source_rgb(0.96, 0.96, 0.96)
+        for i, line in enumerate(lines):
+            cr.move_to(box_x + padding, box_y + padding + line_height * (i + 1) - 3)
+            cr.show_text(line)
 
     def _draw_cpu_graph(self, widget, cr):
         width = widget.get_allocated_width()
@@ -974,6 +1060,22 @@ class SystemTrayApp:
         ext = cr.text_extents(values_text)
         cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
+
+        self._draw_graph_hover_info(
+            widget,
+            cr,
+            'cpu',
+            samples,
+            margin_left,
+            margin_top,
+            plot_w,
+            plot_h,
+            lambda sample: [
+                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
+                f"{tr('cpu')}: {sample[1]:.1f}%",
+                f"{tr('temperature')}: {sample[2]:.1f}°C",
+            ],
+        )
 
         # Start and end time at the bottom
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
@@ -1113,6 +1215,22 @@ class SystemTrayApp:
         cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
+        self._draw_graph_hover_info(
+            widget,
+            cr,
+            'ram',
+            samples,
+            margin_left,
+            margin_top,
+            plot_w,
+            plot_h,
+            lambda sample: [
+                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
+                f"{tr('ram_loading')}: {sample[3]:.1f}%",
+                f"{sample[1]:.1f}/{sample[2]:.1f} GB",
+            ],
+        )
+
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
         end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
 
@@ -1250,6 +1368,22 @@ class SystemTrayApp:
         cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
+        self._draw_graph_hover_info(
+            widget,
+            cr,
+            'swap',
+            samples,
+            margin_left,
+            margin_top,
+            plot_w,
+            plot_h,
+            lambda sample: [
+                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
+                f"{tr('swap_loading')}: {sample[3]:.1f}%",
+                f"{sample[1]:.1f}/{sample[2]:.1f} GB",
+            ],
+        )
+
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
         end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
 
@@ -1386,6 +1520,22 @@ class SystemTrayApp:
         ext = cr.text_extents(values_text)
         cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
+
+        self._draw_graph_hover_info(
+            widget,
+            cr,
+            'disk',
+            samples,
+            margin_left,
+            margin_top,
+            plot_w,
+            plot_h,
+            lambda sample: [
+                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
+                f"{tr('disk_loading')}: {sample[3]:.1f}%",
+                f"{sample[1]:.1f}/{sample[2]:.1f} GB",
+            ],
+        )
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
         end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
@@ -1538,6 +1688,22 @@ class SystemTrayApp:
         cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
+        self._draw_graph_hover_info(
+            widget,
+            cr,
+            'net',
+            samples,
+            margin_left,
+            margin_top,
+            plot_w,
+            plot_h,
+            lambda sample: [
+                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
+                f"↓ {sample[1]:.2f} MB/s",
+                f"↑ {sample[2]:.2f} MB/s",
+            ],
+        )
+
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
         end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
 
@@ -1673,6 +1839,21 @@ class SystemTrayApp:
         cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
 
+        self._draw_graph_hover_info(
+            widget,
+            cr,
+            'keyboard',
+            samples,
+            margin_left,
+            margin_top,
+            plot_w,
+            plot_h,
+            lambda sample: [
+                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
+                f"{tr('keyboard_clicks')}: {sample[1]}",
+            ],
+        )
+
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
         end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
 
@@ -1807,6 +1988,21 @@ class SystemTrayApp:
         ext = cr.text_extents(values_text)
         cr.move_to(width - margin_right - _text_width(ext), 12)
         cr.show_text(values_text)
+
+        self._draw_graph_hover_info(
+            widget,
+            cr,
+            'mouse',
+            samples,
+            margin_left,
+            margin_top,
+            plot_w,
+            plot_h,
+            lambda sample: [
+                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
+                f"{tr('mouse_clicks')}: {sample[1]}",
+            ],
+        )
 
         start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
         end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
