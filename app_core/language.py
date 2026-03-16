@@ -75,8 +75,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Размер файла логов (МБ)',
         'graph_history_minutes': 'История графиков (мин.)',
-        'graph_zoom_label': 'Масштаб по X:',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': 'Проверить сеть',
         'ping_running': 'Выполняется проверка сети…',
@@ -185,8 +184,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maximum log file size (MB)',
         'graph_history_minutes': 'Graph history (min)',
-        'graph_zoom_label': 'X-axis zoom:',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': 'Ping network',
         'ping_running': 'Running network check…',
@@ -295,8 +293,7 @@ LANGUAGES = {
 
         'max_log_size_mb': '日志文件的最大大小 (MB)',
         'graph_history_minutes': '图表历史记录（分钟）',
-        'graph_zoom_label': 'X轴缩放：',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': '网络连通性测试（ping）',
         'ping_running': '正在进行网络测试…',
@@ -405,8 +402,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maximale Protokolldateigröße (MB)',
         'graph_history_minutes': 'Diagrammverlauf (Min.)',
-        'graph_zoom_label': 'X-Achsen-Zoom:',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': 'Netzwerk prüfen (Ping)',
         'show_ping': 'Ping-Schaltfläche im Tray anzeigen',
@@ -516,8 +512,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Dimensione massima del file di log (MB)',
         'graph_history_minutes': 'Cronologia grafici (min)',
-        'graph_zoom_label': 'Zoom asse X:',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': 'Verifica rete (ping)',
         'ping_running': 'Verifica della rete in corso…',
@@ -626,8 +621,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Tamaño máximo del archivo de registro (MB)',
         'graph_history_minutes': 'Historial de gráficos (min)',
-        'graph_zoom_label': 'Zoom eje X:',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': 'Probar red (ping)',
         'ping_running': 'Comprobando la red…',
@@ -736,8 +730,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maksimum günlük dosyası boyutu (MB)',
         'graph_history_minutes': 'Grafik geçmişi (dk.)',
-        'graph_zoom_label': 'X ekseni yakınlaştırma:',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': 'Ağı kontrol et (ping)',
         'ping_running': 'Ağ kontrolü yapılıyor…',
@@ -846,8 +839,7 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Taille maximale du fichier journal (Mo)',
         'graph_history_minutes': 'Historique des graphiques (min)',
-        'graph_zoom_label': 'Zoom axe X :',
-        'graph_zoom_hint': 'Zoom X: {zoom:.1f}× | Visible points: {visible}/{total} | Slider: 1.0–32.0',
+        'graph_zoom_label': 'Масштаб:',
 
         'ping_network': 'Vérifier le réseau (ping)',
         'ping_running': 'Vérification du réseau en cours…',

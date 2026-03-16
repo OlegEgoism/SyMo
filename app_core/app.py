@@ -465,7 +465,6 @@ class SystemTrayApp:
         if area:
             area.queue_draw()
 
-        self._refresh_graph_hints()
 
     def _get_zoomed_samples(self, history, graph_key: str):
         samples = list(history)
@@ -474,22 +473,6 @@ class SystemTrayApp:
             return samples
         visible_points = max(2, int(len(samples) / zoom))
         return samples[-visible_points:]
-
-    def _set_graph_hint(self, hint_label: Optional[Gtk.Label], graph_key: str, history_len: int) -> None:
-        if not hint_label:
-            return
-        zoom = self.graph_zoom.get(graph_key, 1.0)
-        visible_points = max(1, int(history_len / zoom)) if history_len > 0 else 0
-        hint_label.set_text(tr('graph_zoom_hint').format(zoom=zoom, visible=visible_points, total=history_len))
-
-    def _refresh_graph_hints(self) -> None:
-        self._set_graph_hint(self.cpu_graph_hint_label, 'cpu', len(self.cpu_history))
-        self._set_graph_hint(self.ram_graph_hint_label, 'ram', len(self.ram_history))
-        self._set_graph_hint(self.swap_graph_hint_label, 'swap', len(self.swap_history))
-        self._set_graph_hint(self.disk_graph_hint_label, 'disk', len(self.disk_history))
-        self._set_graph_hint(self.net_graph_hint_label, 'net', len(self.net_history))
-        self._set_graph_hint(self.keyboard_graph_hint_label, 'keyboard', len(self.keyboard_history))
-        self._set_graph_hint(self.mouse_graph_hint_label, 'mouse', len(self.mouse_history))
 
     def save_settings(self) -> None:
         try:
@@ -794,7 +777,8 @@ class SystemTrayApp:
     def _refresh_cpu_graph_texts(self) -> None:
         if self.cpu_graph_window:
             self.cpu_graph_window.set_title(f"{tr('cpu_info')} — {tr('system_status')}")
-        self._set_graph_hint(self.cpu_graph_hint_label, 'cpu', len(self.cpu_history))
+        if self.cpu_graph_hint_label:
+            self.cpu_graph_hint_label.set_text("")
         if self.cpu_graph_area:
             self.cpu_graph_area.queue_draw()
 
@@ -966,7 +950,8 @@ class SystemTrayApp:
     def _refresh_ram_graph_texts(self) -> None:
         if self.ram_graph_window:
             self.ram_graph_window.set_title(f"{tr('ram_loading')} — {tr('system_status')}")
-        self._set_graph_hint(self.ram_graph_hint_label, 'ram', len(self.ram_history))
+        if self.ram_graph_hint_label:
+            self.ram_graph_hint_label.set_text("")
         if self.ram_graph_area:
             self.ram_graph_area.queue_draw()
 
@@ -1104,7 +1089,8 @@ class SystemTrayApp:
     def _refresh_swap_graph_texts(self) -> None:
         if self.swap_graph_window:
             self.swap_graph_window.set_title(f"{tr('swap_loading')} — {tr('system_status')}")
-        self._set_graph_hint(self.swap_graph_hint_label, 'swap', len(self.swap_history))
+        if self.swap_graph_hint_label:
+            self.swap_graph_hint_label.set_text("")
         if self.swap_graph_area:
             self.swap_graph_area.queue_draw()
 
@@ -1242,7 +1228,8 @@ class SystemTrayApp:
     def _refresh_disk_graph_texts(self) -> None:
         if self.disk_graph_window:
             self.disk_graph_window.set_title(f"{tr('disk_loading')} — {tr('system_status')}")
-        self._set_graph_hint(self.disk_graph_hint_label, 'disk', len(self.disk_history))
+        if self.disk_graph_hint_label:
+            self.disk_graph_hint_label.set_text("")
         if self.disk_graph_area:
             self.disk_graph_area.queue_draw()
 
@@ -1381,7 +1368,8 @@ class SystemTrayApp:
     def _refresh_net_graph_texts(self) -> None:
         if self.net_graph_window:
             self.net_graph_window.set_title(f"{tr('lan_speed')} — {tr('system_status')}")
-        self._set_graph_hint(self.net_graph_hint_label, 'net', len(self.net_history))
+        if self.net_graph_hint_label:
+            self.net_graph_hint_label.set_text("")
         if self.net_graph_area:
             self.net_graph_area.queue_draw()
 
@@ -1529,7 +1517,8 @@ class SystemTrayApp:
     def _refresh_keyboard_graph_texts(self) -> None:
         if self.keyboard_graph_window:
             self.keyboard_graph_window.set_title(f"{tr('keyboard_clicks')} — {tr('system_status')}")
-        self._set_graph_hint(self.keyboard_graph_hint_label, 'keyboard', len(self.keyboard_history))
+        if self.keyboard_graph_hint_label:
+            self.keyboard_graph_hint_label.set_text("")
         if self.keyboard_graph_area:
             self.keyboard_graph_area.queue_draw()
 
@@ -1665,7 +1654,8 @@ class SystemTrayApp:
     def _refresh_mouse_graph_texts(self) -> None:
         if self.mouse_graph_window:
             self.mouse_graph_window.set_title(f"{tr('mouse_clicks')} — {tr('system_status')}")
-        self._set_graph_hint(self.mouse_graph_hint_label, 'mouse', len(self.mouse_history))
+        if self.mouse_graph_hint_label:
+            self.mouse_graph_hint_label.set_text("")
         if self.mouse_graph_area:
             self.mouse_graph_area.queue_draw()
 
