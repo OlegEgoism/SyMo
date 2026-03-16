@@ -23,7 +23,7 @@ except (ValueError, ImportError):
 gi.require_version("Gtk", "3.0")
 
 import psutil
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gdk
 from pynput import keyboard, mouse
 
 from .constants import (
@@ -165,6 +165,16 @@ class SystemTrayApp:
         self.mouse_graph_area: Optional[Gtk.DrawingArea] = None
         self.mouse_graph_hint_label: Optional[Gtk.Label] = None
         self.mouse_history = deque(maxlen=graph_points)
+
+        self.graph_zoom_state: Dict[str, Dict[str, float]] = {
+            'cpu': {'scale': 1.0, 'center': 1.0},
+            'ram': {'scale': 1.0, 'center': 1.0},
+            'swap': {'scale': 1.0, 'center': 1.0},
+            'disk': {'scale': 1.0, 'center': 1.0},
+            'net': {'scale': 1.0, 'center': 1.0},
+            'keyboard': {'scale': 1.0, 'center': 1.0},
+            'mouse': {'scale': 1.0, 'center': 1.0},
+        }
 
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
             try:
@@ -715,6 +725,7 @@ class SystemTrayApp:
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_cpu_graph)
+        self._connect_graph_zoom(area, 'cpu')
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -736,7 +747,7 @@ class SystemTrayApp:
         if self.cpu_graph_window:
             self.cpu_graph_window.set_title(f"{tr('cpu_info')} — {tr('system_status')}")
         if self.cpu_graph_hint_label:
-            self.cpu_graph_hint_label.set_text("")
+            self.cpu_graph_hint_label.set_text(self._zoom_hint_text())
         if self.cpu_graph_area:
             self.cpu_graph_area.queue_draw()
 
@@ -757,6 +768,77 @@ class SystemTrayApp:
         y = max(20, height / 2)
         cr.move_to(x, y)
         cr.show_text(message)
+
+    @staticmethod
+    def _clamp(value: float, min_value: float, max_value: float) -> float:
+        return max(min_value, min(max_value, value))
+
+    def _zoom_hint_text(self) -> str:
+        return "Колесо мыши: масштаб по горизонтали (точка под курсором)"
+
+    def _visible_samples(self, graph_key: str, samples: list[tuple]) -> list[tuple]:
+        if len(samples) <= 2:
+            return samples
+        state = self.graph_zoom_state.get(graph_key)
+        if not state:
+            return samples
+
+        scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
+        if scale <= 1.0:
+            return samples
+
+        total = len(samples)
+        window_len = max(2, int(round(total / scale)))
+        center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
+        center_idx = int(round(center * (total - 1)))
+
+        start = center_idx - (window_len // 2)
+        max_start = max(0, total - window_len)
+        start = min(max(0, start), max_start)
+        end = start + window_len
+        return samples[start:end]
+
+    def _connect_graph_zoom(self, area: Gtk.DrawingArea, graph_key: str) -> None:
+        area.set_events(area.get_events() | Gdk.EventMask.SCROLL_MASK)
+        area.connect('scroll-event', self._on_graph_scroll_event, graph_key)
+
+    def _on_graph_scroll_event(self, widget, event, graph_key: str):
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return False
+
+        width = max(1, widget.get_allocated_width())
+        anchor_x = self._clamp(float(getattr(event, 'x', width / 2)), 0.0, float(width))
+        anchor_ratio = anchor_x / width
+
+        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
+        zoom_factor = 1.0
+        if event.direction == Gdk.ScrollDirection.UP:
+            zoom_factor = 1.2
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            zoom_factor = 1 / 1.2
+        elif event.direction == Gdk.ScrollDirection.SMOOTH:
+            delta_y = float(getattr(event, 'delta_y', 0.0))
+            zoom_factor = 1.2 if delta_y < 0 else (1 / 1.2 if delta_y > 0 else 1.0)
+
+        if zoom_factor == 1.0:
+            return False
+
+        new_scale = self._clamp(old_scale * zoom_factor, 1.0, 40.0)
+        old_span = 1.0 / old_scale
+        new_span = 1.0 / new_scale
+        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
+        old_left = self._clamp(old_center - old_span / 2, 0.0, max(0.0, 1.0 - old_span))
+        anchor_global = old_left + anchor_ratio * old_span
+
+        new_left = anchor_global - anchor_ratio * new_span
+        new_left = self._clamp(new_left, 0.0, max(0.0, 1.0 - new_span))
+        new_center = new_left + new_span / 2
+
+        state['scale'] = new_scale
+        state['center'] = self._clamp(new_center, 0.0, 1.0)
+        widget.queue_draw()
+        return True
 
     def _draw_cpu_graph(self, widget, cr):
         width = widget.get_allocated_width()
@@ -792,7 +874,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = list(self.cpu_history)
+        samples = self._visible_samples('cpu', list(self.cpu_history))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -885,6 +967,7 @@ class SystemTrayApp:
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_ram_graph)
+        self._connect_graph_zoom(area, 'ram')
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -906,7 +989,7 @@ class SystemTrayApp:
         if self.ram_graph_window:
             self.ram_graph_window.set_title(f"{tr('ram_loading')} — {tr('system_status')}")
         if self.ram_graph_hint_label:
-            self.ram_graph_hint_label.set_text("")
+            self.ram_graph_hint_label.set_text(self._zoom_hint_text())
         if self.ram_graph_area:
             self.ram_graph_area.queue_draw()
 
@@ -943,7 +1026,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = list(self.ram_history)
+        samples = self._visible_samples('ram', list(self.ram_history))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1021,6 +1104,7 @@ class SystemTrayApp:
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_swap_graph)
+        self._connect_graph_zoom(area, 'swap')
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1042,7 +1126,7 @@ class SystemTrayApp:
         if self.swap_graph_window:
             self.swap_graph_window.set_title(f"{tr('swap_loading')} — {tr('system_status')}")
         if self.swap_graph_hint_label:
-            self.swap_graph_hint_label.set_text("")
+            self.swap_graph_hint_label.set_text(self._zoom_hint_text())
         if self.swap_graph_area:
             self.swap_graph_area.queue_draw()
 
@@ -1079,7 +1163,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = list(self.swap_history)
+        samples = self._visible_samples('swap', list(self.swap_history))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1157,6 +1241,7 @@ class SystemTrayApp:
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_disk_graph)
+        self._connect_graph_zoom(area, 'disk')
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1178,7 +1263,7 @@ class SystemTrayApp:
         if self.disk_graph_window:
             self.disk_graph_window.set_title(f"{tr('disk_loading')} — {tr('system_status')}")
         if self.disk_graph_hint_label:
-            self.disk_graph_hint_label.set_text("")
+            self.disk_graph_hint_label.set_text(self._zoom_hint_text())
         if self.disk_graph_area:
             self.disk_graph_area.queue_draw()
 
@@ -1215,7 +1300,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = list(self.disk_history)
+        samples = self._visible_samples('disk', list(self.disk_history))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1294,6 +1379,7 @@ class SystemTrayApp:
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_net_graph)
+        self._connect_graph_zoom(area, 'net')
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1315,7 +1401,7 @@ class SystemTrayApp:
         if self.net_graph_window:
             self.net_graph_window.set_title(f"{tr('lan_speed')} — {tr('system_status')}")
         if self.net_graph_hint_label:
-            self.net_graph_hint_label.set_text("")
+            self.net_graph_hint_label.set_text(self._zoom_hint_text())
         if self.net_graph_area:
             self.net_graph_area.queue_draw()
 
@@ -1341,7 +1427,7 @@ class SystemTrayApp:
             cr.line_to(margin_left + plot_w, y)
         cr.stroke()
 
-        samples = list(self.net_history)
+        samples = self._visible_samples('net', list(self.net_history))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1440,6 +1526,7 @@ class SystemTrayApp:
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_keyboard_graph)
+        self._connect_graph_zoom(area, 'keyboard')
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1461,7 +1548,7 @@ class SystemTrayApp:
         if self.keyboard_graph_window:
             self.keyboard_graph_window.set_title(f"{tr('keyboard_clicks')} — {tr('system_status')}")
         if self.keyboard_graph_hint_label:
-            self.keyboard_graph_hint_label.set_text("")
+            self.keyboard_graph_hint_label.set_text(self._zoom_hint_text())
         if self.keyboard_graph_area:
             self.keyboard_graph_area.queue_draw()
 
@@ -1487,7 +1574,7 @@ class SystemTrayApp:
             cr.line_to(margin_left + plot_w, y)
         cr.stroke()
 
-        samples = list(self.keyboard_history)
+        samples = self._visible_samples('keyboard', list(self.keyboard_history))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1574,6 +1661,7 @@ class SystemTrayApp:
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_mouse_graph)
+        self._connect_graph_zoom(area, 'mouse')
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1595,7 +1683,7 @@ class SystemTrayApp:
         if self.mouse_graph_window:
             self.mouse_graph_window.set_title(f"{tr('mouse_clicks')} — {tr('system_status')}")
         if self.mouse_graph_hint_label:
-            self.mouse_graph_hint_label.set_text("")
+            self.mouse_graph_hint_label.set_text(self._zoom_hint_text())
         if self.mouse_graph_area:
             self.mouse_graph_area.queue_draw()
 
@@ -1621,7 +1709,7 @@ class SystemTrayApp:
             cr.line_to(margin_left + plot_w, y)
         cr.stroke()
 
-        samples = list(self.mouse_history)
+        samples = self._visible_samples('mouse', list(self.mouse_history))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
