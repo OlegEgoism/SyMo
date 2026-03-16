@@ -167,13 +167,13 @@ class SystemTrayApp:
         self.mouse_history = deque(maxlen=graph_points)
 
         self.graph_zoom_state: Dict[str, Dict[str, float]] = {
-            'cpu': {'scale': 1.0, 'center': 1.0},
-            'ram': {'scale': 1.0, 'center': 1.0},
-            'swap': {'scale': 1.0, 'center': 1.0},
-            'disk': {'scale': 1.0, 'center': 1.0},
-            'net': {'scale': 1.0, 'center': 1.0},
-            'keyboard': {'scale': 1.0, 'center': 1.0},
-            'mouse': {'scale': 1.0, 'center': 1.0},
+            'cpu': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
+            'ram': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
+            'swap': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
+            'disk': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
+            'net': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
+            'keyboard': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
+            'mouse': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0},
         }
 
         if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
@@ -796,8 +796,18 @@ class SystemTrayApp:
         return samples[start:end]
 
     def _connect_graph_zoom(self, area: Gtk.DrawingArea, graph_key: str) -> None:
-        area.set_events(area.get_events() | Gdk.EventMask.SCROLL_MASK)
+        area.set_events(
+            area.get_events()
+            | Gdk.EventMask.SCROLL_MASK
+            | Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.BUTTON_RELEASE_MASK
+            | Gdk.EventMask.POINTER_MOTION_MASK
+            | Gdk.EventMask.BUTTON1_MOTION_MASK
+        )
         area.connect('scroll-event', self._on_graph_scroll_event, graph_key)
+        area.connect('button-press-event', self._on_graph_button_press_event, graph_key)
+        area.connect('motion-notify-event', self._on_graph_motion_notify_event, graph_key)
+        area.connect('button-release-event', self._on_graph_button_release_event, graph_key)
 
     def _on_graph_scroll_event(self, widget, event, graph_key: str):
         state = self.graph_zoom_state.get(graph_key)
@@ -835,6 +845,48 @@ class SystemTrayApp:
         state['scale'] = new_scale
         state['center'] = self._clamp(new_center, 0.0, 1.0)
         widget.queue_draw()
+        return True
+
+    def _on_graph_button_press_event(self, _widget, event, graph_key: str):
+        if event.button != Gdk.BUTTON_PRIMARY:
+            return False
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return False
+        state['dragging'] = 1.0
+        state['last_x'] = float(getattr(event, 'x', 0.0))
+        return True
+
+    def _on_graph_motion_notify_event(self, widget, event, graph_key: str):
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None or state.get('dragging', 0.0) < 0.5:
+            return False
+
+        width = max(1, widget.get_allocated_width())
+        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
+        span = 1.0 / old_scale
+        if span >= 1.0:
+            state['last_x'] = float(getattr(event, 'x', 0.0))
+            return False
+
+        current_x = self._clamp(float(getattr(event, 'x', 0.0)), 0.0, float(width))
+        prev_x = self._clamp(float(state.get('last_x', current_x)), 0.0, float(width))
+        delta_x = current_x - prev_x
+        state['last_x'] = current_x
+
+        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
+        new_center = old_center - (delta_x / width) * span
+        state['center'] = self._clamp(new_center, span / 2, 1.0 - span / 2)
+        widget.queue_draw()
+        return True
+
+    def _on_graph_button_release_event(self, _widget, event, graph_key: str):
+        if event.button != Gdk.BUTTON_PRIMARY:
+            return False
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return False
+        state['dragging'] = 0.0
         return True
 
     def _draw_cpu_graph(self, widget, cr):
