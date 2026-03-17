@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 from enum import Enum
 from typing import Optional, TYPE_CHECKING
