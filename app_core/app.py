@@ -718,10 +718,6 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label()
-        hint.set_xalign(0)
-        box.pack_start(hint, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_cpu_graph)
@@ -733,7 +729,6 @@ class SystemTrayApp:
 
         self.cpu_graph_window = window
         self.cpu_graph_area = area
-        self.cpu_graph_hint_label = hint
         self._refresh_cpu_graph_texts()
 
         window.show_all()
@@ -746,8 +741,6 @@ class SystemTrayApp:
     def _refresh_cpu_graph_texts(self) -> None:
         if self.cpu_graph_window:
             self.cpu_graph_window.set_title(f"{tr('cpu_info')} — {tr('system_status')}")
-        if self.cpu_graph_hint_label:
-            self.cpu_graph_hint_label.set_text("")
         if self.cpu_graph_area:
             self.cpu_graph_area.queue_draw()
 
@@ -1111,10 +1104,6 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label()
-        hint.set_xalign(0)
-        box.pack_start(hint, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_ram_graph)
@@ -1126,7 +1115,6 @@ class SystemTrayApp:
 
         self.ram_graph_window = window
         self.ram_graph_area = area
-        self.ram_graph_hint_label = hint
         self._refresh_ram_graph_texts()
 
         window.show_all()
@@ -1139,8 +1127,6 @@ class SystemTrayApp:
     def _refresh_ram_graph_texts(self) -> None:
         if self.ram_graph_window:
             self.ram_graph_window.set_title(f"{tr('ram_loading')} — {tr('system_status')}")
-        if self.ram_graph_hint_label:
-            self.ram_graph_hint_label.set_text("")
         if self.ram_graph_area:
             self.ram_graph_area.queue_draw()
 
@@ -1264,10 +1250,6 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label()
-        hint.set_xalign(0)
-        box.pack_start(hint, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_swap_graph)
@@ -1279,7 +1261,6 @@ class SystemTrayApp:
 
         self.swap_graph_window = window
         self.swap_graph_area = area
-        self.swap_graph_hint_label = hint
         self._refresh_swap_graph_texts()
 
         window.show_all()
@@ -1292,8 +1273,6 @@ class SystemTrayApp:
     def _refresh_swap_graph_texts(self) -> None:
         if self.swap_graph_window:
             self.swap_graph_window.set_title(f"{tr('swap_loading')} — {tr('system_status')}")
-        if self.swap_graph_hint_label:
-            self.swap_graph_hint_label.set_text("")
         if self.swap_graph_area:
             self.swap_graph_area.queue_draw()
 
@@ -1417,10 +1396,6 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label()
-        hint.set_xalign(0)
-        box.pack_start(hint, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_disk_graph)
@@ -1432,7 +1407,6 @@ class SystemTrayApp:
 
         self.disk_graph_window = window
         self.disk_graph_area = area
-        self.disk_graph_hint_label = hint
         self._refresh_disk_graph_texts()
 
         window.show_all()
@@ -1445,8 +1419,6 @@ class SystemTrayApp:
     def _refresh_disk_graph_texts(self) -> None:
         if self.disk_graph_window:
             self.disk_graph_window.set_title(f"{tr('disk_loading')} — {tr('system_status')}")
-        if self.disk_graph_hint_label:
-            self.disk_graph_hint_label.set_text("")
         if self.disk_graph_area:
             self.disk_graph_area.queue_draw()
 
@@ -1571,10 +1543,6 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label()
-        hint.set_xalign(0)
-        box.pack_start(hint, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_net_graph)
@@ -1586,7 +1554,6 @@ class SystemTrayApp:
 
         self.net_graph_window = window
         self.net_graph_area = area
-        self.net_graph_hint_label = hint
         self._refresh_net_graph_texts()
 
         window.show_all()
@@ -1599,8 +1566,6 @@ class SystemTrayApp:
     def _refresh_net_graph_texts(self) -> None:
         if self.net_graph_window:
             self.net_graph_window.set_title(f"{tr('lan_speed')} — {tr('system_status')}")
-        if self.net_graph_hint_label:
-            self.net_graph_hint_label.set_text("")
         if self.net_graph_area:
             self.net_graph_area.queue_draw()
 
@@ -1734,10 +1699,6 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label()
-        hint.set_xalign(0)
-        box.pack_start(hint, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_keyboard_graph)
@@ -1749,7 +1710,6 @@ class SystemTrayApp:
 
         self.keyboard_graph_window = window
         self.keyboard_graph_area = area
-        self.keyboard_graph_hint_label = hint
         self._refresh_keyboard_graph_texts()
 
         window.show_all()
@@ -1762,8 +1722,6 @@ class SystemTrayApp:
     def _refresh_keyboard_graph_texts(self) -> None:
         if self.keyboard_graph_window:
             self.keyboard_graph_window.set_title(f"{tr('keyboard_clicks')} — {tr('system_status')}")
-        if self.keyboard_graph_hint_label:
-            self.keyboard_graph_hint_label.set_text("")
         if self.keyboard_graph_area:
             self.keyboard_graph_area.queue_draw()
 
@@ -1884,10 +1842,6 @@ class SystemTrayApp:
         window.set_border_width(10)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        hint = Gtk.Label()
-        hint.set_xalign(0)
-        box.pack_start(hint, False, False, 0)
-
         area = Gtk.DrawingArea()
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_mouse_graph)
@@ -1899,7 +1853,6 @@ class SystemTrayApp:
 
         self.mouse_graph_window = window
         self.mouse_graph_area = area
-        self.mouse_graph_hint_label = hint
         self._refresh_mouse_graph_texts()
 
         window.show_all()
@@ -1912,8 +1865,6 @@ class SystemTrayApp:
     def _refresh_mouse_graph_texts(self) -> None:
         if self.mouse_graph_window:
             self.mouse_graph_window.set_title(f"{tr('mouse_clicks')} — {tr('system_status')}")
-        if self.mouse_graph_hint_label:
-            self.mouse_graph_hint_label.set_text("")
         if self.mouse_graph_area:
             self.mouse_graph_area.queue_draw()
 
