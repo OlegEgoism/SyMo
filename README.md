@@ -159,7 +159,7 @@ pytest -q
 - Telegram: [@OlegEgoism](https://t.me/OlegEgoism)
 - Email: olegpustovalov220@gmail.com
 
-<img src="img.png" width="560" alt="SyMo preview" />
+<img src="img.png" width="640" alt="SyMo preview" />
 
 ## Video on YouTube:
 
