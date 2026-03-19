@@ -73,12 +73,12 @@ LANGUAGE_FLAGS = {
 
 
 class SystemTrayApp:
-    TRAY_TEXT_PREFIXES = {
-        'default': '',
-        'red': '🔴 ',
-        'green': '🟢 ',
-        'blue': '🔵 ',
-        'yellow': '🟡 ',
+    TRAY_TEXT_COLORS = {
+        'default': None,
+        'red': '#ff5555',
+        'green': '#50fa7b',
+        'blue': '#8be9fd',
+        'yellow': '#f1fa8c',
     }
 
     def __init__(self):
@@ -603,11 +603,25 @@ class SystemTrayApp:
             return default
 
     def _apply_tray_text_color(self, text: str) -> str:
-        if not text:
-            return text
         color_key = self.visibility_settings.get('tray_text_color', 'default')
-        prefix = self.TRAY_TEXT_PREFIXES.get(color_key, '')
-        return f"{prefix}{text}"
+        color = self.TRAY_TEXT_COLORS.get(color_key)
+        if not color:
+            return text
+        escaped = GLib.markup_escape_text(text)
+        return f"<span foreground='{color}'>{escaped}</span>"
+
+    @staticmethod
+    def _set_menu_item_label(item: Gtk.MenuItem, text: str) -> None:
+        child = item.get_child()
+        if isinstance(child, Gtk.Label):
+            is_markup = text.lstrip().startswith("<span")
+            child.set_use_markup(is_markup)
+            if is_markup:
+                child.set_markup(text)
+            else:
+                child.set_text(text)
+        else:
+            item.set_label(text)
 
     def update_info(self) -> bool:
         try:
@@ -2022,21 +2036,45 @@ class SystemTrayApp:
                 self.mouse_graph_area.queue_draw()
 
             if self.visibility_settings.get('cpu', True):
-                self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
+                self._set_menu_item_label(
+                    self.cpu_temp_item,
+                    self._apply_tray_text_color(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"),
+                )
             if self.visibility_settings.get('ram', True):
-                self.ram_item.set_label(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
+                self._set_menu_item_label(
+                    self.ram_item,
+                    self._apply_tray_text_color(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"),
+                )
             if self.visibility_settings.get('swap', True):
-                self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
+                self._set_menu_item_label(
+                    self.swap_item,
+                    self._apply_tray_text_color(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB"),
+                )
             if self.visibility_settings.get('disk', True):
-                self.disk_item.set_label(f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB")
+                self._set_menu_item_label(
+                    self.disk_item,
+                    self._apply_tray_text_color(f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"),
+                )
             if self.visibility_settings.get('net', True):
-                self.net_item.set_label(f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s")
+                self._set_menu_item_label(
+                    self.net_item,
+                    self._apply_tray_text_color(f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"),
+                )
             if self.visibility_settings.get('uptime', True):
-                self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
+                self._set_menu_item_label(
+                    self.uptime_item,
+                    self._apply_tray_text_color(f"{tr('uptime_label')}: {uptime}"),
+                )
             if self.visibility_settings.get('keyboard_clicks', True):
-                self.keyboard_item.set_label(f"{tr('keyboard_clicks')}: {keyboard_clicks_val}")
+                self._set_menu_item_label(
+                    self.keyboard_item,
+                    self._apply_tray_text_color(f"{tr('keyboard_clicks')}: {keyboard_clicks_val}"),
+                )
             if self.visibility_settings.get('mouse_clicks', True):
-                self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
+                self._set_menu_item_label(
+                    self.mouse_item,
+                    self._apply_tray_text_color(f"{tr('mouse_clicks')}: {mouse_clicks_val}"),
+                )
 
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
@@ -2046,7 +2084,7 @@ class SystemTrayApp:
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
-            self.indicator.set_label(self._apply_tray_text_color(tray_text), "")
+            self.indicator.set_label(tray_text, "")
         except Exception as e:
             print(f"Ошибка в _update_ui: {e}")
 
