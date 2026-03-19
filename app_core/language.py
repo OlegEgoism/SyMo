@@ -82,7 +82,7 @@ LANGUAGES = {
         'ping_error': 'Ошибка при выполнении ping',
         'system_info': 'Информация о системе',
         'menu_order_title': 'Порядок отображения пунктов',
-        'display_section': 'Отображение',
+        'display_section': 'Отображение в трее',
         'logging_section': 'Логи и графики',
         'logging_tab': 'Логирование',
         'license_tab': 'Лицензия',
