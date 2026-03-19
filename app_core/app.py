@@ -404,6 +404,7 @@ class SystemTrayApp:
         default = {
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
+            'info_display_mode': 'detailed',
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
@@ -417,6 +418,7 @@ class SystemTrayApp:
         except Exception as e:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
         default['graph_history_minutes'] = self._sanitize_graph_history_minutes(default.get('graph_history_minutes'))
+        default['info_display_mode'] = self._sanitize_info_display_mode(default.get('info_display_mode'))
         default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))
         return default
 
@@ -431,6 +433,11 @@ class SystemTrayApp:
     @staticmethod
     def _graph_history_points(minutes: int) -> int:
         return max(1, minutes * 60 // TIME_UPDATE_SEC)
+
+    @staticmethod
+    def _sanitize_info_display_mode(value: object) -> str:
+        normalized = str(value or '').strip().lower()
+        return normalized if normalized in {'detailed', 'compact'} else 'detailed'
 
     def _set_graph_history_window(self, minutes) -> None:
         sanitized_minutes = self._sanitize_graph_history_minutes(minutes)
@@ -540,6 +547,7 @@ class SystemTrayApp:
                 vs.update(menu_visibility)
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
+                vs['info_display_mode'] = dialog.get_info_display_mode()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
@@ -2004,16 +2012,37 @@ class SystemTrayApp:
             if self.mouse_graph_area:
                 self.mouse_graph_area.queue_draw()
 
+            mode = self._sanitize_info_display_mode(self.visibility_settings.get('info_display_mode'))
+            use_compact = (mode == 'compact')
+            ram_percent = (ram_used / ram_total * 100.0) if ram_total > 0 else 0.0
+            swap_percent = (swap_used / swap_total * 100.0) if swap_total > 0 else 0.0
+            disk_percent = (disk_used / disk_total * 100.0) if disk_total > 0 else 0.0
+
             if self.visibility_settings.get('cpu', True):
-                self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
+                label = (f"{tr('cpu_info')} {cpu_usage:.0f}% · {cpu_temp}°C"
+                         if use_compact else
+                         f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
+                self.cpu_temp_item.set_label(label)
             if self.visibility_settings.get('ram', True):
-                self.ram_item.set_label(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
+                label = (f"{tr('ram_loading')} {ram_percent:.0f}%"
+                         if use_compact else
+                         f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
+                self.ram_item.set_label(label)
             if self.visibility_settings.get('swap', True):
-                self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
+                label = (f"{tr('swap_loading')} {swap_percent:.0f}%"
+                         if use_compact else
+                         f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
+                self.swap_item.set_label(label)
             if self.visibility_settings.get('disk', True):
-                self.disk_item.set_label(f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB")
+                label = (f"{tr('disk_loading')} {disk_percent:.0f}%"
+                         if use_compact else
+                         f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB")
+                self.disk_item.set_label(label)
             if self.visibility_settings.get('net', True):
-                self.net_item.set_label(f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s")
+                label = (f"{tr('lan_speed')} ↓{net_recv_speed:.1f} ↑{net_sent_speed:.1f}"
+                         if use_compact else
+                         f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s")
+                self.net_item.set_label(label)
             if self.visibility_settings.get('uptime', True):
                 self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
             if self.visibility_settings.get('keyboard_clicks', True):

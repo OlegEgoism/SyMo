@@ -75,6 +75,9 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Размер файла логов (МБ)',
         'graph_history_minutes': 'История графиков (мин.)',
+        'menu_info_display_mode': 'Формат информации в меню',
+        'menu_info_mode_detailed': 'Подробный',
+        'menu_info_mode_compact': 'Компактный',
 
         'ping_network': 'Проверить сеть',
         'ping_running': 'Выполняется проверка сети…',
@@ -187,6 +190,9 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maximum log file size (MB)',
         'graph_history_minutes': 'Graph history (min)',
+        'menu_info_display_mode': 'Menu info format',
+        'menu_info_mode_detailed': 'Detailed',
+        'menu_info_mode_compact': 'Compact',
 
         'ping_network': 'Ping network',
         'ping_running': 'Running network check…',
@@ -299,6 +305,9 @@ LANGUAGES = {
 
         'max_log_size_mb': '日志文件的最大大小 (MB)',
         'graph_history_minutes': '图表历史记录（分钟）',
+        'menu_info_display_mode': '菜单信息格式',
+        'menu_info_mode_detailed': '详细',
+        'menu_info_mode_compact': '简洁',
 
         'ping_network': '网络连通性测试（ping）',
         'ping_running': '正在进行网络测试…',
@@ -411,6 +420,9 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maximale Protokolldateigröße (MB)',
         'graph_history_minutes': 'Diagrammverlauf (Min.)',
+        'menu_info_display_mode': 'Menü-Infoformat',
+        'menu_info_mode_detailed': 'Detailliert',
+        'menu_info_mode_compact': 'Kompakt',
 
         'ping_network': 'Netzwerk prüfen (Ping)',
         'show_ping': 'Ping-Schaltfläche im Tray anzeigen',
@@ -524,6 +536,9 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Dimensione massima del file di log (MB)',
         'graph_history_minutes': 'Cronologia grafici (min)',
+        'menu_info_display_mode': 'Formato info menu',
+        'menu_info_mode_detailed': 'Dettagliato',
+        'menu_info_mode_compact': 'Compatto',
 
         'ping_network': 'Verifica rete (ping)',
         'ping_running': 'Verifica della rete in corso…',
@@ -636,6 +651,9 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Tamaño máximo del archivo de registro (MB)',
         'graph_history_minutes': 'Historial de gráficos (min)',
+        'menu_info_display_mode': 'Formato de info del menú',
+        'menu_info_mode_detailed': 'Detallado',
+        'menu_info_mode_compact': 'Compacto',
 
         'ping_network': 'Probar red (ping)',
         'ping_running': 'Comprobando la red…',
@@ -748,6 +766,9 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Maksimum günlük dosyası boyutu (MB)',
         'graph_history_minutes': 'Grafik geçmişi (dk.)',
+        'menu_info_display_mode': 'Menü bilgi biçimi',
+        'menu_info_mode_detailed': 'Ayrıntılı',
+        'menu_info_mode_compact': 'Kompakt',
 
         'ping_network': 'Ağı kontrol et (ping)',
         'ping_running': 'Ağ kontrolü yapılıyor…',
@@ -860,6 +881,9 @@ LANGUAGES = {
 
         'max_log_size_mb': 'Taille maximale du fichier journal (Mo)',
         'graph_history_minutes': 'Historique des graphiques (min)',
+        'menu_info_display_mode': 'Format info du menu',
+        'menu_info_mode_detailed': 'Détaillé',
+        'menu_info_mode_compact': 'Compact',
 
         'ping_network': 'Vérifier le réseau (ping)',
         'ping_running': 'Vérification du réseau en cours…',

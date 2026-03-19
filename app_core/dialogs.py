@@ -98,6 +98,20 @@ class SettingsDialog(Gtk.Dialog):
         # add_section_title('display_section')
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
+
+        info_mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        info_mode_label = Gtk.Label(label=tr('menu_info_display_mode'))
+        info_mode_label.set_xalign(0)
+        info_mode_label.set_width_chars(24)
+        self.info_mode_combo = Gtk.ComboBoxText()
+        self.info_mode_combo.append('detailed', tr('menu_info_mode_detailed'))
+        self.info_mode_combo.append('compact', tr('menu_info_mode_compact'))
+        selected_mode = str(self.visibility_settings.get('info_display_mode', 'detailed'))
+        self.info_mode_combo.set_active_id(selected_mode if selected_mode in {'detailed', 'compact'} else 'detailed')
+        info_mode_box.pack_start(info_mode_label, False, False, 0)
+        info_mode_box.pack_start(self.info_mode_combo, False, False, 0)
+        general_content.add(info_mode_box)
+
         display_separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         display_separator.set_margin_top(2)
         display_separator.set_margin_bottom(2)
@@ -355,6 +369,10 @@ class SettingsDialog(Gtk.Dialog):
         for row in self.menu_order_store:
             values[row[MENU_ORDER_KEY_COLUMN]] = bool(row[MENU_ORDER_ENABLED_COLUMN])
         return values
+
+    def get_info_display_mode(self) -> str:
+        selected = self.info_mode_combo.get_active_id()
+        return selected if selected in {'detailed', 'compact'} else 'detailed'
 
     def _prefill_configs(self):
         try:
