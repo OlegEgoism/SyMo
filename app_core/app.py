@@ -73,6 +73,14 @@ LANGUAGE_FLAGS = {
 
 
 class SystemTrayApp:
+    TRAY_TEXT_COLORS = {
+        'default': None,
+        'red': '#ff5555',
+        'green': '#50fa7b',
+        'blue': '#8be9fd',
+        'yellow': '#f1fa8c',
+    }
+
     def __init__(self):
         self.settings_file = SETTINGS_FILE
         self.visibility_settings = self.load_settings()
@@ -408,6 +416,7 @@ class SystemTrayApp:
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
             'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
+            'tray_text_color': 'default',
             'menu_order': MENU_ORDER_DEFAULT.copy(),
         }
         try:
@@ -540,6 +549,7 @@ class SystemTrayApp:
                 vs.update(menu_visibility)
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
+                vs['tray_text_color'] = dialog.tray_color_combo.get_active_id() or 'default'
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
@@ -591,6 +601,14 @@ class SystemTrayApp:
             return func()
         except Exception:
             return default
+
+    def _apply_tray_text_color(self, text: str) -> str:
+        color_key = self.visibility_settings.get('tray_text_color', 'default')
+        color = self.TRAY_TEXT_COLORS.get(color_key)
+        if not color or not text:
+            return text
+        escaped = GLib.markup_escape_text(text)
+        return f"<span foreground='{color}'>{escaped}</span>"
 
     def update_info(self) -> bool:
         try:
@@ -2029,7 +2047,7 @@ class SystemTrayApp:
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
-            self.indicator.set_label(tray_text, "")
+            self.indicator.set_label(self._apply_tray_text_color(tray_text), "")
         except Exception as e:
             print(f"Ошибка в _update_ui: {e}")
 
