@@ -60,6 +60,15 @@ class SettingsDialog(Gtk.Dialog):
         notification_scroller.add(notification_content)
         notebook.append_page(notification_scroller, Gtk.Label(label=tr('notification_section')))
 
+        logging_scroller = Gtk.ScrolledWindow()
+        logging_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        logging_scroller.set_shadow_type(Gtk.ShadowType.NONE)
+        logging_scroller.set_min_content_height(800)
+        logging_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        logging_content.set_border_width(2)
+        logging_scroller.add(logging_content)
+        notebook.append_page(logging_scroller, Gtk.Label(label=tr('logging_tab')))
+
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         header.set_halign(Gtk.Align.END)
         link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
@@ -138,8 +147,13 @@ class SettingsDialog(Gtk.Dialog):
         order_scroll.add(self.menu_order_view)
         general_content.add(order_scroll)
 
-        general_content.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        add_section_title('logging_section')
+        logging_title = Gtk.Label()
+        logging_title.set_markup(f"<b>{tr('logging_section')}</b>")
+        logging_title.set_xalign(0)
+        logging_title.set_margin_top(2)
+        logging_title.set_margin_bottom(1)
+        logging_content.add(logging_title)
+
         logging_box = Gtk.Box(spacing=6)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
@@ -150,7 +164,7 @@ class SettingsDialog(Gtk.Dialog):
         self.download_button.connect("clicked", self.download_log_file)
         self.download_button.set_margin_bottom(3)
         logging_box.pack_end(self.download_button, False, False, 0)
-        general_content.add(logging_box)
+        logging_content.add(logging_box)
 
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
@@ -159,7 +173,7 @@ class SettingsDialog(Gtk.Dialog):
         self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 5)))
         logsize_box.pack_start(logsize_label, False, False, 0)
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
-        general_content.add(logsize_box)
+        logging_content.add(logsize_box)
 
         graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
