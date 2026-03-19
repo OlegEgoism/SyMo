@@ -142,7 +142,7 @@ class SettingsDialog(Gtk.Dialog):
 
         order_scroll = Gtk.ScrolledWindow()
         order_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        order_scroll.set_min_content_height(180)
+        order_scroll.set_min_content_height(280)
         order_scroll.set_shadow_type(Gtk.ShadowType.IN)
         order_scroll.add(self.menu_order_view)
         general_content.add(order_scroll)
@@ -188,7 +188,7 @@ class SettingsDialog(Gtk.Dialog):
         )
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
-        general_content.add(graph_history_box)
+        logging_content.add(graph_history_box)
 
         notification_title = Gtk.Label()
         notification_title.set_markup(f"<b>{tr('notification_section')}</b>")
