@@ -49,7 +49,7 @@ class SettingsDialog(Gtk.Dialog):
         general_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         general_content.set_border_width(2)
         general_scroller.add(general_content)
-        notebook.append_page(general_scroller, Gtk.Label(label=tr('settings_label')))
+        notebook.append_page(general_scroller, Gtk.Label(label=tr('display_tab')))
 
         notification_scroller = Gtk.ScrolledWindow()
         notification_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
