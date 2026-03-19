@@ -73,12 +73,12 @@ LANGUAGE_FLAGS = {
 
 
 class SystemTrayApp:
-    TRAY_TEXT_COLORS = {
-        'default': None,
-        'red': '#ff5555',
-        'green': '#50fa7b',
-        'blue': '#8be9fd',
-        'yellow': '#f1fa8c',
+    TRAY_TEXT_PREFIXES = {
+        'default': '',
+        'red': '🔴 ',
+        'green': '🟢 ',
+        'blue': '🔵 ',
+        'yellow': '🟡 ',
     }
 
     def __init__(self):
@@ -603,12 +603,11 @@ class SystemTrayApp:
             return default
 
     def _apply_tray_text_color(self, text: str) -> str:
-        color_key = self.visibility_settings.get('tray_text_color', 'default')
-        color = self.TRAY_TEXT_COLORS.get(color_key)
-        if not color or not text:
+        if not text:
             return text
-        escaped = GLib.markup_escape_text(text)
-        return f"<span foreground='{color}'>{escaped}</span>"
+        color_key = self.visibility_settings.get('tray_text_color', 'default')
+        prefix = self.TRAY_TEXT_PREFIXES.get(color_key, '')
+        return f"{prefix}{text}"
 
     def update_info(self) -> bool:
         try:
