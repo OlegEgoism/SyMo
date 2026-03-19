@@ -31,7 +31,7 @@ class SettingsDialog(Gtk.Dialog):
                          flags=0)
         self.set_modal(True)
         self.set_destroy_with_parent(True)
-        self.set_default_size(400, 800)
+        self.set_default_size(400, 500)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
                          tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
@@ -68,12 +68,6 @@ class SettingsDialog(Gtk.Dialog):
         logging_content.set_border_width(2)
         logging_scroller.add(logging_content)
         notebook.append_page(logging_scroller, Gtk.Label(label=tr('logging_tab')))
-
-        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        header.set_halign(Gtk.Align.END)
-        link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
-        header.pack_start(link, False, False, 0)
-        general_content.add(header)
 
         def add_section_title(label_key: str):
             title = Gtk.Label()
@@ -146,6 +140,12 @@ class SettingsDialog(Gtk.Dialog):
         order_scroll.set_shadow_type(Gtk.ShadowType.IN)
         order_scroll.add(self.menu_order_view)
         general_content.add(order_scroll)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        header.set_halign(Gtk.Align.END)
+        link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
+        header.pack_start(link, False, False, 0)
+        general_content.pack_end(header, False, False, 0)
 
         logging_title = Gtk.Label()
         logging_title.set_markup(f"<b>{tr('logging_section')}</b>")
