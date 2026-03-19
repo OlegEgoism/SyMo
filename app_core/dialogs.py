@@ -69,6 +69,15 @@ class SettingsDialog(Gtk.Dialog):
         logging_scroller.add(logging_content)
         notebook.append_page(logging_scroller, Gtk.Label(label=tr('logging_tab')))
 
+        license_scroller = Gtk.ScrolledWindow()
+        license_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        license_scroller.set_shadow_type(Gtk.ShadowType.NONE)
+        license_scroller.set_min_content_height(800)
+        license_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        license_content.set_border_width(8)
+        license_scroller.add(license_content)
+        notebook.append_page(license_scroller, Gtk.Label(label=tr('license_tab')))
+
         def add_section_title(label_key: str):
             title = Gtk.Label()
             title.set_markup(f"<b>{tr(label_key)}</b>")
@@ -141,11 +150,22 @@ class SettingsDialog(Gtk.Dialog):
         order_scroll.add(self.menu_order_view)
         general_content.add(order_scroll)
 
-        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        header.set_halign(Gtk.Align.END)
+        license_title = Gtk.Label()
+        license_title.set_markup(f"<b>{tr('license_tab')}</b>")
+        license_title.set_xalign(0)
+        license_content.add(license_title)
+
+        license_link_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        license_link_box.set_halign(Gtk.Align.START)
         link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
-        header.pack_start(link, False, False, 0)
-        general_content.pack_end(header, False, False, 0)
+        license_link_box.pack_start(link, False, False, 0)
+        license_content.add(license_link_box)
+
+        license_info = Gtk.Label(label=tr('license_info'))
+        license_info.set_xalign(0)
+        license_info.set_line_wrap(True)
+        license_info.set_selectable(True)
+        license_content.add(license_info)
 
         logging_title = Gtk.Label()
         logging_title.set_markup(f"<b>{tr('logging_section')}</b>")
