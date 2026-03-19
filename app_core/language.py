@@ -154,7 +154,7 @@ LANGUAGES = {
 
         'token_bot': "Token:",
         'id_chat': "ID:",
-        'time_send': "Interval (sek.):",
+        'time_send': "Interval (sec.):",
         'check_telegram': "Check",
         'bot_message': "Please enter the bot token and chat ID",
         'test_message': "Test notification",
@@ -266,7 +266,7 @@ LANGUAGES = {
 
         'token_bot': "机器人令牌:",
         'id_chat': "聊天ID:",
-        'time_send': "发送时间（分钟",
+        'time_send': "发送间隔（秒）:",
         'check_telegram': "检查",
         'bot_message': "请输入机器人令牌和聊天ID",
         'test_message': "测试通知",
@@ -413,7 +413,6 @@ LANGUAGES = {
         'graph_history_minutes': 'Diagrammverlauf (Min.)',
 
         'ping_network': 'Netzwerk prüfen (Ping)',
-        'show_ping': 'Ping-Schaltfläche im Tray anzeigen',
         'ping_running': 'Netzwerkprüfung läuft…',
         'ping_done': 'Prüfung abgeschlossen für',
         'ping_error': 'Fehler beim Ausführen von Ping',

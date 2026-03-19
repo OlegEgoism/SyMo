@@ -79,14 +79,6 @@ class SettingsDialog(Gtk.Dialog):
         license_scroller.add(license_content)
         notebook.append_page(license_scroller, Gtk.Label(label=tr('license_tab')))
 
-        # def add_section_title(label_key: str):
-        #     title = Gtk.Label()
-        #     title.set_markup(f"<b>{tr(label_key)}</b>")
-        #     title.set_xalign(0)
-        #     title.set_margin_top(4)
-        #     title.set_margin_bottom(2)
-        #     general_content.add(title)
-
         def add_check(label_key: str, key: str):
             chk = Gtk.CheckButton(label=tr(label_key))
             chk.set_active(self.visibility_settings.get(key, True))
@@ -95,7 +87,6 @@ class SettingsDialog(Gtk.Dialog):
             general_content.add(chk)
             return chk
 
-        # add_section_title('display_section')
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
         display_separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
@@ -157,11 +148,6 @@ class SettingsDialog(Gtk.Dialog):
         order_scroll.add(self.menu_order_view)
         general_content.add(order_scroll)
 
-        # license_title = Gtk.Label()
-        # license_title.set_markup(f"<b>{tr('license_tab')}</b>")
-        # license_title.set_xalign(0)
-        # license_content.add(license_title)
-
         license_link_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         license_link_box.set_halign(Gtk.Align.START)
         link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
@@ -173,13 +159,6 @@ class SettingsDialog(Gtk.Dialog):
         license_info.set_line_wrap(True)
         license_info.set_selectable(True)
         license_content.add(license_info)
-
-        # logging_title = Gtk.Label()
-        # logging_title.set_markup(f"<b>{tr('logging_section')}</b>")
-        # logging_title.set_xalign(0)
-        # logging_title.set_margin_top(2)
-        # logging_title.set_margin_bottom(1)
-        # logging_content.add(logging_title)
 
         logging_box = Gtk.Box(spacing=6)
         logging_box.set_margin_bottom(2)
@@ -221,13 +200,6 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_content.add(graph_history_box)
-
-        # notification_title = Gtk.Label()
-        # notification_title.set_markup(f"<b>{tr('notification_section')}</b>")
-        # notification_title.set_xalign(0)
-        # notification_title.set_margin_top(2)
-        # notification_title.set_margin_bottom(1)
-        # notification_content.add(notification_title)
 
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         telegram_box.set_margin_bottom(2)
