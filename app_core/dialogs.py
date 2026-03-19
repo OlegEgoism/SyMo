@@ -31,7 +31,7 @@ class SettingsDialog(Gtk.Dialog):
                          flags=0)
         self.set_modal(True)
         self.set_destroy_with_parent(True)
-        self.set_default_size(400, 520)
+        self.set_default_size(500, 520)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
                          tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
