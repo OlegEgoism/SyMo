@@ -80,6 +80,11 @@ class SettingsDialog(Gtk.Dialog):
         notebook.append_page(license_scroller, Gtk.Label(label=tr('license_tab')))
 
         display_section = self._create_section_box(general_content, tr('display_tab'))
+        self._add_hint_label(
+            display_section,
+            "• Включайте только нужные пункты — это упростит меню в трее.\n"
+            "• Порядок строк ниже меняется перетаскиванием."
+        )
 
         def add_check(label_key: str, key: str):
             chk = Gtk.CheckButton(label=tr(label_key))
@@ -130,6 +135,7 @@ class SettingsDialog(Gtk.Dialog):
         self.menu_order_view = Gtk.TreeView(model=self.menu_order_store)
         self.menu_order_view.set_headers_visible(False)
         self.menu_order_view.set_reorderable(True)
+        self.menu_order_view.set_tooltip_text("Перетащите строку, чтобы поменять порядок в меню трея.")
         self.menu_order_selection = self.menu_order_view.get_selection()
 
         toggle_renderer = Gtk.CellRendererToggle()
@@ -163,17 +169,23 @@ class SettingsDialog(Gtk.Dialog):
         license_content.add(license_info)
 
         logging_section = self._create_section_box(logging_content, tr('logging_tab'))
+        self._add_hint_label(
+            logging_section,
+            "Логи помогают диагностировать проблемы. Ограничьте размер, чтобы файл не рос бесконечно."
+        )
 
         logging_box = Gtk.Box(spacing=6)
         logging_box.set_margin_bottom(2)
         self.logging_check = Gtk.CheckButton(label=tr('enable_logging'))
         self.logging_check.set_active(self.visibility_settings.get('logging_enabled', True))
         self.logging_check.set_margin_bottom(2)
+        self.logging_check.set_tooltip_text("Если отключить, новые записи в лог добавляться не будут.")
         logging_box.pack_start(self.logging_check, False, False, 0)
 
         self.download_button = Gtk.Button(label=tr('download_log'))
         self.download_button.connect("clicked", self.download_log_file)
         self.download_button.set_margin_bottom(2)
+        self.download_button.set_tooltip_text("Сохранить текущий лог в выбранный файл.")
         logging_box.pack_end(self.download_button, False, False, 0)
         logging_section.add(logging_box)
 
@@ -184,6 +196,7 @@ class SettingsDialog(Gtk.Dialog):
         self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
         self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 5)))
         self.logsize_spin.set_width_chars(8)
+        self.logsize_spin.set_tooltip_text("Максимальный размер файла лога в МБ.")
         logsize_box.pack_start(logsize_label, False, False, 0)
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         logging_section.add(logsize_box)
@@ -201,18 +214,25 @@ class SettingsDialog(Gtk.Dialog):
             int(self.visibility_settings.get('graph_history_minutes', GRAPH_HISTORY_MINUTES_DEFAULT))
         )
         self.graph_history_spin.set_width_chars(8)
+        self.graph_history_spin.set_tooltip_text("Сколько минут хранить историю точек графиков.")
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_section.add(graph_history_box)
 
         telegram_section = self._create_section_box(notification_content, "Telegram")
+        self._add_hint_label(
+            telegram_section,
+            "Заполните токен и chat id, затем нажмите «Проверить», чтобы отправить тестовое сообщение."
+        )
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         telegram_box.set_margin_bottom(2)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
+        self.telegram_enable_check.set_tooltip_text("Включает периодические уведомления в Telegram.")
         telegram_box.pack_start(self.telegram_enable_check, False, False, 0)
         test_button = Gtk.Button(label=tr('check_telegram'))
         test_button.set_halign(Gtk.Align.END)
         test_button.connect("clicked", self.test_telegram)
+        test_button.set_tooltip_text("Проверить подключение и отправить тестовое сообщение.")
         telegram_box.pack_end(test_button, False, False, 0)
         telegram_section.add(telegram_box)
 
@@ -224,6 +244,7 @@ class SettingsDialog(Gtk.Dialog):
         self.token_entry.set_placeholder_text("123...:ABC...")
         self.token_entry.set_visibility(False)
         self.token_entry.set_hexpand(True)
+        self.token_entry.set_tooltip_text("Токен бота из @BotFather.")
         token_box.pack_start(token_label, False, False, 0)
         token_box.pack_start(self.token_entry, True, True, 0)
         token_toggle = Gtk.ToggleButton(label="👁")
@@ -241,6 +262,7 @@ class SettingsDialog(Gtk.Dialog):
         self.chat_id_entry.set_placeholder_text("123456789")
         self.chat_id_entry.set_visibility(False)
         self.chat_id_entry.set_hexpand(True)
+        self.chat_id_entry.set_tooltip_text("ID чата или пользователя, куда отправлять уведомления.")
         chat_id_box.pack_start(chat_id_label, False, False, 0)
         chat_id_box.pack_start(self.chat_id_entry, True, True, 0)
         chat_id_toggle = Gtk.ToggleButton(label="👁")
@@ -257,6 +279,7 @@ class SettingsDialog(Gtk.Dialog):
         self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
         self.interval_spin.set_value(3600)
         self.interval_spin.set_width_chars(8)
+        self.interval_spin.set_tooltip_text("Интервал отправки уведомлений в секундах.")
         interval_box.pack_start(interval_label, False, False, 0)
         interval_box.pack_start(self.interval_spin, False, False, 0)
         interval_box.set_margin_top(1)
@@ -264,13 +287,19 @@ class SettingsDialog(Gtk.Dialog):
         telegram_section.add(interval_box)
 
         discord_section = self._create_section_box(notification_content, "Discord")
+        self._add_hint_label(
+            discord_section,
+            "Укажите webhook URL канала и проверьте отправку тестового сообщения."
+        )
         discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         discord_box.set_margin_bottom(2)
         self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
+        self.discord_enable_check.set_tooltip_text("Включает периодические уведомления в Discord.")
         discord_box.pack_start(self.discord_enable_check, False, False, 0)
         discord_test_button = Gtk.Button(label=tr('check_discord'))
         discord_test_button.set_halign(Gtk.Align.END)
         discord_test_button.connect("clicked", self.test_discord)
+        discord_test_button.set_tooltip_text("Проверить webhook и отправить тестовое сообщение.")
         discord_box.pack_end(discord_test_button, False, False, 0)
         discord_section.add(discord_box)
 
@@ -282,6 +311,7 @@ class SettingsDialog(Gtk.Dialog):
         self.webhook_entry.set_placeholder_text("https://discord.com/api/webhooks/...")
         self.webhook_entry.set_visibility(False)
         self.webhook_entry.set_hexpand(True)
+        self.webhook_entry.set_tooltip_text("Webhook URL, выданный настройками Discord-канала.")
         webhook_box.pack_start(webhook_label, False, False, 0)
         webhook_box.pack_start(self.webhook_entry, True, True, 0)
         webhook_toggle = Gtk.ToggleButton(label="👁")
@@ -298,6 +328,7 @@ class SettingsDialog(Gtk.Dialog):
         self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
         self.discord_interval_spin.set_value(3600)
         self.discord_interval_spin.set_width_chars(8)
+        self.discord_interval_spin.set_tooltip_text("Интервал отправки уведомлений в секундах.")
         discord_interval_box.pack_start(discord_interval_label, False, False, 0)
         discord_interval_box.pack_start(self.discord_interval_spin, False, False, 0)
         discord_interval_box.set_margin_top(1)
@@ -319,6 +350,15 @@ class SettingsDialog(Gtk.Dialog):
         frame.add(body)
         parent.add(frame)
         return body
+
+    def _add_hint_label(self, parent: Gtk.Box, text: str) -> None:
+        hint = Gtk.Label(label=text)
+        hint.set_xalign(0)
+        hint.set_line_wrap(True)
+        hint.set_selectable(False)
+        hint.get_style_context().add_class("dim-label")
+        hint.set_margin_bottom(2)
+        parent.add(hint)
 
     def _normalize_menu_order(self, order) -> list[str]:
         unique = []
