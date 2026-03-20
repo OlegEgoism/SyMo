@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from typing import Optional, TYPE_CHECKING
@@ -37,7 +38,7 @@ class TelegramNotifier:
                 self.chat_id = (str(config.get('TELEGRAM_CHAT_ID') or '').strip() or None)
                 self.enabled = bool(config.get('enabled', False))
                 self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
             print(f"Ошибка загрузки конфигурации Telegram: {e}")
 
     def save_config(self, token: str, chat_id: str, enabled: bool, interval: int) -> bool:
@@ -46,19 +47,19 @@ class TelegramNotifier:
             self.chat_id = chat_id.strip() if chat_id else None
             self.enabled = bool(enabled)
             self.notification_interval = self._normalize_interval(interval)
-            TELEGRAM_CONFIG_FILE.write_text(json.dumps({
+            TELEGRAM_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            config_payload = json.dumps({
                 'TELEGRAM_BOT_TOKEN': self.token,
                 'TELEGRAM_CHAT_ID': self.chat_id,
                 'enabled': self.enabled,
                 'notification_interval': self.notification_interval
-            }, indent=2), encoding="utf-8")
-            try:
-                import os
-                os.chmod(TELEGRAM_CONFIG_FILE, 0o600)
-            except Exception:
-                pass
+            }, indent=2)
+            temp_path = TELEGRAM_CONFIG_FILE.with_suffix(TELEGRAM_CONFIG_FILE.suffix + ".tmp")
+            temp_path.write_text(config_payload, encoding="utf-8")
+            temp_path.replace(TELEGRAM_CONFIG_FILE)
+            os.chmod(TELEGRAM_CONFIG_FILE, 0o600)
             return True
-        except Exception as e:
+        except OSError as e:
             print(f"Ошибка сохранения конфигурации Telegram: {e}")
             return False
 
