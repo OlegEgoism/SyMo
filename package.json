@@ -1,0 +1,16 @@
+{
+  "name": "symo",
+  "version": "2.0.0",
+  "description": "SyMo system monitor rewritten in JavaScript + CSS",
+  "main": "app.js",
+  "type": "module",
+  "scripts": {
+    "start": "node app.js",
+    "lint": "node --check app.js app_core/*.js notifications/*.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "systeminformation": "^5.27.7"
+  }
+}

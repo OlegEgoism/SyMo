@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+  --bg: #111827;
+  --card: #1f2937;
+  --text: #e5e7eb;
+  --accent: #22c55e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background: radial-gradient(circle at top, #1e293b, var(--bg));
+  color: var(--text);
+}
+
+.dashboard {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  background: linear-gradient(180deg, #334155, var(--card));
+  border: 1px solid #475569;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.metric-card .label {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.metric-card .value {
+  color: var(--accent);
+  font-size: 24px;
+  font-weight: 700;
+}
