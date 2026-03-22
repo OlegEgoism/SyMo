@@ -106,6 +106,9 @@ LANGUAGES = {
         'disk_total_label': 'Диск всего',
         'disk_free_label': 'Диск свободно',
         'boot_time_label': 'Время загрузки',
+        'uptime_day_one': 'день',
+        'uptime_day_few': 'дня',
+        'uptime_day_many': 'дней',
 
         'bot_shutdown_message': "🔌 Выполняется выключение системы...",
         'bot_reboot_message': "🔄 Выполняется перезагрузка системы...",
@@ -218,6 +221,9 @@ LANGUAGES = {
         'disk_total_label': 'Disk total',
         'disk_free_label': 'Disk free',
         'boot_time_label': 'Boot time',
+        'uptime_day_one': 'day',
+        'uptime_day_few': 'days',
+        'uptime_day_many': 'days',
 
         'bot_shutdown_message': "🔌 Shutting down system...",
         'bot_reboot_message': "🔄 Rebooting system...",
@@ -330,6 +336,9 @@ LANGUAGES = {
         'disk_total_label': '磁盘总量',
         'disk_free_label': '可用磁盘',
         'boot_time_label': '启动时间',
+        'uptime_day_one': '天',
+        'uptime_day_few': '天',
+        'uptime_day_many': '天',
 
         'bot_shutdown_message': "🔌 正在关闭系统...",
         'bot_reboot_message': "🔄 正在重启系统...",
@@ -442,6 +451,9 @@ LANGUAGES = {
         'disk_total_label': 'Festplatte gesamt',
         'disk_free_label': 'Festplatte frei',
         'boot_time_label': 'Startzeit',
+        'uptime_day_one': 'Tag',
+        'uptime_day_few': 'Tage',
+        'uptime_day_many': 'Tage',
 
         'bot_shutdown_message': "🔌 System wird heruntergefahren...",
         'bot_reboot_message': "🔄 System wird neu gestartet...",
@@ -554,6 +566,9 @@ LANGUAGES = {
         'disk_total_label': 'Disco totale',
         'disk_free_label': 'Disco libero',
         'boot_time_label': 'Ora di avvio',
+        'uptime_day_one': 'giorno',
+        'uptime_day_few': 'giorni',
+        'uptime_day_many': 'giorni',
 
         'bot_shutdown_message': "🔌 Spegnimento del sistema in corso...",
         'bot_reboot_message': "🔄 Riavvio del sistema in corso...",
@@ -666,6 +681,9 @@ LANGUAGES = {
         'disk_total_label': 'Disco total',
         'disk_free_label': 'Disco libre',
         'boot_time_label': 'Hora de inicio',
+        'uptime_day_one': 'día',
+        'uptime_day_few': 'días',
+        'uptime_day_many': 'días',
 
         'bot_shutdown_message': "🔌 Apagando el sistema...",
         'bot_reboot_message': "🔄 Reiniciando el sistema...",
@@ -778,6 +796,9 @@ LANGUAGES = {
         'disk_total_label': 'Toplam disk',
         'disk_free_label': 'Boş disk',
         'boot_time_label': 'Açılış zamanı',
+        'uptime_day_one': 'gün',
+        'uptime_day_few': 'gün',
+        'uptime_day_many': 'gün',
 
         'bot_shutdown_message': "🔌 Sistem kapatılıyor...",
         'bot_reboot_message': "🔄 Sistem yeniden başlatılıyor...",
@@ -890,6 +911,9 @@ LANGUAGES = {
         'disk_total_label': 'Disque total',
         'disk_free_label': 'Disque libre',
         'boot_time_label': 'Heure de démarrage',
+        'uptime_day_one': 'jour',
+        'uptime_day_few': 'jours',
+        'uptime_day_many': 'jours',
 
         'bot_shutdown_message': "🔌 Arrêt du système en cours...",
         'bot_reboot_message': "🔄 Redémarrage du système en cours...",
