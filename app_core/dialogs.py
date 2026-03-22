@@ -31,74 +31,67 @@ class SettingsDialog(Gtk.Dialog):
                          flags=0)
         self.set_modal(True)
         self.set_destroy_with_parent(True)
-        self.set_default_size(480, 520)
+        self.set_default_size(760, 640)
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
                          tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
 
         box = self.get_content_area()
-        box.set_border_width(12)
+        box.set_border_width(10)
+        self._apply_styles()
 
-        notebook = Gtk.Notebook()
-        notebook.set_border_width(4)
-        box.add(notebook)
+        switcher = Gtk.StackSwitcher()
+        switcher.set_halign(Gtk.Align.CENTER)
+        switcher.set_margin_bottom(8)
+        box.pack_start(switcher, False, False, 0)
 
-        general_scroller = Gtk.ScrolledWindow()
-        general_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        general_scroller.set_shadow_type(Gtk.ShadowType.NONE)
-        general_scroller.set_min_content_height(480)
-        general_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        general_content.set_border_width(10)
-        general_scroller.add(general_content)
-        notebook.append_page(general_scroller, Gtk.Label(label=tr('display_tab')))
+        stack = Gtk.Stack()
+        stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        stack.set_transition_duration(250)
+        switcher.set_stack(stack)
+        box.pack_start(stack, True, True, 0)
 
-        notification_scroller = Gtk.ScrolledWindow()
-        notification_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        notification_scroller.set_shadow_type(Gtk.ShadowType.NONE)
-        notification_scroller.set_min_content_height(480)
-        notification_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        notification_content.set_border_width(10)
-        notification_scroller.add(notification_content)
-        notebook.append_page(notification_scroller, Gtk.Label(label=tr('notification_section')))
+        def build_page() -> Gtk.Box:
+            scroller = Gtk.ScrolledWindow()
+            scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            scroller.set_shadow_type(Gtk.ShadowType.NONE)
+            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            page.set_border_width(4)
+            scroller.add(page)
+            return scroller, page
 
-        logging_scroller = Gtk.ScrolledWindow()
-        logging_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        logging_scroller.set_shadow_type(Gtk.ShadowType.NONE)
-        logging_scroller.set_min_content_height(480)
-        logging_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        logging_content.set_border_width(10)
-        logging_scroller.add(logging_content)
-        notebook.append_page(logging_scroller, Gtk.Label(label=tr('logging_tab')))
+        general_scroller, general_content = build_page()
+        notification_scroller, notification_content = build_page()
+        logging_scroller, logging_content = build_page()
+        license_scroller, license_content = build_page()
+        stack.add_titled(general_scroller, "display", tr('display_tab'))
+        stack.add_titled(notification_scroller, "notify", tr('notification_section'))
+        stack.add_titled(logging_scroller, "logging", tr('logging_tab'))
+        stack.add_titled(license_scroller, "license", tr('license_tab'))
 
-        license_scroller = Gtk.ScrolledWindow()
-        license_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        license_scroller.set_shadow_type(Gtk.ShadowType.NONE)
-        license_scroller.set_min_content_height(480)
-        license_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        license_content.set_border_width(10)
-        license_scroller.add(license_content)
-        notebook.append_page(license_scroller, Gtk.Label(label=tr('license_tab')))
+        def card(title: str) -> Gtk.Box:
+            frame = Gtk.Frame(label=title)
+            frame.get_style_context().add_class("settings-card")
+            frame.set_margin_bottom(4)
+            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            content.set_border_width(10)
+            frame.add(content)
+            return frame, content
+
+        visibility_card, visibility_content = card(tr('display_section'))
+        general_content.add(visibility_card)
 
         def add_check(label_key: str, key: str):
             chk = Gtk.CheckButton(label=tr(label_key))
             chk.set_active(self.visibility_settings.get(key, True))
-            chk.set_margin_top(2)
-            chk.set_margin_bottom(2)
-            general_content.add(chk)
+            visibility_content.add(chk)
             return chk
 
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
-        display_separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        display_separator.set_margin_top(2)
-        display_separator.set_margin_bottom(2)
-        general_content.add(display_separator)
 
-        reorder_title = Gtk.Label(label=tr('menu_order_title'))
-        reorder_title.set_xalign(0)
-        reorder_title.set_margin_top(4)
-        reorder_title.set_margin_bottom(2)
-        general_content.add(reorder_title)
+        order_card, order_content = card(tr('menu_order_title'))
+        general_content.add(order_card)
 
         self.menu_order_store = Gtk.ListStore(bool, str, str)
 
@@ -144,21 +137,26 @@ class SettingsDialog(Gtk.Dialog):
         order_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         order_scroll.set_min_content_height(330)
         order_scroll.set_shadow_type(Gtk.ShadowType.IN)
-        order_scroll.set_margin_bottom(6)
         order_scroll.add(self.menu_order_view)
-        general_content.add(order_scroll)
+        order_content.add(order_scroll)
+
+        license_card, license_card_content = card(tr('license_tab'))
+        license_content.add(license_card)
 
         license_link_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         license_link_box.set_halign(Gtk.Align.START)
         link = Gtk.LinkButton(uri="https://github.com/OlegEgoism/SyMo", label="SyMo Ⓡ")
         license_link_box.pack_start(link, False, False, 0)
-        license_content.add(license_link_box)
+        license_card_content.add(license_link_box)
 
         license_info = Gtk.Label(label=tr('license_info'))
         license_info.set_xalign(0)
         license_info.set_line_wrap(True)
         license_info.set_selectable(True)
-        license_content.add(license_info)
+        license_card_content.add(license_info)
+
+        logging_card, logging_card_content = card(tr('logging_section'))
+        logging_content.add(logging_card)
 
         logging_box = Gtk.Box(spacing=6)
         logging_box.set_margin_bottom(2)
@@ -171,7 +169,7 @@ class SettingsDialog(Gtk.Dialog):
         self.download_button.connect("clicked", self.download_log_file)
         self.download_button.set_margin_bottom(2)
         logging_box.pack_end(self.download_button, False, False, 0)
-        logging_content.add(logging_box)
+        logging_card_content.add(logging_box)
 
         logsize_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
@@ -182,7 +180,7 @@ class SettingsDialog(Gtk.Dialog):
         self.logsize_spin.set_width_chars(8)
         logsize_box.pack_start(logsize_label, False, False, 0)
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
-        logging_content.add(logsize_box)
+        logging_card_content.add(logsize_box)
 
         graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
@@ -199,7 +197,10 @@ class SettingsDialog(Gtk.Dialog):
         self.graph_history_spin.set_width_chars(8)
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
-        logging_content.add(graph_history_box)
+        logging_card_content.add(graph_history_box)
+
+        telegram_card, telegram_content = card("Telegram")
+        notification_content.add(telegram_card)
 
         telegram_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         telegram_box.set_margin_bottom(2)
@@ -209,7 +210,7 @@ class SettingsDialog(Gtk.Dialog):
         test_button.set_halign(Gtk.Align.END)
         test_button.connect("clicked", self.test_telegram)
         telegram_box.pack_end(test_button, False, False, 0)
-        notification_content.add(telegram_box)
+        telegram_content.add(telegram_box)
 
         token_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         token_label = Gtk.Label(label=tr('token_bot'))
@@ -226,7 +227,7 @@ class SettingsDialog(Gtk.Dialog):
         token_toggle.connect("toggled", lambda btn: self.token_entry.set_visibility(btn.get_active()))
         token_box.pack_end(token_toggle, False, False, 0)
         token_box.set_margin_bottom(2)
-        notification_content.add(token_box)
+        telegram_content.add(token_box)
 
         chat_id_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         chat_id_label = Gtk.Label(label=tr('id_chat'))
@@ -243,7 +244,7 @@ class SettingsDialog(Gtk.Dialog):
         chat_id_toggle.connect("toggled", lambda btn: self.chat_id_entry.set_visibility(btn.get_active()))
         chat_id_box.pack_end(chat_id_toggle, False, False, 0)
         chat_id_box.set_margin_bottom(2)
-        notification_content.add(chat_id_box)
+        telegram_content.add(chat_id_box)
 
         interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         interval_label = Gtk.Label(label=tr('time_send'))
@@ -256,7 +257,10 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.pack_start(self.interval_spin, False, False, 0)
         interval_box.set_margin_top(1)
         interval_box.set_margin_bottom(6)
-        notification_content.add(interval_box)
+        telegram_content.add(interval_box)
+
+        discord_card, discord_content = card("Discord")
+        notification_content.add(discord_card)
 
         discord_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         discord_box.set_margin_bottom(2)
@@ -266,7 +270,7 @@ class SettingsDialog(Gtk.Dialog):
         discord_test_button.set_halign(Gtk.Align.END)
         discord_test_button.connect("clicked", self.test_discord)
         discord_box.pack_end(discord_test_button, False, False, 0)
-        notification_content.add(discord_box)
+        discord_content.add(discord_box)
 
         webhook_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         webhook_label = Gtk.Label(label=tr('webhook_url'))
@@ -283,7 +287,7 @@ class SettingsDialog(Gtk.Dialog):
         webhook_toggle.connect("toggled", lambda btn: self.webhook_entry.set_visibility(btn.get_active()))
         webhook_box.pack_end(webhook_toggle, False, False, 0)
         webhook_box.set_margin_bottom(2)
-        notification_content.add(webhook_box)
+        discord_content.add(webhook_box)
 
         discord_interval_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         discord_interval_label = Gtk.Label(label=tr('time_send'))
@@ -296,10 +300,28 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.pack_start(self.discord_interval_spin, False, False, 0)
         discord_interval_box.set_margin_top(1)
         discord_interval_box.set_margin_bottom(8)
-        notification_content.add(discord_interval_box)
+        discord_content.add(discord_interval_box)
 
         self._prefill_configs()
         self.show_all()
+
+    def _apply_styles(self) -> None:
+        css = b"""
+        .settings-card {
+            border-radius: 10px;
+            padding: 4px;
+            background: alpha(@theme_bg_color, 0.35);
+        }
+        """
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css)
+        screen = self.get_screen()
+        if screen is not None:
+            Gtk.StyleContext.add_provider_for_screen(
+                screen,
+                provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
 
     def _normalize_menu_order(self, order) -> list[str]:
         unique = []
