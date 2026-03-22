@@ -71,18 +71,6 @@ LANGUAGE_FLAGS = {
     'fr': '🇫🇷',
 }
 
-UPTIME_UNITS = {
-    'ru': {'day_one': 'день', 'day_few': 'дня', 'day_many': 'дней'},
-    'en': {'day_one': 'day', 'day_few': 'days', 'day_many': 'days'},
-    'cn': {'day_one': '天', 'day_few': '天', 'day_many': '天'},
-    'de': {'day_one': 'Tag', 'day_few': 'Tage', 'day_many': 'Tage'},
-    'it': {'day_one': 'giorno', 'day_few': 'giorni', 'day_many': 'giorni'},
-    'es': {'day_one': 'día', 'day_few': 'días', 'day_many': 'días'},
-    'tr': {'day_one': 'gün', 'day_few': 'gün', 'day_many': 'gün'},
-    'fr': {'day_one': 'jour', 'day_few': 'jours', 'day_many': 'jours'},
-}
-
-
 class SystemTrayApp:
     def __init__(self):
         self.settings_file = SETTINGS_FILE
@@ -607,10 +595,10 @@ class SystemTrayApp:
     def _plural_ru(value: int) -> str:
         value = abs(int(value))
         if value % 10 == 1 and value % 100 != 11:
-            return 'day_one'
+            return 'one'
         if 2 <= value % 10 <= 4 and (value % 100 < 10 or value % 100 >= 20):
-            return 'day_few'
-        return 'day_many'
+            return 'few'
+        return 'many'
 
     def _format_uptime_localized(self, raw_uptime: str) -> str:
         parts = (raw_uptime or "").split(", ", 1)
@@ -624,9 +612,10 @@ class SystemTrayApp:
 
         days = int(day_tokens[0])
         lang = get_language()
-        unit_map = UPTIME_UNITS.get(lang, UPTIME_UNITS['en'])
-        plural_key = self._plural_ru(days) if lang == 'ru' else ('day_one' if days == 1 else 'day_many')
-        day_label = unit_map.get(plural_key, unit_map.get('day_many', 'days'))
+        plural_key = self._plural_ru(days) if lang == 'ru' else ('one' if days == 1 else 'many')
+        day_label = tr(f'uptime_day_{plural_key}')
+        if day_label == f'uptime_day_{plural_key}':
+            day_label = 'day' if days == 1 else 'days'
         return f"{days} {day_label}, {time_part}"
 
     def update_info(self) -> bool:
