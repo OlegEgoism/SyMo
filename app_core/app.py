@@ -71,6 +71,17 @@ LANGUAGE_FLAGS = {
     'fr': '🇫🇷',
 }
 
+UPTIME_UNITS = {
+    'ru': {'day_one': 'день', 'day_few': 'дня', 'day_many': 'дней'},
+    'en': {'day_one': 'day', 'day_few': 'days', 'day_many': 'days'},
+    'cn': {'day_one': '天', 'day_few': '天', 'day_many': '天'},
+    'de': {'day_one': 'Tag', 'day_few': 'Tage', 'day_many': 'Tage'},
+    'it': {'day_one': 'giorno', 'day_few': 'giorni', 'day_many': 'giorni'},
+    'es': {'day_one': 'día', 'day_few': 'días', 'day_many': 'días'},
+    'tr': {'day_one': 'gün', 'day_few': 'gün', 'day_many': 'gün'},
+    'fr': {'day_one': 'jour', 'day_few': 'jours', 'day_many': 'jours'},
+}
+
 
 class SystemTrayApp:
     def __init__(self):
@@ -592,6 +603,32 @@ class SystemTrayApp:
         except Exception:
             return default
 
+    @staticmethod
+    def _plural_ru(value: int) -> str:
+        value = abs(int(value))
+        if value % 10 == 1 and value % 100 != 11:
+            return 'day_one'
+        if 2 <= value % 10 <= 4 and (value % 100 < 10 or value % 100 >= 20):
+            return 'day_few'
+        return 'day_many'
+
+    def _format_uptime_localized(self, raw_uptime: str) -> str:
+        parts = (raw_uptime or "").split(", ", 1)
+        if len(parts) != 2:
+            return raw_uptime
+
+        day_part, time_part = parts
+        day_tokens = day_part.split()
+        if len(day_tokens) != 2 or not day_tokens[0].isdigit():
+            return raw_uptime
+
+        days = int(day_tokens[0])
+        lang = get_language()
+        unit_map = UPTIME_UNITS.get(lang, UPTIME_UNITS['en'])
+        plural_key = self._plural_ru(days) if lang == 'ru' else ('day_one' if days == 1 else 'day_many')
+        day_label = unit_map.get(plural_key, unit_map.get('day_many', 'days'))
+        return f"{days} {day_label}, {time_part}"
+
     def update_info(self) -> bool:
         try:
             kbd, ms = self._safe_call(get_counts, (0, 0))
@@ -606,13 +643,14 @@ class SystemTrayApp:
                 (0.0, 0.0),
             )
             uptime = self._safe_call(SystemUsage.get_uptime, "00:00:00")
+            uptime_display = self._format_uptime_localized(uptime)
 
             self._update_ui(cpu_temp, cpu_usage,
                             ram_used, ram_total,
                             disk_used, disk_total,
                             swap_used, swap_total,
                             net_recv_speed, net_sent_speed,
-                            uptime, kbd, ms)
+                            uptime_display, kbd, ms)
 
             now = time.time()
             if (self.telegram_notifier.enabled and
@@ -620,7 +658,7 @@ class SystemTrayApp:
                 self._thread(self.send_telegram_notification,
                              cpu_temp, cpu_usage, ram_used, ram_total,
                              disk_used, disk_total, swap_used, swap_total,
-                             net_recv_speed, net_sent_speed, uptime, kbd, ms)
+                             net_recv_speed, net_sent_speed, uptime_display, kbd, ms)
                 self.last_telegram_notification_time = now
 
             if (self.discord_notifier.enabled and
@@ -628,7 +666,7 @@ class SystemTrayApp:
                 self._thread(self.send_discord_notification,
                              cpu_temp, cpu_usage, ram_used, ram_total,
                              disk_used, disk_total, swap_used, swap_total,
-                             net_recv_speed, net_sent_speed, uptime, kbd, ms)
+                             net_recv_speed, net_sent_speed, uptime_display, kbd, ms)
                 self.last_discord_notification_time = now
 
             if self.visibility_settings.get('logging_enabled', True):
@@ -643,7 +681,7 @@ class SystemTrayApp:
                             f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
                             f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
                             f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
-                            f"Uptime: {uptime} | "
+                            f"Uptime: {uptime_display} | "
                             f"Keys: {kbd} | "
                             f"Clicks: {ms}\n")
 
