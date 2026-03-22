@@ -71,7 +71,6 @@ LANGUAGE_FLAGS = {
     'fr': '🇫🇷',
 }
 
-
 class SystemTrayApp:
     def __init__(self):
         self.settings_file = SETTINGS_FILE
@@ -592,6 +591,33 @@ class SystemTrayApp:
         except Exception:
             return default
 
+    @staticmethod
+    def _plural_ru(value: int) -> str:
+        value = abs(int(value))
+        if value % 10 == 1 and value % 100 != 11:
+            return 'one'
+        if 2 <= value % 10 <= 4 and (value % 100 < 10 or value % 100 >= 20):
+            return 'few'
+        return 'many'
+
+    def _format_uptime_localized(self, raw_uptime: str) -> str:
+        parts = (raw_uptime or "").split(", ", 1)
+        if len(parts) != 2:
+            return raw_uptime
+
+        day_part, time_part = parts
+        day_tokens = day_part.split()
+        if len(day_tokens) != 2 or not day_tokens[0].isdigit():
+            return raw_uptime
+
+        days = int(day_tokens[0])
+        lang = get_language()
+        plural_key = self._plural_ru(days) if lang == 'ru' else ('one' if days == 1 else 'many')
+        day_label = tr(f'uptime_day_{plural_key}')
+        if day_label == f'uptime_day_{plural_key}':
+            day_label = 'day' if days == 1 else 'days'
+        return f"{days} {day_label}, {time_part}"
+
     def update_info(self) -> bool:
         try:
             kbd, ms = self._safe_call(get_counts, (0, 0))
@@ -606,13 +632,14 @@ class SystemTrayApp:
                 (0.0, 0.0),
             )
             uptime = self._safe_call(SystemUsage.get_uptime, "00:00:00")
+            uptime_display = self._format_uptime_localized(uptime)
 
             self._update_ui(cpu_temp, cpu_usage,
                             ram_used, ram_total,
                             disk_used, disk_total,
                             swap_used, swap_total,
                             net_recv_speed, net_sent_speed,
-                            uptime, kbd, ms)
+                            uptime_display, kbd, ms)
 
             now = time.time()
             if (self.telegram_notifier.enabled and
@@ -620,7 +647,7 @@ class SystemTrayApp:
                 self._thread(self.send_telegram_notification,
                              cpu_temp, cpu_usage, ram_used, ram_total,
                              disk_used, disk_total, swap_used, swap_total,
-                             net_recv_speed, net_sent_speed, uptime, kbd, ms)
+                             net_recv_speed, net_sent_speed, uptime_display, kbd, ms)
                 self.last_telegram_notification_time = now
 
             if (self.discord_notifier.enabled and
@@ -628,7 +655,7 @@ class SystemTrayApp:
                 self._thread(self.send_discord_notification,
                              cpu_temp, cpu_usage, ram_used, ram_total,
                              disk_used, disk_total, swap_used, swap_total,
-                             net_recv_speed, net_sent_speed, uptime, kbd, ms)
+                             net_recv_speed, net_sent_speed, uptime_display, kbd, ms)
                 self.last_discord_notification_time = now
 
             if self.visibility_settings.get('logging_enabled', True):
@@ -643,7 +670,7 @@ class SystemTrayApp:
                             f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
                             f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
                             f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
-                            f"Uptime: {uptime} | "
+                            f"Uptime: {uptime_display} | "
                             f"Keys: {kbd} | "
                             f"Clicks: {ms}\n")
 
