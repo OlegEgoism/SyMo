@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Optional
 
@@ -8,6 +9,8 @@ import requests
 from requests import Response
 
 from app_core.constants import DISCORD_CONFIG_FILE
+
+logger = logging.getLogger(__name__)
 
 
 class DiscordNotifier:
@@ -29,7 +32,7 @@ class DiscordNotifier:
                 self.enabled = bool(config.get('enabled', False))
                 self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
         except Exception as e:
-            print(f"Ошибка загрузки конфигурации Discord: {e}")
+            logger.exception("Ошибка загрузки конфигурации Discord: %s", e)
 
     def save_config(self, webhook_url: str, enabled: bool, interval: int) -> bool:
         try:
@@ -45,10 +48,10 @@ class DiscordNotifier:
                 import os
                 os.chmod(DISCORD_CONFIG_FILE, 0o600)
             except Exception as e:
-                print(f"Ошибка: {e}")
+                logger.warning("Ошибка установки прав на файл Discord-конфига: %s", e)
             return True
         except Exception as e:
-            print(f"Ошибка сохранения конфигурации Discord: {e}")
+            logger.exception("Ошибка сохранения конфигурации Discord: %s", e)
             return False
 
     @staticmethod
@@ -71,11 +74,11 @@ class DiscordNotifier:
             if response is None:
                 return False
             if response.status_code not in (200, 204):
-                print(f"Ошибка отправки в Discord: HTTP {response.status_code}")
+                logger.error("Ошибка отправки в Discord: HTTP %s", response.status_code)
                 return False
             return True
         except Exception as e:
-            print(f"Ошибка отправки сообщения в Discord: {e}")
+            logger.exception("Ошибка отправки сообщения в Discord: %s", e)
             return False
 
     @staticmethod
@@ -102,7 +105,7 @@ class DiscordNotifier:
                     continue
                 return response
             except requests.exceptions.RequestException as e:
-                print(f"Ошибка связи с Discord API: {e}")
+                logger.warning("Ошибка связи с Discord API: %s", e)
                 time.sleep(backoff_seconds)
                 backoff_seconds = min(backoff_seconds * 2, 8.0)
         return last_response

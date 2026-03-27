@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import platform
 from collections import deque
 from datetime import datetime
@@ -47,6 +48,8 @@ from notifications import TelegramNotifier, DiscordNotifier
 from .power_control import PowerControl
 from .system_usage import SystemUsage
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -227,7 +230,7 @@ class SystemTrayApp:
                     return
                 sender(message)
             except Exception as e:
-                print(f"Ошибка отправки уведомления ({channel_name}): {e}")
+                logger.exception("Ошибка отправки уведомления (%s): %s", channel_name, e)
             finally:
                 queue.task_done()
 

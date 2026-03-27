@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from typing import Optional, TYPE_CHECKING
@@ -16,6 +17,8 @@ from app_core.click_tracker import get_counts
 
 if TYPE_CHECKING:
     from app_core.power_control import PowerControl
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramNotifier:
@@ -43,7 +46,7 @@ class TelegramNotifier:
                 self.enabled = bool(config.get('enabled', False))
                 self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
         except Exception as e:
-            print(f"Ошибка загрузки конфигурации Telegram: {e}")
+            logger.exception("Ошибка загрузки конфигурации Telegram: %s", e)
 
     def save_config(self, token: str, chat_id: str, enabled: bool, interval: int) -> bool:
         try:
@@ -64,7 +67,7 @@ class TelegramNotifier:
                 pass
             return True
         except Exception as e:
-            print(f"Ошибка сохранения конфигурации Telegram: {e}")
+            logger.exception("Ошибка сохранения конфигурации Telegram: %s", e)
             return False
 
     @staticmethod
@@ -88,18 +91,18 @@ class TelegramNotifier:
             if response is None:
                 return False
             if response.status_code != 200:
-                print(f"Ошибка отправки в Telegram: HTTP {response.status_code}")
+                logger.error("Ошибка отправки в Telegram: HTTP %s", response.status_code)
                 return False
             data = response.json()
             if not data.get('ok', False):
-                print(f"Ошибка Telegram API: {data.get('description', 'unknown error')}")
+                logger.error("Ошибка Telegram API: %s", data.get('description', 'unknown error'))
                 return False
             return True
         except ValueError:
-            print("Ошибка отправки в Telegram: некорректный JSON в ответе API")
+            logger.error("Ошибка отправки в Telegram: некорректный JSON в ответе API")
             return False
         except Exception as e:
-            print(f"Ошибка отправки сообщения в Telegram: {e}")
+            logger.exception("Ошибка отправки сообщения в Telegram: %s", e)
             return False
 
     @staticmethod
@@ -122,7 +125,7 @@ class TelegramNotifier:
                     continue
                 return response
             except requests.exceptions.RequestException as e:
-                print(f"Ошибка связи с Telegram API: {e}")
+                logger.warning("Ошибка связи с Telegram API: %s", e)
                 time.sleep(backoff_seconds)
                 backoff_seconds = min(backoff_seconds * 2, 8.0)
         return last_response
@@ -137,13 +140,13 @@ class TelegramNotifier:
         self.bot_running = True
         self.bot_thread = threading.Thread(target=self._bot_worker, daemon=True)
         self.bot_thread.start()
-        print("Telegram бот запущен")
+        logger.info("Telegram бот запущен")
 
     def stop_bot(self) -> None:
         self.bot_running = False
         if self.bot_thread and self.bot_thread.is_alive():
             self.bot_thread.join(timeout=2.0)
-        print("Telegram бот остановлен")
+        logger.info("Telegram бот остановлен")
 
     def _bot_worker(self) -> None:
         backoff_seconds = 1.0
@@ -184,22 +187,22 @@ class TelegramNotifier:
                     backoff_seconds = 1.0
 
                 elif response.status_code == 409:
-                    print("Предупреждение: Другой экземпляр бота уже получает обновления")
+                    logger.warning("Предупреждение: Другой экземпляр бота уже получает обновления")
                     time.sleep(min(backoff_seconds, 30.0))
                     backoff_seconds = min(backoff_seconds * 2, 30.0)
                 else:
-                    print(f"Ошибка Telegram getUpdates: HTTP {response.status_code}")
+                    logger.warning("Ошибка Telegram getUpdates: HTTP %s", response.status_code)
                     time.sleep(min(backoff_seconds, 30.0))
                     backoff_seconds = min(backoff_seconds * 2, 30.0)
 
             except requests.exceptions.Timeout:
                 continue
             except requests.exceptions.RequestException as e:
-                print(f"Ошибка связи с Telegram API: {e}")
+                logger.warning("Ошибка связи с Telegram API: %s", e)
                 time.sleep(min(backoff_seconds, 30.0))
                 backoff_seconds = min(backoff_seconds * 2, 30.0)
             except Exception as e:
-                print(f"Неожиданная ошибка в боте: {e}")
+                logger.exception("Неожиданная ошибка в боте: %s", e)
                 time.sleep(min(backoff_seconds, 30.0))
                 backoff_seconds = min(backoff_seconds * 2, 30.0)
 
