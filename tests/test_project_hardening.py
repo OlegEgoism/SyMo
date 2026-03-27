@@ -24,3 +24,12 @@ def test_app_uses_queued_notification_workers():
     assert "self._notification_worker" in code
     assert "self._enqueue_latest_notification(self._telegram_queue, msg)" in code
     assert "self._enqueue_latest_notification(self._discord_queue, msg)" in code
+
+
+def test_notifiers_use_logging_instead_of_print():
+    telegram = Path("notifications/telegram.py").read_text(encoding="utf-8")
+    discord = Path("notifications/discord.py").read_text(encoding="utf-8")
+    assert "logger = logging.getLogger(__name__)" in telegram
+    assert "logger = logging.getLogger(__name__)" in discord
+    assert "print(" not in telegram
+    assert "print(" not in discord
