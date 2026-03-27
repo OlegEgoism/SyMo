@@ -4,6 +4,7 @@ import json
 import platform
 from collections import deque
 from datetime import datetime
+from queue import Empty, Full, Queue
 import signal
 import subprocess
 import threading
@@ -121,6 +122,21 @@ class SystemTrayApp:
         self.discord_notifier = DiscordNotifier()
         self.last_telegram_notification_time = 0.0
         self.last_discord_notification_time = 0.0
+        self._notification_stop_event = threading.Event()
+        self._telegram_queue: Queue[Optional[str]] = Queue(maxsize=1)
+        self._discord_queue: Queue[Optional[str]] = Queue(maxsize=1)
+        self._telegram_worker = threading.Thread(
+            target=self._notification_worker,
+            args=(self._telegram_queue, self.telegram_notifier.send_message, "Telegram"),
+            daemon=True,
+        )
+        self._discord_worker = threading.Thread(
+            target=self._notification_worker,
+            args=(self._discord_queue, self.discord_notifier.send_message, "Discord"),
+            daemon=True,
+        )
+        self._telegram_worker.start()
+        self._discord_worker.start()
 
         self.telegram_notifier.set_power_control(self.power_control)
         if self.telegram_notifier.enabled:
@@ -185,6 +201,35 @@ class SystemTrayApp:
     def _thread(target, *args, **kwargs):
         t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
         t.start()
+
+    def _enqueue_latest_notification(self, queue: Queue[Optional[str]], message: Optional[str]) -> None:
+        payload = None if message is None else str(message)
+        while True:
+            try:
+                queue.put_nowait(payload)
+                return
+            except Full:
+                try:
+                    queue.get_nowait()
+                    queue.task_done()
+                except Empty:
+                    return
+
+    def _notification_worker(self, queue: Queue[Optional[str]], sender, channel_name: str) -> None:
+        while not self._notification_stop_event.is_set():
+            try:
+                message = queue.get(timeout=0.5)
+            except Empty:
+                continue
+
+            try:
+                if message is None:
+                    return
+                sender(message)
+            except Exception as e:
+                print(f"Ошибка отправки уведомления ({channel_name}): {e}")
+            finally:
+                queue.task_done()
 
     def init_listeners(self):
         try:
@@ -700,7 +745,7 @@ class SystemTrayApp:
             f"<b>{tr('keyboard')}:</b> {keyboard_clicks_val} {tr('presses')}\n"
             f"<b>{tr('mouse')}:</b> {mouse_clicks_val} {tr('clicks')}"
         )
-        self.telegram_notifier.send_message(msg)
+        self._enqueue_latest_notification(self._telegram_queue, msg)
 
     def send_discord_notification(self, cpu_temp, cpu_usage, ram_used, ram_total,
                                   disk_used, disk_total, swap_used, swap_total,
@@ -717,7 +762,7 @@ class SystemTrayApp:
             f"**{tr('keyboard')}**: {keyboard_clicks_val} {tr('presses')}\n"
             f"**{tr('mouse')}**: {mouse_clicks_val} {tr('clicks')}"
         )
-        self.discord_notifier.send_message(msg)
+        self._enqueue_latest_notification(self._discord_queue, msg)
 
     @staticmethod
     def _normalize_cpu_sample(cpu_usage: object, cpu_temp: object) -> tuple[float, float]:
@@ -2061,6 +2106,13 @@ class SystemTrayApp:
             print(f"Ошибка в _update_ui: {e}")
 
     def quit(self, *args):
+        self._notification_stop_event.set()
+        self._enqueue_latest_notification(self._telegram_queue, None)
+        self._enqueue_latest_notification(self._discord_queue, None)
+        for worker in (getattr(self, "_telegram_worker", None), getattr(self, "_discord_worker", None)):
+            if worker and worker.is_alive():
+                worker.join(timeout=1.0)
+
         if self.telegram_notifier:
             self.telegram_notifier.stop_bot()
 
