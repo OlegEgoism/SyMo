@@ -6,6 +6,7 @@ import time
 from typing import Optional, TYPE_CHECKING
 
 import requests
+from requests import Response
 from gi.repository import GLib
 
 from app_core.constants import TELEGRAM_CONFIG_FILE
@@ -18,6 +19,10 @@ if TYPE_CHECKING:
 
 
 class TelegramNotifier:
+    MAX_MESSAGE_LENGTH = 4096
+    _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+    _MAX_SEND_RETRIES = 3
+
     def __init__(self):
         self.token: Optional[str] = None
         self.chat_id: Optional[str] = None
@@ -73,14 +78,54 @@ class TelegramNotifier:
     def send_message(self, message: str, force: bool = False) -> bool:
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
+
+        text = self._truncate_message(message, self.MAX_MESSAGE_LENGTH)
+        payload = {'chat_id': self.chat_id, 'text': text, 'parse_mode': 'HTML'}
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+
         try:
-            url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-            payload = {'chat_id': self.chat_id, 'text': message, 'parse_mode': 'HTML'}
-            r = requests.post(url, data=payload, timeout=(3, 7))
-            return r.status_code == 200
+            response = self._post_with_retries(url, payload)
+            if response is None:
+                return False
+            if response.status_code != 200:
+                print(f"Ошибка отправки в Telegram: HTTP {response.status_code}")
+                return False
+            data = response.json()
+            if not data.get('ok', False):
+                print(f"Ошибка Telegram API: {data.get('description', 'unknown error')}")
+                return False
+            return True
+        except ValueError:
+            print("Ошибка отправки в Telegram: некорректный JSON в ответе API")
+            return False
         except Exception as e:
             print(f"Ошибка отправки сообщения в Telegram: {e}")
             return False
+
+    @staticmethod
+    def _truncate_message(message: str, max_length: int) -> str:
+        text = str(message or "")
+        if len(text) <= max_length:
+            return text
+        return text[: max_length - 1] + "…"
+
+    def _post_with_retries(self, url: str, payload: dict[str, str]) -> Optional[Response]:
+        backoff_seconds = 1.0
+        last_response: Optional[Response] = None
+        for _attempt in range(self._MAX_SEND_RETRIES):
+            try:
+                response = requests.post(url, data=payload, timeout=(3, 7))
+                last_response = response
+                if response.status_code in self._RETRYABLE_STATUS_CODES:
+                    time.sleep(backoff_seconds)
+                    backoff_seconds = min(backoff_seconds * 2, 8.0)
+                    continue
+                return response
+            except requests.exceptions.RequestException as e:
+                print(f"Ошибка связи с Telegram API: {e}")
+                time.sleep(backoff_seconds)
+                backoff_seconds = min(backoff_seconds * 2, 8.0)
+        return last_response
 
     def set_power_control(self, power_control: "PowerControl") -> None:
         self.power_control_ref = power_control
@@ -140,6 +185,10 @@ class TelegramNotifier:
 
                 elif response.status_code == 409:
                     print("Предупреждение: Другой экземпляр бота уже получает обновления")
+                    time.sleep(min(backoff_seconds, 30.0))
+                    backoff_seconds = min(backoff_seconds * 2, 30.0)
+                else:
+                    print(f"Ошибка Telegram getUpdates: HTTP {response.status_code}")
                     time.sleep(min(backoff_seconds, 30.0))
                     backoff_seconds = min(backoff_seconds * 2, 30.0)
 

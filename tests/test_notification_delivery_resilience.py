@@ -12,31 +12,31 @@ def _load_module(name: str, path: Path):
     return module
 
 
-def test_discord_send_message_force_ignores_enabled(tmp_path, monkeypatch):
+def test_discord_send_message_retries_on_rate_limit(tmp_path, monkeypatch):
     discord = _load_module(
         "notifications.discord",
         Path(__file__).resolve().parents[1] / "notifications" / "discord.py",
     )
     discord.DISCORD_CONFIG_FILE = tmp_path / "discord.json"
-
     notifier = discord.DiscordNotifier()
-    notifier.save_config("https://example.com/webhook", False, 60)
+    notifier.save_config("https://example.com/webhook", True, 60)
 
-    called = {}
+    attempts = {"count": 0}
 
     def fake_post(url, json, timeout):
-        called["url"] = url
-        called["json"] = json
-        called["timeout"] = timeout
-        return types.SimpleNamespace(status_code=204)
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            return types.SimpleNamespace(status_code=429, json=lambda: {"retry_after": 0})
+        return types.SimpleNamespace(status_code=204, json=lambda: {})
 
     monkeypatch.setattr(discord.requests, "post", fake_post)
+    monkeypatch.setattr(discord.time, "sleep", lambda *_args, **_kwargs: None)
 
-    assert notifier.send_message("test", force=True) is True
-    assert called["url"] == "https://example.com/webhook"
+    assert notifier.send_message("ok") is True
+    assert attempts["count"] == 2
 
 
-def test_telegram_send_message_force_ignores_enabled(tmp_path, monkeypatch):
+def test_telegram_send_message_checks_ok_flag(tmp_path, monkeypatch):
     if "gi" not in sys.modules:
         fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
         fake_repository = types.SimpleNamespace(GLib=fake_glib)
@@ -48,19 +48,12 @@ def test_telegram_send_message_force_ignores_enabled(tmp_path, monkeypatch):
         Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
     )
     telegram.TELEGRAM_CONFIG_FILE = tmp_path / "telegram.json"
-
     notifier = telegram.TelegramNotifier()
-    notifier.save_config("token", "100", False, 60)
+    notifier.save_config("token", "100", True, 60)
 
-    called = {}
-
-    def fake_post(url, data, timeout):
-        called["url"] = url
-        called["data"] = data
-        called["timeout"] = timeout
-        return types.SimpleNamespace(status_code=200, json=lambda: {"ok": True})
+    def fake_post(_url, _data, _timeout):
+        return types.SimpleNamespace(status_code=200, json=lambda: {"ok": False, "description": "Bad Request"})
 
     monkeypatch.setattr(telegram.requests, "post", fake_post)
 
-    assert notifier.send_message("test", force=True) is True
-    assert called["url"] == "https://api.telegram.org/bottoken/sendMessage"
+    assert notifier.send_message("ok") is False
