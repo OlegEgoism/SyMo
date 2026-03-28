@@ -16,6 +16,7 @@ LOG_FILE = HOME / ".symo_log.txt"
 SETTINGS_FILE = HOME / ".symo_settings.json"
 TELEGRAM_CONFIG_FILE = HOME / ".symo_telegram.json"
 DISCORD_CONFIG_FILE = HOME / ".symo_discord.json"
+COMMAND_FILE = HOME / ".symo_command.json"
 
 MENU_ORDER_DEFAULT = [
     'cpu',

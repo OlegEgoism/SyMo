@@ -1,8 +1,8 @@
 {
   "uuid": "symo@olegegoism.github.io",
-  "name": "SyMo Launcher",
-  "description": "GNOME Shell panel launcher for the SyMo system monitor app.",
+  "name": "SyMo Companion",
+  "description": "GNOME Shell companion for SyMo with panel metrics, quick actions, and alert indicator.",
   "shell-version": ["45", "46", "47", "48"],
-  "version": 1,
+  "version": 2,
   "url": "https://github.com/OlegEgoism/SyMo"
 }

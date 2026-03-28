@@ -34,6 +34,7 @@ from .constants import (
     ICON_FALLBACK,
     LOG_FILE,
     SETTINGS_FILE,
+    COMMAND_FILE,
     TIME_UPDATE_SEC,
     GRAPH_HISTORY_MINUTES_DEFAULT,
     GRAPH_HISTORY_MINUTES_MIN,
@@ -454,6 +455,7 @@ class SystemTrayApp:
             'language': None, 'logging_enabled': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
+            'notifications_paused': False,
             'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
             'menu_order': MENU_ORDER_DEFAULT.copy(),
         }
@@ -507,6 +509,61 @@ class SystemTrayApp:
             if key not in unique:
                 unique.append(key)
         return unique
+
+    @staticmethod
+    def _safe_unlink(path: Path) -> None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            logger.exception("Не удалось удалить файл команды: %s", path)
+
+    def _toggle_notifications_pause(self) -> None:
+        paused = not bool(self.visibility_settings.get('notifications_paused', False))
+        self.visibility_settings['notifications_paused'] = paused
+        self.save_settings()
+        logger.info("Внешняя команда: уведомления %s", "пауза" if paused else "возобновлены")
+
+    def _open_graph_by_key(self, graph_key: str) -> bool:
+        openers = {
+            'cpu': self.show_cpu_graph,
+            'ram': self.show_ram_graph,
+            'swap': self.show_swap_graph,
+            'disk': self.show_disk_graph,
+            'net': self.show_net_graph,
+            'keyboard': self.show_keyboard_graph,
+            'mouse': self.show_mouse_graph,
+        }
+        opener = openers.get(graph_key)
+        if opener is None:
+            return False
+        opener(None)
+        return True
+
+    def _consume_external_command(self) -> None:
+        if not COMMAND_FILE.exists():
+            return
+
+        try:
+            payload = json.loads(COMMAND_FILE.read_text(encoding="utf-8"))
+            action = str(payload.get("action", "")).strip()
+        except Exception:
+            logger.exception("Некорректный файл внешней команды: %s", COMMAND_FILE)
+            self._safe_unlink(COMMAND_FILE)
+            return
+
+        try:
+            if action == "toggle_notifications_pause":
+                self._toggle_notifications_pause()
+            elif action == "open_graph":
+                graph = str(payload.get("graph", "")).strip().lower()
+                if not self._open_graph_by_key(graph):
+                    logger.warning("Неизвестный тип графика для внешней команды: %s", graph)
+            else:
+                logger.warning("Неизвестная внешняя команда: %s", action)
+        finally:
+            self._safe_unlink(COMMAND_FILE)
 
     def update_menu_visibility(self) -> None:
         children = list(self.menu.get_children()) if hasattr(self, 'menu') else []
@@ -668,6 +725,7 @@ class SystemTrayApp:
 
     def update_info(self) -> bool:
         try:
+            self._consume_external_command()
             kbd, ms = self._safe_call(get_counts, (0, 0))
 
             cpu_temp = self._safe_call(SystemUsage.get_cpu_temp, 0)
@@ -690,7 +748,9 @@ class SystemTrayApp:
                             uptime_display, kbd, ms)
 
             now = time.time()
-            if (self.telegram_notifier.enabled and
+            notifications_paused = bool(self.visibility_settings.get('notifications_paused', False))
+
+            if (not notifications_paused and self.telegram_notifier.enabled and
                     now - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
                 self._thread(self.send_telegram_notification,
                              cpu_temp, cpu_usage, ram_used, ram_total,
@@ -698,7 +758,7 @@ class SystemTrayApp:
                              net_recv_speed, net_sent_speed, uptime_display, kbd, ms)
                 self.last_telegram_notification_time = now
 
-            if (self.discord_notifier.enabled and
+            if (not notifications_paused and self.discord_notifier.enabled and
                     now - self.last_discord_notification_time >= self.discord_notifier.notification_interval):
                 self._thread(self.send_discord_notification,
                              cpu_temp, cpu_usage, ram_used, ram_total,
@@ -2102,7 +2162,10 @@ class SystemTrayApp:
             if self.visibility_settings.get('tray_ram', True):
                 tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
             tray_text = "  ".join(tray_parts)
-            if self.telegram_notifier.enabled or self.discord_notifier.enabled:
+            notifications_paused = bool(self.visibility_settings.get('notifications_paused', False))
+            if notifications_paused:
+                tray_text = "⏸  " + tray_text
+            elif self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text
             self.indicator.set_label(tray_text, "")
         except Exception as e:
