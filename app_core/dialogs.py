@@ -186,6 +186,12 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
         graph_history_label.set_xalign(0)
         graph_history_label.set_width_chars(28)
+        graph_history_hint = tr('graph_history_hint').format(
+            GRAPH_HISTORY_MINUTES_MIN,
+            GRAPH_HISTORY_MINUTES_MAX,
+            GRAPH_HISTORY_MINUTES_MAX // 60,
+        )
+        graph_history_label.set_tooltip_text(graph_history_hint)
         self.graph_history_spin = Gtk.SpinButton.new_with_range(
             GRAPH_HISTORY_MINUTES_MIN,
             GRAPH_HISTORY_MINUTES_MAX,
@@ -195,6 +201,7 @@ class SettingsDialog(Gtk.Dialog):
             int(self.visibility_settings.get('graph_history_minutes', GRAPH_HISTORY_MINUTES_DEFAULT))
         )
         self.graph_history_spin.set_width_chars(8)
+        self.graph_history_spin.set_tooltip_text(graph_history_hint)
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_card_content.add(graph_history_box)

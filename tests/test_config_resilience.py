@@ -4,6 +4,7 @@ import sys
 import types
 from pathlib import Path
 
+from app_core.constants import GRAPH_HISTORY_MINUTES_MAX
 from app_core import localization
 
 
@@ -77,3 +78,9 @@ def test_set_language_falls_back_to_russian_for_invalid_value():
         assert localization.get_language() == "ru"
     finally:
         localization.set_language(prev_lang)
+
+
+def test_graph_history_minutes_is_capped_to_8_hours():
+    assert GRAPH_HISTORY_MINUTES_MAX == 480
+    app_code = Path("app_core/app.py").read_text(encoding="utf-8")
+    assert "min(GRAPH_HISTORY_MINUTES_MAX, minutes)" in app_code
