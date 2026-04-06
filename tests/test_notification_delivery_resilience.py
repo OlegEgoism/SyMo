@@ -167,3 +167,34 @@ def test_telegram_send_photo_retries_on_connection_error(tmp_path, monkeypatch):
 
     assert notifier.send_photo(str(photo), "caption") is True
     assert attempts["count"] == 2
+
+
+def test_send_photo_cleans_optimized_temp_file(tmp_path, monkeypatch):
+    if "gi" not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules["gi"] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules["gi.repository"] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    telegram.TELEGRAM_CONFIG_FILE = tmp_path / "telegram.json"
+    notifier = telegram.TelegramNotifier()
+    notifier.save_config("token", "100", True, 60)
+
+    original = tmp_path / "screen.png"
+    optimized = tmp_path / "screen.jpg"
+    original.write_bytes(b"orig")
+    optimized.write_bytes(b"optimized")
+
+    monkeypatch.setattr(notifier, "_optimize_photo_for_upload", lambda _p: (str(optimized), str(optimized)))
+    monkeypatch.setattr(
+        telegram.requests,
+        "post",
+        lambda _url, data=None, files=None, timeout=None: types.SimpleNamespace(status_code=200, json=lambda: {"ok": True}),
+    )
+
+    assert notifier.send_photo(str(original), "caption") is True
+    assert not optimized.exists()
