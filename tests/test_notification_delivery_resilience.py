@@ -198,3 +198,41 @@ def test_send_photo_cleans_optimized_temp_file(tmp_path, monkeypatch):
 
     assert notifier.send_photo(str(original), "caption") is True
     assert not optimized.exists()
+
+
+def test_telegram_saves_and_loads_screenshot_quality(tmp_path):
+    if "gi" not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules["gi"] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules["gi.repository"] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    telegram.TELEGRAM_CONFIG_FILE = tmp_path / "telegram.json"
+    notifier = telegram.TelegramNotifier()
+
+    assert notifier.save_config("token", "100", True, 60, "low") is True
+
+    another = telegram.TelegramNotifier()
+    assert another.screenshot_quality == "low"
+
+
+def test_invalid_screenshot_quality_falls_back_to_medium(tmp_path):
+    if "gi" not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules["gi"] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules["gi.repository"] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    telegram.TELEGRAM_CONFIG_FILE = tmp_path / "telegram.json"
+    notifier = telegram.TelegramNotifier()
+    notifier.save_config("token", "100", True, 60, "ultra")
+
+    assert notifier.screenshot_quality == "medium"

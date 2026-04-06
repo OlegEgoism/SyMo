@@ -597,7 +597,8 @@ class SystemTrayApp:
                         dialog.token_entry.get_text().strip(),
                         dialog.chat_id_entry.get_text().strip(),
                         dialog.telegram_enable_check.get_active(),
-                        int(dialog.interval_spin.get_value())
+                        int(dialog.interval_spin.get_value()),
+                        dialog.screenshot_quality_combo.get_active_id() or "medium"
                 ):
                     self.telegram_notifier.load_config()
                     if self.telegram_notifier.enabled and not tel_enabled_before:

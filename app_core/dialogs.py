@@ -259,6 +259,20 @@ class SettingsDialog(Gtk.Dialog):
         interval_box.set_margin_bottom(6)
         telegram_content.add(interval_box)
 
+        screenshot_quality_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        screenshot_quality_label = Gtk.Label(label=tr('screenshot_quality'))
+        screenshot_quality_label.set_xalign(0)
+        screenshot_quality_label.set_width_chars(20)
+        self.screenshot_quality_combo = Gtk.ComboBoxText()
+        self.screenshot_quality_combo.append("low", tr('quality_low'))
+        self.screenshot_quality_combo.append("medium", tr('quality_medium'))
+        self.screenshot_quality_combo.append("max", tr('quality_max'))
+        self.screenshot_quality_combo.set_active_id("medium")
+        screenshot_quality_box.pack_start(screenshot_quality_label, False, False, 0)
+        screenshot_quality_box.pack_start(self.screenshot_quality_combo, False, False, 0)
+        screenshot_quality_box.set_margin_bottom(8)
+        telegram_content.add(screenshot_quality_box)
+
         discord_card, discord_content = card("Discord")
         notification_content.add(discord_card)
 
@@ -358,6 +372,7 @@ class SettingsDialog(Gtk.Dialog):
                 self.chat_id_entry.set_text(str(config.get('TELEGRAM_CHAT_ID', '') or ''))
                 self.telegram_enable_check.set_active(bool(config.get('enabled', False)))
                 self.interval_spin.set_value(int(config.get('notification_interval', 3600)))
+                self.screenshot_quality_combo.set_active_id(str(config.get('screenshot_quality', 'medium')))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации Telegram: {e}")
 
@@ -384,11 +399,12 @@ class SettingsDialog(Gtk.Dialog):
         chat_id = self.chat_id_entry.get_text().strip()
         enabled = self.telegram_enable_check.get_active()
         interval = int(self.interval_spin.get_value())
+        screenshot_quality = self.screenshot_quality_combo.get_active_id() or "medium"
         if not token or not chat_id:
             self._message(tr('error'), tr('bot_message'))
             return
         notifier = TelegramNotifier()
-        if notifier.save_config(token, chat_id, enabled, interval):
+        if notifier.save_config(token, chat_id, enabled, interval, screenshot_quality):
             ok = notifier.send_message(tr('test_message'), force=True)
             self._message(tr('ok') if ok else tr('error'),
                           tr('test_message_ok') if ok else tr('test_message_error'))
