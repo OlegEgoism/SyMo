@@ -109,3 +109,29 @@ def test_capture_screenshot_uses_gdk_path_first(tmp_path, monkeypatch):
     assert path is not None
     assert Path(path).exists()
     Path(path).unlink(missing_ok=True)
+
+
+def test_send_screenshot_reports_howto_on_capture_failure(tmp_path, monkeypatch):
+    if "gi" not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules["gi"] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules["gi.repository"] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    notifier = telegram.TelegramNotifier()
+    notifier.enabled = True
+    notifier.token = "token"
+    notifier.chat_id = "100"
+
+    sent_messages = []
+    monkeypatch.setattr(notifier, "_capture_screenshot_to_temp", lambda: None)
+    monkeypatch.setattr(notifier, "send_message", lambda message, force=False: sent_messages.append(message) or True)
+
+    notifier._send_screenshot()
+
+    assert len(sent_messages) == 2
+    assert "❌" in sent_messages[0]

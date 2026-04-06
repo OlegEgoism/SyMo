@@ -119,6 +119,7 @@ LANGUAGES = {
         'bot_screenshot_sent': "Скриншот отправлен.",
         'bot_screenshot_failed': "Не удалось сделать скриншот. Проверьте графическую сессию (не headless), разрешения Wayland/X11 и наличие gnome-screenshot/scrot/grim/import.",
         'bot_screenshot_send_error': "Скриншот сделан, но отправка в Telegram не удалась.",
+        'bot_screenshot_howto': "Как исправить: 1) Запустите SyMo в обычной пользовательской графической сессии (не через sudo/systemd). 2) Установите утилиту: sudo apt install gnome-screenshot. 3) Повторите команду /screenshot.",
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -240,6 +241,7 @@ LANGUAGES = {
         'bot_screenshot_sent': "Screenshot sent.",
         'bot_screenshot_failed': "Could not take screenshot. Check graphical session (not headless), Wayland/X11 permissions, and gnome-screenshot/scrot/grim/import availability.",
         'bot_screenshot_send_error': "Screenshot captured, but failed to send it to Telegram.",
+        'bot_screenshot_howto': "How to fix: 1) Run SyMo in your regular user GUI session (not via sudo/systemd). 2) Install a tool: sudo apt install gnome-screenshot. 3) Run /screenshot again.",
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -361,6 +363,7 @@ LANGUAGES = {
         'bot_screenshot_sent': "截图已发送。",
         'bot_screenshot_failed': "无法截图。请检查图形会话（非 headless）、Wayland/X11 权限，并确认已安装 gnome-screenshot/scrot/grim/import。",
         'bot_screenshot_send_error': "截图已创建，但发送到 Telegram 失败。",
+        'bot_screenshot_howto': "修复方法：1）在普通用户图形会话中运行 SyMo（不要使用 sudo/systemd）。2）安装工具：sudo apt install gnome-screenshot。3）再次执行 /screenshot。",
     },
     'de': {
         'cpu_tray': "CPU im Tray",
