@@ -30,6 +30,7 @@ class TelegramNotifier:
     _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
     _MAX_SEND_RETRIES = 3
     _MAX_PHOTO_SEND_RETRIES = 3
+    _PHOTO_OPTIMIZE_THRESHOLD_BYTES = 2 * 1024 * 1024
 
     def __init__(self):
         self.token: Optional[str] = None
@@ -141,9 +142,10 @@ class TelegramNotifier:
 
         url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
         data = {'chat_id': self.chat_id, 'caption': self._truncate_message(caption, 1024)}
+        upload_path, temp_optimized = self._optimize_photo_for_upload(photo_path)
 
         try:
-            response = self._post_photo_with_retries(url, data, photo_path)
+            response = self._post_photo_with_retries(url, data, upload_path)
             if response is None:
                 return False
             if response.status_code != 200:
@@ -163,6 +165,12 @@ class TelegramNotifier:
         except Exception as e:
             logger.exception("Ошибка отправки фото в Telegram: %s", e)
             return False
+        finally:
+            if temp_optimized and os.path.exists(temp_optimized):
+                try:
+                    os.remove(temp_optimized)
+                except Exception:
+                    pass
 
     def _post_photo_with_retries(self, url: str, data: dict[str, str], photo_path: str) -> Optional[Response]:
         backoff_seconds = 1.0
@@ -183,6 +191,37 @@ class TelegramNotifier:
                 time.sleep(backoff_seconds)
                 backoff_seconds = min(backoff_seconds * 2, 8.0)
         return last_response
+
+    def _optimize_photo_for_upload(self, photo_path: str) -> tuple[str, Optional[str]]:
+        try:
+            if os.path.getsize(photo_path) <= self._PHOTO_OPTIMIZE_THRESHOLD_BYTES:
+                return photo_path, None
+        except OSError:
+            return photo_path, None
+
+        try:
+            from gi.repository import GdkPixbuf  # type: ignore
+
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(photo_path)
+            width = pixbuf.get_width()
+            height = pixbuf.get_height()
+            max_side = max(width, height)
+
+            if max_side > 1920:
+                scale = 1920 / float(max_side)
+                new_width = max(1, int(width * scale))
+                new_height = max(1, int(height * scale))
+                pixbuf = pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
+
+            fd, optimized_path = tempfile.mkstemp(prefix="symo-screen-optimized-", suffix=".jpg")
+            os.close(fd)
+            pixbuf.savev(optimized_path, "jpeg", ["quality"], ["82"])
+            if os.path.exists(optimized_path) and os.path.getsize(optimized_path) > 0:
+                return optimized_path, optimized_path
+            return photo_path, None
+        except Exception as e:
+            logger.warning("Не удалось оптимизировать скриншот перед отправкой: %s", e)
+            return photo_path, None
 
     def _capture_screenshot_to_temp(self) -> Optional[str]:
         fd, temp_path = tempfile.mkstemp(prefix="symo-screen-", suffix=".png")
