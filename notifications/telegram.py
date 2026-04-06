@@ -37,6 +37,7 @@ class TelegramNotifier:
         self.chat_id: Optional[str] = None
         self.enabled: bool = False
         self.notification_interval: int = 3600
+        self.screenshot_quality: str = "medium"
         self.last_update_id: int = 0
         self.bot_thread: Optional[threading.Thread] = None
         self.bot_running: bool = False
@@ -51,20 +52,30 @@ class TelegramNotifier:
                 self.chat_id = (str(config.get('TELEGRAM_CHAT_ID') or '').strip() or None)
                 self.enabled = bool(config.get('enabled', False))
                 self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
+                self.screenshot_quality = self._normalize_screenshot_quality(config.get('screenshot_quality', "medium"))
         except Exception as e:
             logger.exception("Ошибка загрузки конфигурации Telegram: %s", e)
 
-    def save_config(self, token: str, chat_id: str, enabled: bool, interval: int) -> bool:
+    def save_config(
+            self,
+            token: str,
+            chat_id: str,
+            enabled: bool,
+            interval: int,
+            screenshot_quality: str = "medium",
+    ) -> bool:
         try:
             self.token = token.strip() if token else None
             self.chat_id = chat_id.strip() if chat_id else None
             self.enabled = bool(enabled)
             self.notification_interval = self._normalize_interval(interval)
+            self.screenshot_quality = self._normalize_screenshot_quality(screenshot_quality)
             TELEGRAM_CONFIG_FILE.write_text(json.dumps({
                 'TELEGRAM_BOT_TOKEN': self.token,
                 'TELEGRAM_CHAT_ID': self.chat_id,
                 'enabled': self.enabled,
-                'notification_interval': self.notification_interval
+                'notification_interval': self.notification_interval,
+                'screenshot_quality': self.screenshot_quality,
             }, indent=2), encoding="utf-8")
             try:
                 import os
@@ -83,6 +94,13 @@ class TelegramNotifier:
         except (TypeError, ValueError):
             value = 3600
         return max(10, min(86400, value))
+
+    @staticmethod
+    def _normalize_screenshot_quality(value: object) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized in {"low", "medium", "max"}:
+            return normalized
+        return "medium"
 
     def send_message(self, message: str, force: bool = False) -> bool:
         if (not force and not self.enabled) or not self.token or not self.chat_id:
@@ -193,8 +211,13 @@ class TelegramNotifier:
         return last_response
 
     def _optimize_photo_for_upload(self, photo_path: str) -> tuple[str, Optional[str]]:
+        profile = self._screenshot_quality_profile()
+        optimize_threshold = int(profile["threshold"])
+        max_side_limit = int(profile["max_side"])
+        jpeg_quality = int(profile["jpeg_quality"])
+
         try:
-            if os.path.getsize(photo_path) <= self._PHOTO_OPTIMIZE_THRESHOLD_BYTES:
+            if os.path.getsize(photo_path) <= optimize_threshold:
                 return photo_path, None
         except OSError:
             return photo_path, None
@@ -207,21 +230,30 @@ class TelegramNotifier:
             height = pixbuf.get_height()
             max_side = max(width, height)
 
-            if max_side > 1920:
-                scale = 1920 / float(max_side)
+            if max_side > max_side_limit:
+                scale = max_side_limit / float(max_side)
                 new_width = max(1, int(width * scale))
                 new_height = max(1, int(height * scale))
                 pixbuf = pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
 
             fd, optimized_path = tempfile.mkstemp(prefix="symo-screen-optimized-", suffix=".jpg")
             os.close(fd)
-            pixbuf.savev(optimized_path, "jpeg", ["quality"], ["82"])
+            pixbuf.savev(optimized_path, "jpeg", ["quality"], [str(jpeg_quality)])
             if os.path.exists(optimized_path) and os.path.getsize(optimized_path) > 0:
                 return optimized_path, optimized_path
             return photo_path, None
         except Exception as e:
             logger.warning("Не удалось оптимизировать скриншот перед отправкой: %s", e)
             return photo_path, None
+
+    def _screenshot_quality_profile(self) -> dict[str, int]:
+        quality = self._normalize_screenshot_quality(self.screenshot_quality)
+        profiles = {
+            "low": {"threshold": 0, "max_side": 1280, "jpeg_quality": 60},
+            "medium": {"threshold": self._PHOTO_OPTIMIZE_THRESHOLD_BYTES, "max_side": 1920, "jpeg_quality": 82},
+            "max": {"threshold": 8 * 1024 * 1024, "max_side": 2560, "jpeg_quality": 92},
+        }
+        return profiles[quality]
 
     def _capture_screenshot_to_temp(self) -> Optional[str]:
         fd, temp_path = tempfile.mkstemp(prefix="symo-screen-", suffix=".png")
