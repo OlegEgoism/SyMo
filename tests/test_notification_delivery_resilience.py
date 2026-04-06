@@ -57,3 +57,29 @@ def test_telegram_send_message_checks_ok_flag(tmp_path, monkeypatch):
     monkeypatch.setattr(telegram.requests, "post", fake_post)
 
     assert notifier.send_message("ok") is False
+
+
+def test_telegram_send_photo_checks_ok_flag(tmp_path, monkeypatch):
+    if "gi" not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules["gi"] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules["gi.repository"] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    telegram.TELEGRAM_CONFIG_FILE = tmp_path / "telegram.json"
+    notifier = telegram.TelegramNotifier()
+    notifier.save_config("token", "100", True, 60)
+
+    photo = tmp_path / "screen.png"
+    photo.write_bytes(b"png")
+
+    def fake_post(_url, _data, _files, _timeout):
+        return types.SimpleNamespace(status_code=200, json=lambda: {"ok": False, "description": "Bad Request"})
+
+    monkeypatch.setattr(telegram.requests, "post", fake_post)
+
+    assert notifier.send_photo(str(photo), "caption") is False

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+import subprocess
+import tempfile
 import threading
 import time
 from typing import Optional, TYPE_CHECKING
@@ -130,6 +134,84 @@ class TelegramNotifier:
                 backoff_seconds = min(backoff_seconds * 2, 8.0)
         return last_response
 
+    def send_photo(self, photo_path: str, caption: str = "", force: bool = False) -> bool:
+        if (not force and not self.enabled) or not self.token or not self.chat_id:
+            return False
+
+        url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
+        data = {'chat_id': self.chat_id, 'caption': self._truncate_message(caption, 1024)}
+
+        try:
+            with open(photo_path, 'rb') as photo_file:
+                files = {'photo': photo_file}
+                response = requests.post(url, data=data, files=files, timeout=(5, 30))
+            if response.status_code != 200:
+                logger.error("Ошибка отправки фото в Telegram: HTTP %s", response.status_code)
+                return False
+            payload = response.json()
+            if not payload.get('ok', False):
+                logger.error("Ошибка Telegram API при отправке фото: %s", payload.get('description', 'unknown error'))
+                return False
+            return True
+        except FileNotFoundError:
+            logger.error("Файл скриншота не найден: %s", photo_path)
+            return False
+        except ValueError:
+            logger.error("Ошибка отправки фото в Telegram: некорректный JSON в ответе API")
+            return False
+        except Exception as e:
+            logger.exception("Ошибка отправки фото в Telegram: %s", e)
+            return False
+
+    def _capture_screenshot_to_temp(self) -> Optional[str]:
+        screenshot_tools = [
+            ["gnome-screenshot", "-f"],
+            ["scrot"],
+            ["grim"],
+            ["import", "-window", "root"],
+        ]
+        fd, temp_path = tempfile.mkstemp(prefix="symo-screen-", suffix=".png")
+        os.close(fd)
+
+        try:
+            for tool in screenshot_tools:
+                if not shutil.which(tool[0]):
+                    continue
+                try:
+                    command = [*tool, temp_path]
+                    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=15)
+                    if result.returncode == 0 and os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
+                        return temp_path
+                    logger.warning("Команда скриншота завершилась с кодом %s: %s", result.returncode, " ".join(command))
+                except Exception as e:
+                    logger.warning("Не удалось выполнить команду скриншота %s: %s", tool[0], e)
+            return None
+        except Exception as e:
+            logger.exception("Ошибка получения скриншота: %s", e)
+            return None
+        finally:
+            if not os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
+    def _send_screenshot(self) -> None:
+        screenshot_path = self._capture_screenshot_to_temp()
+        if not screenshot_path:
+            self.send_message(f"❌ {tr('bot_screenshot_failed')}")
+            return
+        try:
+            if self.send_photo(screenshot_path, tr('bot_screenshot_caption')):
+                self.send_message(f"✅ {tr('bot_screenshot_sent')}")
+            else:
+                self.send_message(f"❌ {tr('bot_screenshot_send_error')}")
+        finally:
+            try:
+                os.remove(screenshot_path)
+            except Exception:
+                pass
+
     def set_power_control(self, power_control: "PowerControl") -> None:
         self.power_control_ref = power_control
 
@@ -184,6 +266,10 @@ class TelegramNotifier:
 
                             elif text == '/status':
                                 self._send_system_status()
+
+                            elif text == '/screenshot':
+                                self.send_message(tr('bot_screenshot_processing'))
+                                self._send_screenshot()
 
                             elif text == '/help':
                                 help_text = tr('bot_help_message')
