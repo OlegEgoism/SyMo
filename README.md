@@ -29,6 +29,9 @@ SyMo is a GTK-based Linux system tray monitor that displays live system metrics,
 - Notifications:
     - Telegram bot integration;
     - Discord webhook integration.
+  - Telegram bot commands:
+    - `/status` — current system status;
+    - `/screenshot` — take a desktop screenshot and send it to Telegram.
 - Multi-language interface.
 
 ## Supported UI Languages
@@ -85,6 +88,19 @@ sudo apt install -y \
   gobject-introspection pkg-config libcairo2-dev
 ```
 
+### Optional screenshot dependencies (for Telegram `/screenshot`)
+
+SyMo tries multiple screenshot backends. Install at least one of them:
+
+```bash
+sudo apt install -y gnome-screenshot scrot grim imagemagick
+```
+
+> Notes:
+> - On GNOME/X11, `gnome-screenshot` is usually enough.
+> - On Wayland compositors (e.g., Sway), `grim` is commonly used.
+> - `imagemagick` provides the `import` command fallback.
+
 ### Python dependencies
 
 ```bash
@@ -96,6 +112,26 @@ pip install -r requirements.txt
 ```bash
 python3 app.py
 ```
+
+## Telegram `/screenshot` Setup
+
+1. Open **Settings → Notifications → Telegram**.
+2. Fill in:
+   - Bot token
+   - Chat ID
+3. Enable Telegram notifications.
+4. Set **Screenshot quality**:
+   - **Low** — smallest size, fastest upload;
+   - **Medium** — balanced (recommended);
+   - **Maximum** — best quality, larger file.
+5. Click **Apply**.
+6. In Telegram chat with your bot, send:
+
+```text
+/screenshot
+```
+
+The bot will capture the desktop and send the image to your configured chat.
 
 
 ## GNOME Extensions upload package
