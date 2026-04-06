@@ -77,7 +77,7 @@ def test_telegram_send_photo_checks_ok_flag(tmp_path, monkeypatch):
     photo = tmp_path / "screen.png"
     photo.write_bytes(b"png")
 
-    def fake_post(_url, _data, _files, _timeout):
+    def fake_post(_url, data=None, files=None, timeout=None):
         return types.SimpleNamespace(status_code=200, json=lambda: {"ok": False, "description": "Bad Request"})
 
     monkeypatch.setattr(telegram.requests, "post", fake_post)
@@ -135,3 +135,35 @@ def test_send_screenshot_reports_howto_on_capture_failure(tmp_path, monkeypatch)
 
     assert len(sent_messages) == 2
     assert "❌" in sent_messages[0]
+
+
+def test_telegram_send_photo_retries_on_connection_error(tmp_path, monkeypatch):
+    if "gi" not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules["gi"] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules["gi.repository"] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    telegram.TELEGRAM_CONFIG_FILE = tmp_path / "telegram.json"
+    notifier = telegram.TelegramNotifier()
+    notifier.save_config("token", "100", True, 60)
+
+    attempts = {"count": 0}
+    photo = tmp_path / "screen.png"
+    photo.write_bytes(b"png")
+
+    def fake_post(_url, data=None, files=None, timeout=None):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise telegram.requests.exceptions.ConnectionError("timeout")
+        return types.SimpleNamespace(status_code=200, json=lambda: {"ok": True})
+
+    monkeypatch.setattr(telegram.requests, "post", fake_post)
+    monkeypatch.setattr(telegram.time, "sleep", lambda *_args, **_kwargs: None)
+
+    assert notifier.send_photo(str(photo), "caption") is True
+    assert attempts["count"] == 2
