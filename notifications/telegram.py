@@ -178,6 +178,10 @@ class TelegramNotifier:
                                 self.send_message(tr('bot_reboot_message'))
                                 GLib.idle_add(self.power_control_ref._reboot)
 
+                            elif text == '/lock' and self.power_control_ref:
+                                self.send_message(tr('bot_lock_message'))
+                                GLib.idle_add(self.power_control_ref._lock_screen)
+
                             elif text == '/status':
                                 self._send_system_status()
 

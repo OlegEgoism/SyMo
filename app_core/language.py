@@ -112,7 +112,8 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 Выполняется выключение системы...",
         'bot_reboot_message': "🔄 Выполняется перезагрузка системы...",
-        'bot_help_message': "🤖 Доступные команды:\n/status - текущий статус системы\n/poweroff - выключить компьютер\n/reboot - перезагрузить компьютер\n/help - эта справка",
+        'bot_lock_message': "🔒 Выполняется блокировка экрана...",
+        'bot_help_message': "🤖 Доступные команды:\n/status - текущий статус системы\n/poweroff - выключить компьютер\n/reboot - перезагрузить компьютер\n/lock - заблокировать компьютер\n/help - эта справка",
     },
     'en': {
         'cpu_tray': "CPU in tray",
@@ -227,7 +228,8 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 Shutting down system...",
         'bot_reboot_message': "🔄 Rebooting system...",
-        'bot_help_message': "🤖 Available commands:\n/status - current system status\n/poweroff - shutdown computer\n/reboot - reboot computer\n/help - this help",
+        'bot_lock_message': "🔒 Locking screen...",
+        'bot_help_message': "🤖 Available commands:\n/status - current system status\n/poweroff - shutdown computer\n/reboot - reboot computer\n/lock - lock computer\n/help - this help",
     },
     'cn': {
         'cpu_tray': "CPU在托盘",
@@ -342,7 +344,8 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 正在关闭系统...",
         'bot_reboot_message': "🔄 正在重启系统...",
-        'bot_help_message': "🤖 可用命令:\n/status - 当前系统状态\n/poweroff - 关闭计算机\n/reboot - 重启计算机\n/help - 帮助信息",
+        'bot_lock_message': "🔒 正在锁定屏幕...",
+        'bot_help_message': "🤖 可用命令:\n/status - 当前系统状态\n/poweroff - 关闭计算机\n/reboot - 重启计算机\n/lock - 锁定计算机\n/help - 帮助信息",
     },
     'de': {
         'cpu_tray': "CPU im Tray",
@@ -457,7 +460,8 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 System wird heruntergefahren...",
         'bot_reboot_message': "🔄 System wird neu gestartet...",
-        'bot_help_message': "🤖 Verfügbare Befehle:\n/status - aktueller Systemstatus\n/poweroff - Computer ausschalten\n/reboot - Computer neu starten\n/help - diese Hilfe",
+        'bot_lock_message': "🔒 Bildschirm wird gesperrt...",
+        'bot_help_message': "🤖 Verfügbare Befehle:\n/status - aktueller Systemstatus\n/poweroff - Computer ausschalten\n/reboot - Computer neu starten\n/lock - Computer sperren\n/help - diese Hilfe",
     },
     'it': {
         'cpu_tray': "CPU in tray",
@@ -572,7 +576,8 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 Spegnimento del sistema in corso...",
         'bot_reboot_message': "🔄 Riavvio del sistema in corso...",
-        'bot_help_message': "🤖 Comandi disponibili:\n/status - stato attuale del sistema\n/poweroff - spegni computer\n/reboot - riavvia computer\n/help - questo aiuto",
+        'bot_lock_message': "🔒 Blocco dello schermo...",
+        'bot_help_message': "🤖 Comandi disponibili:\n/status - stato attuale del sistema\n/poweroff - spegni computer\n/reboot - riavvia computer\n/lock - blocca computer\n/help - questo aiuto",
     },
     'es': {
         'cpu_tray': "CPU en bandeja",
@@ -687,7 +692,8 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 Apagando el sistema...",
         'bot_reboot_message': "🔄 Reiniciando el sistema...",
-        'bot_help_message': "🤖 Comandos disponibles:\n/status - estado actual del sistema\n/poweroff - apagar computadora\n/reboot - reiniciar computadora\n/help - esta ayuda",
+        'bot_lock_message': "🔒 Bloqueando la pantalla...",
+        'bot_help_message': "🤖 Comandos disponibles:\n/status - estado actual del sistema\n/poweroff - apagar computadora\n/reboot - reiniciar computadora\n/lock - bloquear computadora\n/help - esta ayuda",
     },
     'tr': {
         'cpu_tray': "Sistem çekmecesinde CPU",
@@ -802,7 +808,8 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 Sistem kapatılıyor...",
         'bot_reboot_message': "🔄 Sistem yeniden başlatılıyor...",
-        'bot_help_message': "🤖 Mevcut komutlar:\n/status - mevcut sistem durumu\n/poweroff - bilgisayarı kapat\n/reboot - bilgisayarı yeniden başlat\n/help - bu yardım",
+        'bot_lock_message': "🔒 Ekran kilitleniyor...",
+        'bot_help_message': "🤖 Mevcut komutlar:\n/status - mevcut sistem durumu\n/poweroff - bilgisayarı kapat\n/reboot - bilgisayarı yeniden başlat\n/lock - bilgisayarı kilitle\n/help - bu yardım",
     },
     'fr': {
         'cpu_tray': "CPU dans la barre",
@@ -917,6 +924,7 @@ LANGUAGES = {
 
         'bot_shutdown_message': "🔌 Arrêt du système en cours...",
         'bot_reboot_message': "🔄 Redémarrage du système en cours...",
-        'bot_help_message': "🤖 Commandes disponibles:\n/status - état actuel du système\n/poweroff - éteindre l'ordinateur\n/reboot - redémarrer l'ordinateur\n/help - cette aide",
+        'bot_lock_message': "🔒 Verrouillage de l'écran...",
+        'bot_help_message': "🤖 Commandes disponibles:\n/status - état actuel du système\n/poweroff - éteindre l'ordinateur\n/reboot - redémarrer l'ordinateur\n/lock - verrouiller l'ordinateur\n/help - cette aide",
     }
 }
