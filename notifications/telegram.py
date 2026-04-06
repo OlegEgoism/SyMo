@@ -230,6 +230,7 @@ class TelegramNotifier:
         screenshot_path = self._capture_screenshot_to_temp()
         if not screenshot_path:
             self.send_message(f"❌ {tr('bot_screenshot_failed')}")
+            self.send_message(tr('bot_screenshot_howto'))
             return
         try:
             if self.send_photo(screenshot_path, tr('bot_screenshot_caption')):
