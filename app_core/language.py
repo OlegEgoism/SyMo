@@ -117,7 +117,7 @@ LANGUAGES = {
         'bot_screenshot_processing': "📸 Делаю скриншот, подождите...",
         'bot_screenshot_caption': "Скриншот рабочего стола",
         'bot_screenshot_sent': "Скриншот отправлен.",
-        'bot_screenshot_failed': "Не удалось сделать скриншот. Установите gnome-screenshot, scrot, grim или ImageMagick (import).",
+        'bot_screenshot_failed': "Не удалось сделать скриншот. Проверьте графическую сессию (не headless), разрешения Wayland/X11 и наличие gnome-screenshot/scrot/grim/import.",
         'bot_screenshot_send_error': "Скриншот сделан, но отправка в Telegram не удалась.",
     },
     'en': {
@@ -238,7 +238,7 @@ LANGUAGES = {
         'bot_screenshot_processing': "📸 Taking screenshot, please wait...",
         'bot_screenshot_caption': "Desktop screenshot",
         'bot_screenshot_sent': "Screenshot sent.",
-        'bot_screenshot_failed': "Could not take screenshot. Install gnome-screenshot, scrot, grim, or ImageMagick (import).",
+        'bot_screenshot_failed': "Could not take screenshot. Check graphical session (not headless), Wayland/X11 permissions, and gnome-screenshot/scrot/grim/import availability.",
         'bot_screenshot_send_error': "Screenshot captured, but failed to send it to Telegram.",
     },
     'cn': {
@@ -359,7 +359,7 @@ LANGUAGES = {
         'bot_screenshot_processing': "📸 正在截图，请稍候...",
         'bot_screenshot_caption': "桌面截图",
         'bot_screenshot_sent': "截图已发送。",
-        'bot_screenshot_failed': "无法截图。请安装 gnome-screenshot、scrot、grim 或 ImageMagick（import）。",
+        'bot_screenshot_failed': "无法截图。请检查图形会话（非 headless）、Wayland/X11 权限，并确认已安装 gnome-screenshot/scrot/grim/import。",
         'bot_screenshot_send_error': "截图已创建，但发送到 Telegram 失败。",
     },
     'de': {

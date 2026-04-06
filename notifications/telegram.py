@@ -164,16 +164,19 @@ class TelegramNotifier:
             return False
 
     def _capture_screenshot_to_temp(self) -> Optional[str]:
-        screenshot_tools = [
-            ["gnome-screenshot", "-f"],
-            ["scrot"],
-            ["grim"],
-            ["import", "-window", "root"],
-        ]
         fd, temp_path = tempfile.mkstemp(prefix="symo-screen-", suffix=".png")
         os.close(fd)
 
         try:
+            if self._capture_screenshot_with_gdk(temp_path):
+                return temp_path
+
+            screenshot_tools = [
+                ["gnome-screenshot", "-f"],
+                ["scrot"],
+                ["grim"],
+                ["import", "-window", "root"],
+            ]
             for tool in screenshot_tools:
                 if not shutil.which(tool[0]):
                     continue
@@ -195,6 +198,33 @@ class TelegramNotifier:
                     os.remove(temp_path)
                 except Exception:
                     pass
+
+    @staticmethod
+    def _capture_screenshot_with_gdk(target_path: str) -> bool:
+        try:
+            from gi.repository import Gdk, GdkPixbuf  # type: ignore
+        except Exception:
+            return False
+
+        try:
+            root_window = Gdk.get_default_root_window()
+            if root_window is None:
+                return False
+
+            width = root_window.get_width()
+            height = root_window.get_height()
+            if width <= 0 or height <= 0:
+                return False
+
+            pixbuf = Gdk.pixbuf_get_from_window(root_window, 0, 0, width, height)
+            if pixbuf is None:
+                return False
+
+            pixbuf.savev(target_path, "png", [], [])
+            return os.path.exists(target_path) and os.path.getsize(target_path) > 0
+        except Exception as e:
+            logger.warning("Не удалось сделать скриншот через GDK: %s", e)
+            return False
 
     def _send_screenshot(self) -> None:
         screenshot_path = self._capture_screenshot_to_temp()
