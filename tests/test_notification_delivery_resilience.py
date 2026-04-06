@@ -83,3 +83,29 @@ def test_telegram_send_photo_checks_ok_flag(tmp_path, monkeypatch):
     monkeypatch.setattr(telegram.requests, "post", fake_post)
 
     assert notifier.send_photo(str(photo), "caption") is False
+
+
+def test_capture_screenshot_uses_gdk_path_first(tmp_path, monkeypatch):
+    if "gi" not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules["gi"] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules["gi.repository"] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    notifier = telegram.TelegramNotifier()
+
+    def fake_gdk_capture(path):
+        Path(path).write_bytes(b"ok")
+        return True
+
+    monkeypatch.setattr(notifier, "_capture_screenshot_with_gdk", fake_gdk_capture)
+    monkeypatch.setattr(telegram.shutil, "which", lambda _name: None)
+
+    path = notifier._capture_screenshot_to_temp()
+    assert path is not None
+    assert Path(path).exists()
+    Path(path).unlink(missing_ok=True)
