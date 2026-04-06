@@ -29,6 +29,7 @@ class TelegramNotifier:
     MAX_MESSAGE_LENGTH = 4096
     _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
     _MAX_SEND_RETRIES = 3
+    _MAX_PHOTO_SEND_RETRIES = 3
 
     def __init__(self):
         self.token: Optional[str] = None
@@ -142,9 +143,9 @@ class TelegramNotifier:
         data = {'chat_id': self.chat_id, 'caption': self._truncate_message(caption, 1024)}
 
         try:
-            with open(photo_path, 'rb') as photo_file:
-                files = {'photo': photo_file}
-                response = requests.post(url, data=data, files=files, timeout=(5, 30))
+            response = self._post_photo_with_retries(url, data, photo_path)
+            if response is None:
+                return False
             if response.status_code != 200:
                 logger.error("Ошибка отправки фото в Telegram: HTTP %s", response.status_code)
                 return False
@@ -162,6 +163,26 @@ class TelegramNotifier:
         except Exception as e:
             logger.exception("Ошибка отправки фото в Telegram: %s", e)
             return False
+
+    def _post_photo_with_retries(self, url: str, data: dict[str, str], photo_path: str) -> Optional[Response]:
+        backoff_seconds = 1.0
+        last_response: Optional[Response] = None
+        for _attempt in range(self._MAX_PHOTO_SEND_RETRIES):
+            try:
+                with open(photo_path, 'rb') as photo_file:
+                    files = {'photo': photo_file}
+                    response = requests.post(url, data=data, files=files, timeout=(5, 60))
+                last_response = response
+                if response.status_code in self._RETRYABLE_STATUS_CODES:
+                    time.sleep(backoff_seconds)
+                    backoff_seconds = min(backoff_seconds * 2, 8.0)
+                    continue
+                return response
+            except requests.exceptions.RequestException as e:
+                logger.warning("Ошибка связи с Telegram API при отправке фото: %s", e)
+                time.sleep(backoff_seconds)
+                backoff_seconds = min(backoff_seconds * 2, 8.0)
+        return last_response
 
     def _capture_screenshot_to_temp(self) -> Optional[str]:
         fd, temp_path = tempfile.mkstemp(prefix="symo-screen-", suffix=".png")
