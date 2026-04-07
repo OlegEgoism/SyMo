@@ -15,6 +15,7 @@ from .constants import (
     GRAPH_HISTORY_MINUTES_DEFAULT,
     GRAPH_HISTORY_MINUTES_MIN,
     GRAPH_HISTORY_MINUTES_MAX,
+    NOTIFICATION_INTERVAL_MAX_SEC,
 )
 from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
@@ -257,7 +258,7 @@ class SettingsDialog(Gtk.Dialog):
         interval_label = Gtk.Label(label=tr('time_send'))
         interval_label.set_xalign(0)
         interval_label.set_width_chars(20)
-        self.interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
+        self.interval_spin = Gtk.SpinButton.new_with_range(10, NOTIFICATION_INTERVAL_MAX_SEC, 1)
         self.interval_spin.set_value(3600)
         self.interval_spin.set_width_chars(8)
         interval_box.pack_start(interval_label, False, False, 0)
@@ -314,7 +315,7 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_label = Gtk.Label(label=tr('time_send'))
         discord_interval_label.set_xalign(0)
         discord_interval_label.set_width_chars(20)
-        self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, 86400, 1)
+        self.discord_interval_spin = Gtk.SpinButton.new_with_range(10, NOTIFICATION_INTERVAL_MAX_SEC, 1)
         self.discord_interval_spin.set_value(3600)
         self.discord_interval_spin.set_width_chars(8)
         discord_interval_box.pack_start(discord_interval_label, False, False, 0)

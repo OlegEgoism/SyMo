@@ -14,7 +14,7 @@ import requests
 from requests import Response
 from gi.repository import GLib
 
-from app_core.constants import TELEGRAM_CONFIG_FILE
+from app_core.constants import TELEGRAM_CONFIG_FILE, NOTIFICATION_INTERVAL_MAX_SEC
 from app_core.localization import tr
 from app_core.system_usage import SystemUsage
 from app_core.click_tracker import get_counts
@@ -93,7 +93,7 @@ class TelegramNotifier:
             value = int(interval)
         except (TypeError, ValueError):
             value = 3600
-        return max(10, min(86400, value))
+        return max(10, min(NOTIFICATION_INTERVAL_MAX_SEC, value))
 
     @staticmethod
     def _normalize_screenshot_quality(value: object) -> str:

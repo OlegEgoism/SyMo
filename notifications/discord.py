@@ -8,7 +8,7 @@ from typing import Optional
 import requests
 from requests import Response
 
-from app_core.constants import DISCORD_CONFIG_FILE
+from app_core.constants import DISCORD_CONFIG_FILE, NOTIFICATION_INTERVAL_MAX_SEC
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class DiscordNotifier:
             value = int(interval)
         except (TypeError, ValueError):
             value = 3600
-        return max(10, min(86400, value))
+        return max(10, min(NOTIFICATION_INTERVAL_MAX_SEC, value))
 
     def send_message(self, message: str, force: bool = False) -> bool:
         if (not force and not self.enabled) or not self.webhook_url:

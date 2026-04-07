@@ -4,7 +4,7 @@ import sys
 import types
 from pathlib import Path
 
-from app_core.constants import GRAPH_HISTORY_MINUTES_MAX
+from app_core.constants import GRAPH_HISTORY_MINUTES_MAX, NOTIFICATION_INTERVAL_MAX_SEC
 from app_core import localization
 
 
@@ -68,6 +68,24 @@ def test_telegram_load_config_handles_invalid_interval(tmp_path):
     assert notifier.notification_interval == 3600
 
 
+def test_telegram_interval_is_limited_to_8_hours(tmp_path):
+    if 'gi' not in sys.modules:
+        fake_glib = types.SimpleNamespace(idle_add=lambda *args, **kwargs: None)
+        fake_repository = types.SimpleNamespace(GLib=fake_glib)
+        sys.modules['gi'] = types.SimpleNamespace(repository=fake_repository)
+        sys.modules['gi.repository'] = fake_repository
+
+    telegram = _load_module(
+        "notifications.telegram",
+        Path(__file__).resolve().parents[1] / "notifications" / "telegram.py",
+    )
+    telegram.TELEGRAM_CONFIG_FILE = tmp_path / "telegram.json"
+    notifier = telegram.TelegramNotifier()
+    notifier.save_config("token", "100", True, 999999, "medium")
+
+    assert notifier.notification_interval == NOTIFICATION_INTERVAL_MAX_SEC
+
+
 def test_set_language_falls_back_to_russian_for_invalid_value():
     prev_lang = localization.get_language()
     try:
@@ -82,5 +100,18 @@ def test_set_language_falls_back_to_russian_for_invalid_value():
 
 def test_graph_history_minutes_is_capped_to_8_hours():
     assert GRAPH_HISTORY_MINUTES_MAX == 480
+    assert NOTIFICATION_INTERVAL_MAX_SEC == 480 * 60
     app_code = Path("app_core/app.py").read_text(encoding="utf-8")
     assert "min(GRAPH_HISTORY_MINUTES_MAX, minutes)" in app_code
+
+
+def test_discord_interval_is_limited_to_8_hours(tmp_path):
+    discord = _load_module(
+        "notifications.discord",
+        Path(__file__).resolve().parents[1] / "notifications" / "discord.py",
+    )
+    discord.DISCORD_CONFIG_FILE = tmp_path / "discord.json"
+    notifier = discord.DiscordNotifier()
+    notifier.save_config("https://example.com/hook", True, 999999)
+
+    assert notifier.notification_interval == NOTIFICATION_INTERVAL_MAX_SEC
