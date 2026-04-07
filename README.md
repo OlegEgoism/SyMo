@@ -84,17 +84,6 @@ SyMo/
 - Linux desktop environment with GTK3 + AppIndicator (or Ayatana AppIndicator).
 - Python 3.10+ (recommended).
 
-### Base system packages (Debian/Ubuntu)
-
-```bash
-sudo apt update
-sudo apt install -y \
-  python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-appindicator3-0.1 \
-  gnome-shell-extension-appindicator \
-  build-essential libgirepository1.0-dev gir1.2-glib-2.0 \
-  gobject-introspection pkg-config libcairo2-dev
-```
-
 ### Optional screenshot dependencies (for Telegram `/screenshot`)
 
 SyMo tries multiple screenshot backends. Install at least one of them:
