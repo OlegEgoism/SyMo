@@ -2,7 +2,7 @@
 
 <img src="logo.png" width="96" alt="Логотип SyMo" />
 
-SyMo — это лёгкое GTK-приложение для Linux-трея: показывает системные метрики, даёт быстрые действия питания и отправляет уведомления в Telegram/Discord.
+SyMo — это лёгкое GTK-приложение для Linux-трея: показывает системные метрики и отправляет уведомления в Telegram/Discord.
 
 ## Минимальное описание проекта
 
@@ -83,17 +83,6 @@ SyMo/
 
 - Linux-окружение рабочего стола с GTK3 + AppIndicator (или Ayatana AppIndicator).
 - Python 3.10+ (рекомендуется).
-
-### Базовые системные пакеты (Debian/Ubuntu)
-
-```bash
-sudo apt update
-sudo apt install -y \
-  python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-appindicator3-0.1 \
-  gnome-shell-extension-appindicator \
-  build-essential libgirepository1.0-dev gir1.2-glib-2.0 \
-  gobject-introspection pkg-config libcairo2-dev
-```
 
 ### Дополнительные зависимости для `/screenshot` в Telegram
 
@@ -232,7 +221,7 @@ pytest -q
 - Telegram: [@OlegEgoism](https://t.me/OlegEgoism)
 - Email: olegpustovalov220@gmail.com
 
-<img src="img.png" width="560" alt="Превью SyMo" />
+<img src="img.png" width="960" alt="SyMo preview" />
 
 ## Видео на YouTube:
 
