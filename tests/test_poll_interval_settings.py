@@ -6,6 +6,7 @@ def test_display_poll_intervals_are_configured_with_expected_bounds():
     assert 'POLL_INTERVAL_MIN_SEC = 1' in code
     assert 'POLL_INTERVAL_MAX_SEC = 60' in code
     assert "Gtk.SpinButton.new_with_range(POLL_INTERVAL_MIN_SEC, POLL_INTERVAL_MAX_SEC, 1)" in code
+    assert 'stack.add_titled(interval_scroller, "poll_interval", "Интервал опроса")' in code
 
 
 def test_app_uses_per_item_poll_interval_setting_keys():
