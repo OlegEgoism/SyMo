@@ -51,6 +51,19 @@ from .click_tracker import increment_keyboard, increment_mouse, get_counts
 
 logger = logging.getLogger(__name__)
 
+POLL_INTERVAL_DEFAULT_SEC = 1
+POLL_INTERVAL_MIN_SEC = 1
+POLL_INTERVAL_MAX_SEC = 60
+POLL_INTERVAL_SETTING_KEYS = (
+    'tray_cpu_interval_sec',
+    'tray_ram_interval_sec',
+    'cpu_interval_sec',
+    'ram_interval_sec',
+    'net_interval_sec',
+    'disk_interval_sec',
+    'swap_interval_sec',
+)
+
 
 
 def _text_width(text_extents) -> float:
@@ -456,6 +469,13 @@ class SystemTrayApp:
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
             'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
             'menu_order': MENU_ORDER_DEFAULT.copy(),
+            'tray_cpu_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
+            'tray_ram_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
+            'cpu_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
+            'ram_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
+            'net_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
+            'disk_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
+            'swap_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
         }
         try:
             if self.settings_file.exists():
@@ -465,6 +485,8 @@ class SystemTrayApp:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
         default['graph_history_minutes'] = self._sanitize_graph_history_minutes(default.get('graph_history_minutes'))
         default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))
+        for key in POLL_INTERVAL_SETTING_KEYS:
+            default[key] = self._sanitize_poll_interval(default.get(key))
         return default
 
     @staticmethod
@@ -478,6 +500,14 @@ class SystemTrayApp:
     @staticmethod
     def _graph_history_points(minutes: int) -> int:
         return max(1, minutes * 60 // TIME_UPDATE_SEC)
+
+    @staticmethod
+    def _sanitize_poll_interval(value) -> int:
+        try:
+            sec = int(value)
+        except (TypeError, ValueError):
+            sec = POLL_INTERVAL_DEFAULT_SEC
+        return max(POLL_INTERVAL_MIN_SEC, min(POLL_INTERVAL_MAX_SEC, sec))
 
     def _set_graph_history_window(self, minutes) -> None:
         sanitized_minutes = self._sanitize_graph_history_minutes(minutes)
@@ -591,6 +621,13 @@ class SystemTrayApp:
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
                 self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
+                vs['tray_cpu_interval_sec'] = self._sanitize_poll_interval(dialog.tray_cpu_interval_spin.get_value_as_int())
+                vs['tray_ram_interval_sec'] = self._sanitize_poll_interval(dialog.tray_ram_interval_spin.get_value_as_int())
+                vs['cpu_interval_sec'] = self._sanitize_poll_interval(dialog.cpu_interval_spin.get_value_as_int())
+                vs['ram_interval_sec'] = self._sanitize_poll_interval(dialog.ram_interval_spin.get_value_as_int())
+                vs['net_interval_sec'] = self._sanitize_poll_interval(dialog.net_interval_spin.get_value_as_int())
+                vs['disk_interval_sec'] = self._sanitize_poll_interval(dialog.disk_interval_spin.get_value_as_int())
+                vs['swap_interval_sec'] = self._sanitize_poll_interval(dialog.swap_interval_spin.get_value_as_int())
 
                 tel_enabled_before = getattr(self, 'telegram_notifier', TelegramNotifier()).enabled
                 if self.telegram_notifier.save_config(
@@ -2058,6 +2095,20 @@ class SystemTrayApp:
                    net_recv_speed, net_sent_speed, uptime,
                    keyboard_clicks_val, mouse_clicks_val):
         try:
+            now = time.time()
+            if not hasattr(self, "_last_item_update_ts"):
+                self._last_item_update_ts = {}
+            if not hasattr(self, "_item_display_cache"):
+                self._item_display_cache = {}
+
+            def due(item_key: str, interval_key: str) -> bool:
+                interval = self._sanitize_poll_interval(self.visibility_settings.get(interval_key, POLL_INTERVAL_DEFAULT_SEC))
+                last_ts = float(self._last_item_update_ts.get(item_key, 0.0))
+                if (now - last_ts) >= interval:
+                    self._last_item_update_ts[item_key] = now
+                    return True
+                return False
+
             self._append_cpu_sample(cpu_usage, cpu_temp)
             self._append_ram_sample(ram_used, ram_total)
             self._append_swap_sample(swap_used, swap_total)
@@ -2081,15 +2132,25 @@ class SystemTrayApp:
                 self.mouse_graph_area.queue_draw()
 
             if self.visibility_settings.get('cpu', True):
-                self.cpu_temp_item.set_label(f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C")
+                if due('cpu', 'cpu_interval_sec'):
+                    self._item_display_cache['cpu'] = f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"
+                self.cpu_temp_item.set_label(self._item_display_cache.get('cpu', f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"))
             if self.visibility_settings.get('ram', True):
-                self.ram_item.set_label(f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB")
+                if due('ram', 'ram_interval_sec'):
+                    self._item_display_cache['ram'] = f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"
+                self.ram_item.set_label(self._item_display_cache.get('ram', f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"))
             if self.visibility_settings.get('swap', True):
-                self.swap_item.set_label(f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB")
+                if due('swap', 'swap_interval_sec'):
+                    self._item_display_cache['swap'] = f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB"
+                self.swap_item.set_label(self._item_display_cache.get('swap', f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB"))
             if self.visibility_settings.get('disk', True):
-                self.disk_item.set_label(f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB")
+                if due('disk', 'disk_interval_sec'):
+                    self._item_display_cache['disk'] = f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"
+                self.disk_item.set_label(self._item_display_cache.get('disk', f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"))
             if self.visibility_settings.get('net', True):
-                self.net_item.set_label(f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s")
+                if due('net', 'net_interval_sec'):
+                    self._item_display_cache['net'] = f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"
+                self.net_item.set_label(self._item_display_cache.get('net', f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"))
             if self.visibility_settings.get('uptime', True):
                 self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
             if self.visibility_settings.get('keyboard_clicks', True):
@@ -2099,9 +2160,13 @@ class SystemTrayApp:
 
             tray_parts = []
             if self.visibility_settings.get('tray_cpu', True):
-                tray_parts.append(f"{tr('cpu_info')}: {cpu_usage:.0f}%")
+                if due('tray_cpu', 'tray_cpu_interval_sec'):
+                    self._item_display_cache['tray_cpu'] = f"{tr('cpu_info')}: {cpu_usage:.0f}%"
+                tray_parts.append(self._item_display_cache.get('tray_cpu', f"{tr('cpu_info')}: {cpu_usage:.0f}%"))
             if self.visibility_settings.get('tray_ram', True):
-                tray_parts.append(f"{tr('ram_loading')}: {ram_used:.1f}GB")
+                if due('tray_ram', 'tray_ram_interval_sec'):
+                    self._item_display_cache['tray_ram'] = f"{tr('ram_loading')}: {ram_used:.1f}GB"
+                tray_parts.append(self._item_display_cache.get('tray_ram', f"{tr('ram_loading')}: {ram_used:.1f}GB"))
             tray_text = "  ".join(tray_parts)
             if self.telegram_notifier.enabled or self.discord_notifier.enabled:
                 tray_text = "⤴  " + tray_text

@@ -19,6 +19,10 @@ from .constants import (
 from .localization import tr
 from notifications import TelegramNotifier, DiscordNotifier
 
+POLL_INTERVAL_MIN_SEC = 1
+POLL_INTERVAL_MAX_SEC = 60
+POLL_INTERVAL_DEFAULT_SEC = 1
+
 MENU_ORDER_ENABLED_COLUMN = 0
 MENU_ORDER_LABEL_COLUMN = 1
 MENU_ORDER_KEY_COLUMN = 2
@@ -89,6 +93,32 @@ class SettingsDialog(Gtk.Dialog):
 
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
+
+        intervals_card, intervals_content = card("Интервал опроса (сек.)")
+        general_content.add(intervals_card)
+
+        def add_interval_row(label: str, setting_key: str):
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row_label = Gtk.Label(label=label)
+            row_label.set_xalign(0)
+            row_label.set_width_chars(26)
+            spin = Gtk.SpinButton.new_with_range(POLL_INTERVAL_MIN_SEC, POLL_INTERVAL_MAX_SEC, 1)
+            spin.set_width_chars(8)
+            value = int(self.visibility_settings.get(setting_key, POLL_INTERVAL_DEFAULT_SEC))
+            value = max(POLL_INTERVAL_MIN_SEC, min(POLL_INTERVAL_MAX_SEC, value))
+            spin.set_value(value)
+            row.pack_start(row_label, False, False, 0)
+            row.pack_start(spin, False, False, 0)
+            intervals_content.add(row)
+            return spin
+
+        self.tray_cpu_interval_spin = add_interval_row(tr('cpu_tray'), 'tray_cpu_interval_sec')
+        self.tray_ram_interval_spin = add_interval_row(tr('ram_tray'), 'tray_ram_interval_sec')
+        self.cpu_interval_spin = add_interval_row(tr('cpu_info'), 'cpu_interval_sec')
+        self.ram_interval_spin = add_interval_row(tr('ram_loading'), 'ram_interval_sec')
+        self.net_interval_spin = add_interval_row(tr('lan_speed'), 'net_interval_sec')
+        self.disk_interval_spin = add_interval_row(tr('disk_loading'), 'disk_interval_sec')
+        self.swap_interval_spin = add_interval_row(tr('swap_loading'), 'swap_interval_sec')
 
         order_card, order_content = card(tr('menu_order_title'))
         general_content.add(order_card)
