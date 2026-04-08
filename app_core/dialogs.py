@@ -70,7 +70,7 @@ class SettingsDialog(Gtk.Dialog):
         logging_scroller, logging_content = build_page()
         license_scroller, license_content = build_page()
         stack.add_titled(general_scroller, "display", tr('display_tab'))
-        stack.add_titled(interval_scroller, "poll_interval", "Интервал опроса")
+        stack.add_titled(interval_scroller, "poll_interval", tr('poll_interval_tab'))
         stack.add_titled(notification_scroller, "notify", tr('notification_section'))
         stack.add_titled(logging_scroller, "logging", tr('logging_tab'))
         stack.add_titled(license_scroller, "license", tr('license_tab'))
@@ -96,7 +96,7 @@ class SettingsDialog(Gtk.Dialog):
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
 
-        intervals_card, intervals_content = card("Интервал опроса (сек.)")
+        intervals_card, intervals_content = card(tr('poll_interval_section'))
         interval_content.add(intervals_card)
 
         def add_interval_row(label: str, setting_key: str):
