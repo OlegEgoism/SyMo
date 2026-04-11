@@ -972,6 +972,17 @@ class SystemTrayApp:
         if target_area is not None:
             target_area.queue_draw()
 
+    def _reset_graph_zoom(self, graph_key: str, area: Optional[Gtk.DrawingArea] = None) -> None:
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return
+        state['scale'] = 1.0
+        state['center'] = 1.0
+        state['dragging'] = 0.0
+        target_area = area or self._graph_area_by_key(graph_key)
+        if target_area is not None:
+            target_area.queue_draw()
+
     def _build_graph_zoom_controls(self, graph_key: str, area: Gtk.DrawingArea) -> Gtk.Box:
         controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         controls.set_halign(Gtk.Align.END)
@@ -980,11 +991,16 @@ class SystemTrayApp:
         zoom_out_button.set_tooltip_text("Zoom out")
         zoom_out_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1 / 1.2, area))
 
+        zoom_reset_button = Gtk.Button(label="1:1")
+        zoom_reset_button.set_tooltip_text("Reset zoom")
+        zoom_reset_button.connect("clicked", lambda *_: self._reset_graph_zoom(graph_key, area))
+
         zoom_in_button = Gtk.Button(label="+")
         zoom_in_button.set_tooltip_text("Zoom in")
         zoom_in_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1.2, area))
 
         controls.pack_start(zoom_out_button, False, False, 0)
+        controls.pack_start(zoom_reset_button, False, False, 0)
         controls.pack_start(zoom_in_button, False, False, 0)
         return controls
 
