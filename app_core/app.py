@@ -999,6 +999,9 @@ class SystemTrayApp:
         zoom_in_button.set_tooltip_text("Zoom in")
         zoom_in_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1.2, area))
 
+        for btn in (zoom_out_button, zoom_reset_button, zoom_in_button):
+            btn.set_size_request(28, 24)
+
         controls.pack_start(zoom_out_button, False, False, 0)
         controls.pack_start(zoom_reset_button, False, False, 0)
         controls.pack_start(zoom_in_button, False, False, 0)
