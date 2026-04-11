@@ -155,6 +155,7 @@ class SystemTrayApp:
         self._discord_worker.start()
 
         self.telegram_notifier.set_power_control(self.power_control)
+        self.telegram_notifier.set_app_context(self)
         if self.telegram_notifier.enabled:
             self.telegram_notifier.start_bot()
 
@@ -342,6 +343,9 @@ class SystemTrayApp:
         cpu_threads = psutil.cpu_count(logical=True) or 0
         cpu_freq = psutil.cpu_freq()
         ram = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        disk = psutil.disk_usage("/")
+        boot_dt = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M:%S")
 
         freq_text = tr('unknown_value')
         if cpu_freq and cpu_freq.max:
@@ -360,6 +364,12 @@ class SystemTrayApp:
             f"{tr('cpu_frequency_label')}: {freq_text}",
             "",
             f"{tr('ram_total_label')}: {ram.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('ram_available_label')}: {ram.available / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('swap_total_label')}: {swap.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('disk_total_label')}: {disk.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('disk_free_label')}: {disk.free / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('boot_time_label')}: {boot_dt}",
+            f"{tr('python_version_label')}: {platform.python_version()}",
         ])
 
     def on_system_info_click(self, *_):
@@ -464,7 +474,7 @@ class SystemTrayApp:
         default = {
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
-            'language': None, 'logging_enabled': True,
+            'language': None, 'logging_enabled': True, 'show_graph_zoom_controls': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
             'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
@@ -618,6 +628,7 @@ class SystemTrayApp:
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
+                vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
                 self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
@@ -755,7 +766,7 @@ class SystemTrayApp:
                             f"RAM: {ram_used:.1f}/{ram_total:.1f} GB | "
                             f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
                             f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
-                            f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
+                            f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')} | "
                             f"Uptime: {uptime_display} | "
                             f"Keys: {kbd} | "
                             f"Clicks: {ms}\n")
@@ -781,7 +792,7 @@ class SystemTrayApp:
             f"<b>{tr('ram')}:</b> {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
             f"<b>{tr('swap')}:</b> {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
             f"<b>{tr('disk')}:</b> {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
-            f"<b>{tr('network')}:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
+            f"<b>{tr('network')}:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
             f"<b>{tr('uptime')}:</b> {uptime}\n"
             f"<b>{tr('keyboard')}:</b> {keyboard_clicks_val} {tr('presses')}\n"
             f"<b>{tr('mouse')}:</b> {mouse_clicks_val} {tr('clicks')}"
@@ -798,7 +809,7 @@ class SystemTrayApp:
             f"**{tr('ram')}**: {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
             f"**{tr('swap')}**: {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
             f"**{tr('disk')}**: {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
-            f"**{tr('network')}**: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
+            f"**{tr('network')}**: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
             f"**{tr('uptime')}**: {uptime}\n"
             f"**{tr('keyboard')}**: {keyboard_clicks_val} {tr('presses')}\n"
             f"**{tr('mouse')}**: {mouse_clicks_val} {tr('clicks')}"
@@ -835,6 +846,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_cpu_graph)
         self._connect_graph_zoom(area, 'cpu')
+        self._maybe_add_graph_zoom_controls(box, 'cpu', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -917,6 +929,90 @@ class SystemTrayApp:
         area.connect('button-release-event', self._on_graph_button_release_event, graph_key)
         area.connect('leave-notify-event', self._on_graph_leave_notify_event, graph_key)
 
+    def _graph_area_by_key(self, graph_key: str) -> Optional[Gtk.DrawingArea]:
+        return {
+            'cpu': self.cpu_graph_area,
+            'ram': self.ram_graph_area,
+            'swap': self.swap_graph_area,
+            'disk': self.disk_graph_area,
+            'net': self.net_graph_area,
+            'keyboard': self.keyboard_graph_area,
+            'mouse': self.mouse_graph_area,
+        }.get(graph_key)
+
+    def _apply_graph_zoom_step(
+            self,
+            graph_key: str,
+            zoom_factor: float,
+            area: Optional[Gtk.DrawingArea] = None,
+            anchor_ratio: float = 0.5,
+    ) -> None:
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return
+
+        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
+        new_scale = self._clamp(old_scale * zoom_factor, 1.0, 40.0)
+        if abs(new_scale - old_scale) < 1e-9:
+            return
+
+        old_span = 1.0 / old_scale
+        new_span = 1.0 / new_scale
+        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
+        old_left = self._clamp(old_center - old_span / 2, 0.0, max(0.0, 1.0 - old_span))
+        anchor = self._clamp(float(anchor_ratio), 0.0, 1.0)
+        anchor_global = old_left + anchor * old_span
+
+        new_left = anchor_global - anchor * new_span
+        new_left = self._clamp(new_left, 0.0, max(0.0, 1.0 - new_span))
+        new_center = new_left + new_span / 2
+
+        state['scale'] = new_scale
+        state['center'] = self._clamp(new_center, 0.0, 1.0)
+
+        target_area = area or self._graph_area_by_key(graph_key)
+        if target_area is not None:
+            target_area.queue_draw()
+
+    def _reset_graph_zoom(self, graph_key: str, area: Optional[Gtk.DrawingArea] = None) -> None:
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return
+        state['scale'] = 1.0
+        state['center'] = 1.0
+        state['dragging'] = 0.0
+        target_area = area or self._graph_area_by_key(graph_key)
+        if target_area is not None:
+            target_area.queue_draw()
+
+    def _build_graph_zoom_controls(self, graph_key: str, area: Gtk.DrawingArea) -> Gtk.Box:
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        controls.set_halign(Gtk.Align.END)
+
+        zoom_out_button = Gtk.Button(label="-")
+        zoom_out_button.set_tooltip_text(tr('zoom_out'))
+        zoom_out_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1 / 1.2, area))
+
+        zoom_reset_button = Gtk.Button(label="↻")
+        zoom_reset_button.set_tooltip_text(tr('reset_zoom'))
+        zoom_reset_button.connect("clicked", lambda *_: self._reset_graph_zoom(graph_key, area))
+
+        zoom_in_button = Gtk.Button(label="+")
+        zoom_in_button.set_tooltip_text(tr('zoom_in'))
+        zoom_in_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1.2, area))
+
+        for btn in (zoom_out_button, zoom_reset_button, zoom_in_button):
+            btn.set_size_request(28, 24)
+
+        controls.pack_start(zoom_out_button, False, False, 0)
+        controls.pack_start(zoom_in_button, False, False, 0)
+        controls.pack_start(zoom_reset_button, False, False, 0)
+        return controls
+
+    def _maybe_add_graph_zoom_controls(self, box: Gtk.Box, graph_key: str, area: Gtk.DrawingArea) -> None:
+        if self.visibility_settings.get('show_graph_zoom_controls', True):
+            box.pack_start(self._build_graph_zoom_controls(graph_key, area), False, False, 0)
+
     def _on_graph_scroll_event(self, widget, event, graph_key: str):
         state = self.graph_zoom_state.get(graph_key)
         if state is None:
@@ -926,7 +1022,6 @@ class SystemTrayApp:
         anchor_x = self._clamp(float(getattr(event, 'x', width / 2)), 0.0, float(width))
         anchor_ratio = anchor_x / width
 
-        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
         zoom_factor = 1.0
         if event.direction == Gdk.ScrollDirection.UP:
             zoom_factor = 1.2
@@ -939,20 +1034,7 @@ class SystemTrayApp:
         if zoom_factor == 1.0:
             return False
 
-        new_scale = self._clamp(old_scale * zoom_factor, 1.0, 40.0)
-        old_span = 1.0 / old_scale
-        new_span = 1.0 / new_scale
-        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
-        old_left = self._clamp(old_center - old_span / 2, 0.0, max(0.0, 1.0 - old_span))
-        anchor_global = old_left + anchor_ratio * old_span
-
-        new_left = anchor_global - anchor_ratio * new_span
-        new_left = self._clamp(new_left, 0.0, max(0.0, 1.0 - new_span))
-        new_center = new_left + new_span / 2
-
-        state['scale'] = new_scale
-        state['center'] = self._clamp(new_center, 0.0, 1.0)
-        widget.queue_draw()
+        self._apply_graph_zoom_step(graph_key, zoom_factor, area=widget, anchor_ratio=anchor_ratio)
         return True
 
     def _on_graph_button_press_event(self, _widget, event, graph_key: str):
@@ -1221,6 +1303,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_ram_graph)
         self._connect_graph_zoom(area, 'ram')
+        self._maybe_add_graph_zoom_controls(box, 'ram', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1367,6 +1450,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_swap_graph)
         self._connect_graph_zoom(area, 'swap')
+        self._maybe_add_graph_zoom_controls(box, 'swap', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1513,6 +1597,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_disk_graph)
         self._connect_graph_zoom(area, 'disk')
+        self._maybe_add_graph_zoom_controls(box, 'disk', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1660,6 +1745,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_net_graph)
         self._connect_graph_zoom(area, 'net')
+        self._maybe_add_graph_zoom_controls(box, 'net', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1748,18 +1834,18 @@ class SystemTrayApp:
         cr.fill()
         cr.set_source_rgb(0.85, 1.0, 0.87)
         cr.move_to(margin_left + 18, 12)
-        cr.show_text("↓ MB/s")
+        cr.show_text(f"↓ {tr('mbps')}")
 
         cr.set_source_rgb(1.0, 0.75, 0.2)
         cr.rectangle(margin_left + 95, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(1.0, 0.94, 0.8)
         cr.move_to(margin_left + 113, 12)
-        cr.show_text("↑ MB/s")
+        cr.show_text(f"↑ {tr('mbps')}")
 
         last_recv = samples[-1][1]
         last_sent = samples[-1][2]
-        values_text = f"{tr('lan_speed')}: ↓{last_recv:.1f} / ↑{last_sent:.1f} MB/s"
+        values_text = f"{tr('lan_speed')}: ↓{last_recv:.1f} / ↑{last_sent:.1f} {tr('mbps')}"
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
@@ -1777,8 +1863,8 @@ class SystemTrayApp:
             plot_h,
             lambda sample: [
                 datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"↓ {sample[1]:.2f} MB/s",
-                f"↑ {sample[2]:.2f} MB/s",
+                f"↓ {sample[1]:.2f} {tr('mbps')}",
+                f"↑ {sample[2]:.2f} {tr('mbps')}",
             ],
         )
 
@@ -1816,6 +1902,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_keyboard_graph)
         self._connect_graph_zoom(area, 'keyboard')
+        self._maybe_add_graph_zoom_controls(box, 'keyboard', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1959,6 +2046,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_mouse_graph)
         self._connect_graph_zoom(area, 'mouse')
+        self._maybe_add_graph_zoom_controls(box, 'mouse', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -2149,8 +2237,8 @@ class SystemTrayApp:
                 self.disk_item.set_label(self._item_display_cache.get('disk', f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"))
             if self.visibility_settings.get('net', True):
                 if due('net', 'net_interval_sec'):
-                    self._item_display_cache['net'] = f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"
-                self.net_item.set_label(self._item_display_cache.get('net', f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"))
+                    self._item_display_cache['net'] = f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}"
+                self.net_item.set_label(self._item_display_cache.get('net', f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}"))
             if self.visibility_settings.get('uptime', True):
                 self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
             if self.visibility_settings.get('keyboard_clicks', True):
