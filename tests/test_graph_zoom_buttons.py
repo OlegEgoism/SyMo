@@ -20,3 +20,11 @@ def test_each_graph_attaches_zoom_controls():
     assert "self._build_graph_zoom_controls('net', area)" in code
     assert "self._build_graph_zoom_controls('keyboard', area)" in code
     assert "self._build_graph_zoom_controls('mouse', area)" in code
+
+
+def test_zoom_control_order_is_minus_plus_then_reset():
+    code = Path("app_core/app.py").read_text(encoding="utf-8")
+    minus_idx = code.index("controls.pack_start(zoom_out_button, False, False, 0)")
+    plus_idx = code.index("controls.pack_start(zoom_in_button, False, False, 0)")
+    reset_idx = code.index("controls.pack_start(zoom_reset_button, False, False, 0)")
+    assert minus_idx < plus_idx < reset_idx

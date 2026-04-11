@@ -1003,8 +1003,8 @@ class SystemTrayApp:
             btn.set_size_request(28, 24)
 
         controls.pack_start(zoom_out_button, False, False, 0)
-        controls.pack_start(zoom_reset_button, False, False, 0)
         controls.pack_start(zoom_in_button, False, False, 0)
+        controls.pack_start(zoom_reset_button, False, False, 0)
         return controls
 
     def _on_graph_scroll_event(self, widget, event, graph_key: str):
