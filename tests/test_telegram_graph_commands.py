@@ -5,8 +5,7 @@ def test_telegram_graph_commands_are_supported():
     code = Path("notifications/telegram.py").read_text(encoding="utf-8")
     assert "command = raw_command.split('@', 1)[0]" in code
     assert "elif command == '/graph':" in code
-    assert "elif command in {'/uptime', '/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:" in code
-    assert "'/uptime_graph'" in code
+    assert "elif command in {'/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:" in code
     assert "'/cpu_graph'" in code
     assert "'/temp_graph'" in code
     assert "'/ram_graph'" in code
@@ -30,3 +29,4 @@ def test_telegram_notifier_has_graph_render_pipeline():
     assert "import cairo" in code
     assert "def _send_metric_graph(self, metric: str) -> None:" in code
     assert '"temperature": (f"{tr(\'cpu\')} {tr(\'temperature\')}"' in code
+    assert '"uptime"' not in code.split("mapping = {", 1)[1].split("}", 1)[0]
