@@ -5,7 +5,9 @@ def test_graph_windows_have_plus_minus_zoom_controls():
     code = Path("app_core/app.py").read_text(encoding="utf-8")
     assert "def _build_graph_zoom_controls(self, graph_key: str, area: Gtk.DrawingArea) -> Gtk.Box:" in code
     assert 'zoom_out_button = Gtk.Button(label="-")' in code
+    assert 'zoom_reset_button = Gtk.Button(label="1:1")' in code
     assert 'zoom_in_button = Gtk.Button(label="+")' in code
+    assert "def _reset_graph_zoom(self, graph_key: str, area: Optional[Gtk.DrawingArea] = None) -> None:" in code
 
 
 def test_each_graph_attaches_zoom_controls():
