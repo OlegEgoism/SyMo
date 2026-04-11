@@ -844,6 +844,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_cpu_graph)
         self._connect_graph_zoom(area, 'cpu')
+        box.pack_start(self._build_graph_zoom_controls('cpu', area), False, False, 0)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -926,6 +927,67 @@ class SystemTrayApp:
         area.connect('button-release-event', self._on_graph_button_release_event, graph_key)
         area.connect('leave-notify-event', self._on_graph_leave_notify_event, graph_key)
 
+    def _graph_area_by_key(self, graph_key: str) -> Optional[Gtk.DrawingArea]:
+        return {
+            'cpu': self.cpu_graph_area,
+            'ram': self.ram_graph_area,
+            'swap': self.swap_graph_area,
+            'disk': self.disk_graph_area,
+            'net': self.net_graph_area,
+            'keyboard': self.keyboard_graph_area,
+            'mouse': self.mouse_graph_area,
+        }.get(graph_key)
+
+    def _apply_graph_zoom_step(
+            self,
+            graph_key: str,
+            zoom_factor: float,
+            area: Optional[Gtk.DrawingArea] = None,
+            anchor_ratio: float = 0.5,
+    ) -> None:
+        state = self.graph_zoom_state.get(graph_key)
+        if state is None:
+            return
+
+        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
+        new_scale = self._clamp(old_scale * zoom_factor, 1.0, 40.0)
+        if abs(new_scale - old_scale) < 1e-9:
+            return
+
+        old_span = 1.0 / old_scale
+        new_span = 1.0 / new_scale
+        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
+        old_left = self._clamp(old_center - old_span / 2, 0.0, max(0.0, 1.0 - old_span))
+        anchor = self._clamp(float(anchor_ratio), 0.0, 1.0)
+        anchor_global = old_left + anchor * old_span
+
+        new_left = anchor_global - anchor * new_span
+        new_left = self._clamp(new_left, 0.0, max(0.0, 1.0 - new_span))
+        new_center = new_left + new_span / 2
+
+        state['scale'] = new_scale
+        state['center'] = self._clamp(new_center, 0.0, 1.0)
+
+        target_area = area or self._graph_area_by_key(graph_key)
+        if target_area is not None:
+            target_area.queue_draw()
+
+    def _build_graph_zoom_controls(self, graph_key: str, area: Gtk.DrawingArea) -> Gtk.Box:
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        controls.set_halign(Gtk.Align.END)
+
+        zoom_out_button = Gtk.Button(label="-")
+        zoom_out_button.set_tooltip_text("Zoom out")
+        zoom_out_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1 / 1.2, area))
+
+        zoom_in_button = Gtk.Button(label="+")
+        zoom_in_button.set_tooltip_text("Zoom in")
+        zoom_in_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1.2, area))
+
+        controls.pack_start(zoom_out_button, False, False, 0)
+        controls.pack_start(zoom_in_button, False, False, 0)
+        return controls
+
     def _on_graph_scroll_event(self, widget, event, graph_key: str):
         state = self.graph_zoom_state.get(graph_key)
         if state is None:
@@ -935,7 +997,6 @@ class SystemTrayApp:
         anchor_x = self._clamp(float(getattr(event, 'x', width / 2)), 0.0, float(width))
         anchor_ratio = anchor_x / width
 
-        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
         zoom_factor = 1.0
         if event.direction == Gdk.ScrollDirection.UP:
             zoom_factor = 1.2
@@ -948,20 +1009,7 @@ class SystemTrayApp:
         if zoom_factor == 1.0:
             return False
 
-        new_scale = self._clamp(old_scale * zoom_factor, 1.0, 40.0)
-        old_span = 1.0 / old_scale
-        new_span = 1.0 / new_scale
-        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
-        old_left = self._clamp(old_center - old_span / 2, 0.0, max(0.0, 1.0 - old_span))
-        anchor_global = old_left + anchor_ratio * old_span
-
-        new_left = anchor_global - anchor_ratio * new_span
-        new_left = self._clamp(new_left, 0.0, max(0.0, 1.0 - new_span))
-        new_center = new_left + new_span / 2
-
-        state['scale'] = new_scale
-        state['center'] = self._clamp(new_center, 0.0, 1.0)
-        widget.queue_draw()
+        self._apply_graph_zoom_step(graph_key, zoom_factor, area=widget, anchor_ratio=anchor_ratio)
         return True
 
     def _on_graph_button_press_event(self, _widget, event, graph_key: str):
@@ -1230,6 +1278,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_ram_graph)
         self._connect_graph_zoom(area, 'ram')
+        box.pack_start(self._build_graph_zoom_controls('ram', area), False, False, 0)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1376,6 +1425,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_swap_graph)
         self._connect_graph_zoom(area, 'swap')
+        box.pack_start(self._build_graph_zoom_controls('swap', area), False, False, 0)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1522,6 +1572,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_disk_graph)
         self._connect_graph_zoom(area, 'disk')
+        box.pack_start(self._build_graph_zoom_controls('disk', area), False, False, 0)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1669,6 +1720,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_net_graph)
         self._connect_graph_zoom(area, 'net')
+        box.pack_start(self._build_graph_zoom_controls('net', area), False, False, 0)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1825,6 +1877,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_keyboard_graph)
         self._connect_graph_zoom(area, 'keyboard')
+        box.pack_start(self._build_graph_zoom_controls('keyboard', area), False, False, 0)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1968,6 +2021,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_mouse_graph)
         self._connect_graph_zoom(area, 'mouse')
+        box.pack_start(self._build_graph_zoom_controls('mouse', area), False, False, 0)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
