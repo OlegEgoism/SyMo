@@ -989,15 +989,15 @@ class SystemTrayApp:
         controls.set_halign(Gtk.Align.END)
 
         zoom_out_button = Gtk.Button(label="-")
-        zoom_out_button.set_tooltip_text("Zoom out")
+        zoom_out_button.set_tooltip_text(tr('zoom_out'))
         zoom_out_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1 / 1.2, area))
 
         zoom_reset_button = Gtk.Button(label="↻")
-        zoom_reset_button.set_tooltip_text("Reset zoom")
+        zoom_reset_button.set_tooltip_text(tr('reset_zoom'))
         zoom_reset_button.connect("clicked", lambda *_: self._reset_graph_zoom(graph_key, area))
 
         zoom_in_button = Gtk.Button(label="+")
-        zoom_in_button.set_tooltip_text("Zoom in")
+        zoom_in_button.set_tooltip_text(tr('zoom_in'))
         zoom_in_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1.2, area))
 
         for btn in (zoom_out_button, zoom_reset_button, zoom_in_button):
