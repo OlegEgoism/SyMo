@@ -16,7 +16,16 @@ def test_telegram_graph_commands_are_supported():
     assert "'/keyboard_graph'" in code
     assert "'/mouse_graph'" in code
     assert "Unknown command. Use /help" in code
-    assert "/graph [metric] - graph image" in code
+    assert "/graph [metric] - send metric graph" in code
+    assert "/uptime_graph - Время работы" in code
+    assert "/cpu_graph - ЦПУ" in code
+    assert "/temp_graph - Температура CPU" in code
+    assert "/ram_graph - ОЗУ" in code
+    assert "/net_graph - Сеть" in code
+    assert "/disk_graph - Диск" in code
+    assert "/swap_graph - Подкачка" in code
+    assert "/keyboard_graph - Нажатие клавиш" in code
+    assert "/mouse_graph - Клики мыши" in code
 
 
 def test_telegram_notifier_has_graph_render_pipeline():

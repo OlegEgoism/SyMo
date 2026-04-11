@@ -530,13 +530,17 @@ class TelegramNotifier:
                             elif command == '/help':
                                 help_text = tr('bot_help_message')
                                 help_text += (
-                                    "\n/graph [metric] - graph image"
-                                    "\n/uptime - uptime graph"
-                                    "\n/disk - disk graph"
-                                    "\n/top - cpu graph"
-                                    "\n/cpu_graph /temp_graph /ram_graph /net_graph"
-                                    "\n/disk_graph /swap_graph /uptime_graph"
-                                    "\n/keyboard_graph /mouse_graph"
+                                    "\n\n📊 Graph commands:"
+                                    "\n/graph [metric] - send metric graph"
+                                    "\n/uptime_graph - Время работы"
+                                    "\n/cpu_graph - ЦПУ"
+                                    "\n/temp_graph - Температура CPU"
+                                    "\n/ram_graph - ОЗУ"
+                                    "\n/net_graph - Сеть"
+                                    "\n/disk_graph - Диск"
+                                    "\n/swap_graph - Подкачка"
+                                    "\n/keyboard_graph - Нажатие клавиш"
+                                    "\n/mouse_graph - Клики мыши"
                                 )
                                 self.send_message(help_text)
 
