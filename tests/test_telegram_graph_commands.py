@@ -15,17 +15,12 @@ def test_telegram_graph_commands_are_supported():
     assert "'/swap_graph'" in code
     assert "'/keyboard_graph'" in code
     assert "'/mouse_graph'" in code
-    assert "Unknown command. Use /help" in code
-    assert "/graph [metric] - send metric graph" in code
-    assert "/uptime_graph - Время работы" in code
-    assert "/cpu_graph - ЦПУ" in code
-    assert "/temp_graph - Температура CPU" in code
-    assert "/ram_graph - ОЗУ" in code
-    assert "/net_graph - Сеть" in code
-    assert "/disk_graph - Диск" in code
-    assert "/swap_graph - Подкачка" in code
-    assert "/keyboard_graph - Нажатие клавиш" in code
-    assert "/mouse_graph - Клики мыши" in code
+    assert "tr('graph_commands_title')" in code
+    assert "tr('graph_command_hint')" in code
+    assert "tr('graph_unavailable')" in code
+    assert "tr('graph_send_failed')" in code
+    assert "tr('unknown_command')" in code
+    assert "tr('unknown_command_help')" in code
 
 
 def test_telegram_notifier_has_graph_render_pipeline():
@@ -34,4 +29,4 @@ def test_telegram_notifier_has_graph_render_pipeline():
     assert "def _render_metric_graph_to_temp(self, metric: str)" in code
     assert "import cairo" in code
     assert "def _send_metric_graph(self, metric: str) -> None:" in code
-    assert '"temperature": ("CPU Temperature"' in code
+    assert '"temperature": (f"{tr(\'cpu\')} {tr(\'temperature\')}"' in code
