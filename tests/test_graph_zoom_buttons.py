@@ -13,13 +13,14 @@ def test_graph_windows_have_plus_minus_zoom_controls():
 
 def test_each_graph_attaches_zoom_controls():
     code = Path("app_core/app.py").read_text(encoding="utf-8")
-    assert "self._build_graph_zoom_controls('cpu', area)" in code
-    assert "self._build_graph_zoom_controls('ram', area)" in code
-    assert "self._build_graph_zoom_controls('swap', area)" in code
-    assert "self._build_graph_zoom_controls('disk', area)" in code
-    assert "self._build_graph_zoom_controls('net', area)" in code
-    assert "self._build_graph_zoom_controls('keyboard', area)" in code
-    assert "self._build_graph_zoom_controls('mouse', area)" in code
+    assert "def _maybe_add_graph_zoom_controls(self, box: Gtk.Box, graph_key: str, area: Gtk.DrawingArea) -> None:" in code
+    assert "self._maybe_add_graph_zoom_controls(box, 'cpu', area)" in code
+    assert "self._maybe_add_graph_zoom_controls(box, 'ram', area)" in code
+    assert "self._maybe_add_graph_zoom_controls(box, 'swap', area)" in code
+    assert "self._maybe_add_graph_zoom_controls(box, 'disk', area)" in code
+    assert "self._maybe_add_graph_zoom_controls(box, 'net', area)" in code
+    assert "self._maybe_add_graph_zoom_controls(box, 'keyboard', area)" in code
+    assert "self._maybe_add_graph_zoom_controls(box, 'mouse', area)" in code
 
 
 def test_zoom_control_order_is_minus_plus_then_reset():

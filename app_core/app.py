@@ -473,7 +473,7 @@ class SystemTrayApp:
         default = {
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
             'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
-            'language': None, 'logging_enabled': True,
+            'language': None, 'logging_enabled': True, 'show_graph_zoom_controls': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
             'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
@@ -627,6 +627,7 @@ class SystemTrayApp:
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
+                vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
                 self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
@@ -844,7 +845,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_cpu_graph)
         self._connect_graph_zoom(area, 'cpu')
-        box.pack_start(self._build_graph_zoom_controls('cpu', area), False, False, 0)
+        self._maybe_add_graph_zoom_controls(box, 'cpu', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1006,6 +1007,10 @@ class SystemTrayApp:
         controls.pack_start(zoom_in_button, False, False, 0)
         controls.pack_start(zoom_reset_button, False, False, 0)
         return controls
+
+    def _maybe_add_graph_zoom_controls(self, box: Gtk.Box, graph_key: str, area: Gtk.DrawingArea) -> None:
+        if self.visibility_settings.get('show_graph_zoom_controls', True):
+            box.pack_start(self._build_graph_zoom_controls(graph_key, area), False, False, 0)
 
     def _on_graph_scroll_event(self, widget, event, graph_key: str):
         state = self.graph_zoom_state.get(graph_key)
@@ -1297,7 +1302,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_ram_graph)
         self._connect_graph_zoom(area, 'ram')
-        box.pack_start(self._build_graph_zoom_controls('ram', area), False, False, 0)
+        self._maybe_add_graph_zoom_controls(box, 'ram', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1444,7 +1449,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_swap_graph)
         self._connect_graph_zoom(area, 'swap')
-        box.pack_start(self._build_graph_zoom_controls('swap', area), False, False, 0)
+        self._maybe_add_graph_zoom_controls(box, 'swap', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1591,7 +1596,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_disk_graph)
         self._connect_graph_zoom(area, 'disk')
-        box.pack_start(self._build_graph_zoom_controls('disk', area), False, False, 0)
+        self._maybe_add_graph_zoom_controls(box, 'disk', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1739,7 +1744,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_net_graph)
         self._connect_graph_zoom(area, 'net')
-        box.pack_start(self._build_graph_zoom_controls('net', area), False, False, 0)
+        self._maybe_add_graph_zoom_controls(box, 'net', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -1896,7 +1901,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_keyboard_graph)
         self._connect_graph_zoom(area, 'keyboard')
-        box.pack_start(self._build_graph_zoom_controls('keyboard', area), False, False, 0)
+        self._maybe_add_graph_zoom_controls(box, 'keyboard', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
@@ -2040,7 +2045,7 @@ class SystemTrayApp:
         area.set_size_request(680, 320)
         area.connect("draw", self._draw_mouse_graph)
         self._connect_graph_zoom(area, 'mouse')
-        box.pack_start(self._build_graph_zoom_controls('mouse', area), False, False, 0)
+        self._maybe_add_graph_zoom_controls(box, 'mouse', area)
         box.pack_start(area, True, True, 0)
 
         window.add(box)
