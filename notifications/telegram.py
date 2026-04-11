@@ -498,37 +498,52 @@ class TelegramNotifier:
                                 continue
 
                             text = message.get('text', '').strip()
+                            if not text:
+                                continue
 
-                            if text == '/poweroff' and self.power_control_ref:
+                            parts = text.split(maxsplit=1)
+                            raw_command = parts[0].strip().lower()
+                            command = raw_command.split('@', 1)[0]
+                            arg = parts[1].strip().lower() if len(parts) > 1 else ""
+
+                            if command == '/poweroff' and self.power_control_ref:
                                 self.send_message(tr('bot_shutdown_message'))
                                 GLib.idle_add(self.power_control_ref._shutdown)
 
-                            elif text == '/reboot' and self.power_control_ref:
+                            elif command == '/reboot' and self.power_control_ref:
                                 self.send_message(tr('bot_reboot_message'))
                                 GLib.idle_add(self.power_control_ref._reboot)
 
-                            elif text == '/lock' and self.power_control_ref:
+                            elif command == '/lock' and self.power_control_ref:
                                 self.send_message(tr('bot_lock_message'))
                                 GLib.idle_add(self.power_control_ref._lock_screen)
 
-                            elif text == '/status':
+                            elif command == '/status':
                                 self._send_system_status()
 
-                            elif text == '/screenshot':
+                            elif command == '/screenshot':
                                 self.send_message(tr('bot_screenshot_processing'))
                                 self._send_screenshot()
 
-                            elif text == '/help':
+                            elif command == '/help':
                                 help_text = tr('bot_help_message')
+                                help_text += (
+                                    "\n/graph <metric> - graph image"
+                                    "\n/uptime - uptime graph"
+                                    "\n/disk - disk graph"
+                                    "\n/top - cpu graph"
+                                )
                                 self.send_message(help_text)
 
-                            elif text.startswith('/graph'):
-                                parts = text.split(maxsplit=1)
-                                metric = parts[1].strip().lower() if len(parts) > 1 else "cpu"
+                            elif command == '/graph':
+                                metric = arg or "cpu"
                                 self._send_metric_graph(metric)
 
-                            elif text in {'/uptime', '/disk', '/top'}:
-                                self._send_metric_graph(text.lstrip('/'))
+                            elif command in {'/uptime', '/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse'}:
+                                self._send_metric_graph(command.lstrip('/'))
+
+                            else:
+                                self.send_message("Unknown command. Use /help")
                     backoff_seconds = 1.0
 
                 elif response.status_code == 409:

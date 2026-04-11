@@ -3,9 +3,10 @@ from pathlib import Path
 
 def test_telegram_graph_commands_are_supported():
     code = Path("notifications/telegram.py").read_text(encoding="utf-8")
-    assert "elif text.startswith('/graph'):" in code
-    assert "elif text in {'/uptime', '/disk', '/top'}:" in code
-    assert "self._send_metric_graph(metric)" in code
+    assert "command = raw_command.split('@', 1)[0]" in code
+    assert "elif command == '/graph':" in code
+    assert "elif command in {'/uptime', '/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse'}:" in code
+    assert "Unknown command. Use /help" in code
 
 
 def test_telegram_notifier_has_graph_render_pipeline():
