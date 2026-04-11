@@ -11,7 +11,6 @@ import time
 from typing import Optional, TYPE_CHECKING
 
 import requests
-import psutil
 from requests import Response
 from gi.repository import GLib
 
@@ -362,12 +361,6 @@ class TelegramNotifier:
             "keyboard": (tr("keyboard_clicks"), list(getattr(app, "keyboard_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, tr("clicks")),
             "mouse": (tr("mouse_clicks"), list(getattr(app, "mouse_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, tr("clicks")),
         }
-        if metric_key == "uptime":
-            cpu_samples = list(getattr(app, "cpu_history", []))
-            boot_ts = float(psutil.boot_time())
-            points = [(float(s[0]), max(0.0, (float(s[0]) - boot_ts) / 3600.0)) for s in cpu_samples if s]
-            return tr("uptime"), points, "h"
-
         title, samples, extractor, unit = mapping.get(metric_key, ("", [], lambda _s: 0.0, ""))
         points: list[tuple[float, float]] = []
         for sample in samples:
@@ -451,7 +444,7 @@ class TelegramNotifier:
     def _send_metric_graph(self, metric: str) -> None:
         render_result = self._render_metric_graph_to_temp(metric)
         if render_result is None:
-            self.send_message(f"❌ {tr('graph_unavailable')}. /graph cpu|ram|swap|disk|net|keyboard|mouse|uptime|top|temp")
+            self.send_message(f"❌ {tr('graph_unavailable')}. /graph cpu|ram|swap|disk|net|keyboard|mouse|top|temp")
             return
         path, title = render_result
         try:
@@ -532,7 +525,6 @@ class TelegramNotifier:
                                 help_text += (
                                     f"\n\n📊 {tr('graph_commands_title')}:"
                                     f"\n/graph [metric] - {tr('graph_command_hint')}"
-                                    f"\n/uptime_graph - {tr('uptime')}"
                                     f"\n/cpu_graph - {tr('cpu')}"
                                     f"\n/temp_graph - {tr('cpu')} {tr('temperature')}"
                                     f"\n/ram_graph - {tr('ram')}"
@@ -548,11 +540,10 @@ class TelegramNotifier:
                                 metric = arg or "cpu"
                                 self._send_metric_graph(metric)
 
-                            elif command in {'/uptime', '/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:
+                            elif command in {'/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:
                                 self._send_metric_graph(command.lstrip('/'))
 
                             elif command in {
-                                '/uptime_graph',
                                 '/cpu_graph',
                                 '/temp_graph',
                                 '/ram_graph',
@@ -563,7 +554,6 @@ class TelegramNotifier:
                                 '/mouse_graph',
                             }:
                                 metric_alias_map = {
-                                    '/uptime_graph': 'uptime',
                                     '/cpu_graph': 'cpu',
                                     '/temp_graph': 'temp',
                                     '/ram_graph': 'ram',
