@@ -351,22 +351,22 @@ class TelegramNotifier:
 
         metric_key = (metric or "").strip().lower()
         mapping = {
-            "cpu": ("CPU", list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
-            "top": ("CPU", list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
-            "temp": ("CPU Temperature", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, "°C"),
-            "temperature": ("CPU Temperature", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, "°C"),
-            "ram": ("RAM", list(getattr(app, "ram_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
-            "swap": ("Swap", list(getattr(app, "swap_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
-            "disk": ("Disk", list(getattr(app, "disk_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
-            "net": ("Network RX+TX", list(getattr(app, "net_history", [])), lambda s: float(s[1]) + float(s[2]), "MB/s"),
-            "keyboard": ("Keyboard", list(getattr(app, "keyboard_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "count"),
-            "mouse": ("Mouse", list(getattr(app, "mouse_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "count"),
+            "cpu": (tr("cpu"), list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
+            "top": (tr("cpu"), list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
+            "temp": (f"{tr('cpu')} {tr('temperature')}", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, tr("temperature")),
+            "temperature": (f"{tr('cpu')} {tr('temperature')}", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, tr("temperature")),
+            "ram": (tr("ram"), list(getattr(app, "ram_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
+            "swap": (tr("swap"), list(getattr(app, "swap_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
+            "disk": (tr("disk"), list(getattr(app, "disk_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
+            "net": (tr("network"), list(getattr(app, "net_history", [])), lambda s: float(s[1]) + float(s[2]), tr("mbps")),
+            "keyboard": (tr("keyboard_clicks"), list(getattr(app, "keyboard_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, tr("clicks")),
+            "mouse": (tr("mouse_clicks"), list(getattr(app, "mouse_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, tr("clicks")),
         }
         if metric_key == "uptime":
             cpu_samples = list(getattr(app, "cpu_history", []))
             boot_ts = float(psutil.boot_time())
             points = [(float(s[0]), max(0.0, (float(s[0]) - boot_ts) / 3600.0)) for s in cpu_samples if s]
-            return "Uptime", points, "h"
+            return tr("uptime"), points, "h"
 
         title, samples, extractor, unit = mapping.get(metric_key, ("", [], lambda _s: 0.0, ""))
         points: list[tuple[float, float]] = []
@@ -451,13 +451,13 @@ class TelegramNotifier:
     def _send_metric_graph(self, metric: str) -> None:
         render_result = self._render_metric_graph_to_temp(metric)
         if render_result is None:
-            self.send_message("❌ Graph is unavailable. Try: /graph cpu|ram|swap|disk|net|keyboard|mouse|uptime|top")
+            self.send_message(f"❌ {tr('graph_unavailable')}. /graph cpu|ram|swap|disk|net|keyboard|mouse|uptime|top|temp")
             return
         path, title = render_result
         try:
             caption = f"{title} graph"
             if not self.send_photo(path, caption):
-                self.send_message("❌ Failed to send graph image.")
+                self.send_message(f"❌ {tr('graph_send_failed')}")
         finally:
             try:
                 os.remove(path)
@@ -530,17 +530,17 @@ class TelegramNotifier:
                             elif command == '/help':
                                 help_text = tr('bot_help_message')
                                 help_text += (
-                                    "\n\n📊 Graph commands:"
-                                    "\n/graph [metric] - send metric graph"
-                                    "\n/uptime_graph - Время работы"
-                                    "\n/cpu_graph - ЦПУ"
-                                    "\n/temp_graph - Температура CPU"
-                                    "\n/ram_graph - ОЗУ"
-                                    "\n/net_graph - Сеть"
-                                    "\n/disk_graph - Диск"
-                                    "\n/swap_graph - Подкачка"
-                                    "\n/keyboard_graph - Нажатие клавиш"
-                                    "\n/mouse_graph - Клики мыши"
+                                    f"\n\n📊 {tr('graph_commands_title')}:"
+                                    f"\n/graph [metric] - {tr('graph_command_hint')}"
+                                    f"\n/uptime_graph - {tr('uptime')}"
+                                    f"\n/cpu_graph - {tr('cpu')}"
+                                    f"\n/temp_graph - {tr('cpu')} {tr('temperature')}"
+                                    f"\n/ram_graph - {tr('ram')}"
+                                    f"\n/net_graph - {tr('network')}"
+                                    f"\n/disk_graph - {tr('disk')}"
+                                    f"\n/swap_graph - {tr('swap')}"
+                                    f"\n/keyboard_graph - {tr('keyboard_clicks')}"
+                                    f"\n/mouse_graph - {tr('mouse_clicks')}"
                                 )
                                 self.send_message(help_text)
 
@@ -576,7 +576,7 @@ class TelegramNotifier:
                                 self._send_metric_graph(metric_alias_map.get(command, 'cpu'))
 
                             else:
-                                self.send_message("Unknown command. Use /help")
+                                self.send_message(f"{tr('unknown_command')}. {tr('unknown_command_help')}")
                     backoff_seconds = 1.0
 
                 elif response.status_code == 409:
