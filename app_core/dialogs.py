@@ -214,6 +214,11 @@ class SettingsDialog(Gtk.Dialog):
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         logging_card_content.add(logsize_box)
 
+        self.show_zoom_controls_check = Gtk.CheckButton(label=tr('show_graph_zoom_controls'))
+        self.show_zoom_controls_check.set_active(self.visibility_settings.get('show_graph_zoom_controls', True))
+        self.show_zoom_controls_check.set_margin_bottom(2)
+        logging_card_content.add(self.show_zoom_controls_check)
+
         graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
         graph_history_label.set_xalign(0)
@@ -237,11 +242,6 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_card_content.add(graph_history_box)
-
-        self.show_zoom_controls_check = Gtk.CheckButton(label=tr('show_graph_zoom_controls'))
-        self.show_zoom_controls_check.set_active(self.visibility_settings.get('show_graph_zoom_controls', True))
-        self.show_zoom_controls_check.set_margin_bottom(2)
-        logging_card_content.add(self.show_zoom_controls_check)
 
         telegram_card, telegram_content = card("Telegram")
         notification_content.add(telegram_card)
