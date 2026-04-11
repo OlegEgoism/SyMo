@@ -155,6 +155,7 @@ class SystemTrayApp:
         self._discord_worker.start()
 
         self.telegram_notifier.set_power_control(self.power_control)
+        self.telegram_notifier.set_app_context(self)
         if self.telegram_notifier.enabled:
             self.telegram_notifier.start_bot()
 
