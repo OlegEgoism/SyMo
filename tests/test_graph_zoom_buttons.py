@@ -7,6 +7,7 @@ def test_graph_windows_have_plus_minus_zoom_controls():
     assert 'zoom_out_button = Gtk.Button(label="-")' in code
     assert 'zoom_reset_button = Gtk.Button(label="↻")' in code
     assert 'zoom_in_button = Gtk.Button(label="+")' in code
+    assert "btn.set_size_request(28, 24)" in code
     assert "def _reset_graph_zoom(self, graph_key: str, area: Optional[Gtk.DrawingArea] = None) -> None:" in code
 
 
