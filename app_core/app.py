@@ -342,6 +342,9 @@ class SystemTrayApp:
         cpu_threads = psutil.cpu_count(logical=True) or 0
         cpu_freq = psutil.cpu_freq()
         ram = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        disk = psutil.disk_usage("/")
+        boot_dt = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M:%S")
 
         freq_text = tr('unknown_value')
         if cpu_freq and cpu_freq.max:
@@ -360,6 +363,12 @@ class SystemTrayApp:
             f"{tr('cpu_frequency_label')}: {freq_text}",
             "",
             f"{tr('ram_total_label')}: {ram.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('ram_available_label')}: {ram.available / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('swap_total_label')}: {swap.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('disk_total_label')}: {disk.total / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('disk_free_label')}: {disk.free / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('boot_time_label')}: {boot_dt}",
+            f"{tr('python_version_label')}: {platform.python_version()}",
         ])
 
     def on_system_info_click(self, *_):
@@ -755,7 +764,7 @@ class SystemTrayApp:
                             f"RAM: {ram_used:.1f}/{ram_total:.1f} GB | "
                             f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
                             f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
-                            f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s | "
+                            f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')} | "
                             f"Uptime: {uptime_display} | "
                             f"Keys: {kbd} | "
                             f"Clicks: {ms}\n")
@@ -781,7 +790,7 @@ class SystemTrayApp:
             f"<b>{tr('ram')}:</b> {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
             f"<b>{tr('swap')}:</b> {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
             f"<b>{tr('disk')}:</b> {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
-            f"<b>{tr('network')}:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
+            f"<b>{tr('network')}:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
             f"<b>{tr('uptime')}:</b> {uptime}\n"
             f"<b>{tr('keyboard')}:</b> {keyboard_clicks_val} {tr('presses')}\n"
             f"<b>{tr('mouse')}:</b> {mouse_clicks_val} {tr('clicks')}"
@@ -798,7 +807,7 @@ class SystemTrayApp:
             f"**{tr('ram')}**: {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
             f"**{tr('swap')}**: {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
             f"**{tr('disk')}**: {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
-            f"**{tr('network')}**: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s\n"
+            f"**{tr('network')}**: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
             f"**{tr('uptime')}**: {uptime}\n"
             f"**{tr('keyboard')}**: {keyboard_clicks_val} {tr('presses')}\n"
             f"**{tr('mouse')}**: {mouse_clicks_val} {tr('clicks')}"
@@ -1748,18 +1757,18 @@ class SystemTrayApp:
         cr.fill()
         cr.set_source_rgb(0.85, 1.0, 0.87)
         cr.move_to(margin_left + 18, 12)
-        cr.show_text("↓ MB/s")
+        cr.show_text(f"↓ {tr('mbps')}")
 
         cr.set_source_rgb(1.0, 0.75, 0.2)
         cr.rectangle(margin_left + 95, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(1.0, 0.94, 0.8)
         cr.move_to(margin_left + 113, 12)
-        cr.show_text("↑ MB/s")
+        cr.show_text(f"↑ {tr('mbps')}")
 
         last_recv = samples[-1][1]
         last_sent = samples[-1][2]
-        values_text = f"{tr('lan_speed')}: ↓{last_recv:.1f} / ↑{last_sent:.1f} MB/s"
+        values_text = f"{tr('lan_speed')}: ↓{last_recv:.1f} / ↑{last_sent:.1f} {tr('mbps')}"
         cr.set_source_rgb(0.95, 0.95, 0.95)
         cr.set_font_size(12)
         ext = cr.text_extents(values_text)
@@ -1777,8 +1786,8 @@ class SystemTrayApp:
             plot_h,
             lambda sample: [
                 datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"↓ {sample[1]:.2f} MB/s",
-                f"↑ {sample[2]:.2f} MB/s",
+                f"↓ {sample[1]:.2f} {tr('mbps')}",
+                f"↑ {sample[2]:.2f} {tr('mbps')}",
             ],
         )
 
@@ -2149,8 +2158,8 @@ class SystemTrayApp:
                 self.disk_item.set_label(self._item_display_cache.get('disk', f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"))
             if self.visibility_settings.get('net', True):
                 if due('net', 'net_interval_sec'):
-                    self._item_display_cache['net'] = f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"
-                self.net_item.set_label(self._item_display_cache.get('net', f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} MB/s"))
+                    self._item_display_cache['net'] = f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}"
+                self.net_item.set_label(self._item_display_cache.get('net', f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}"))
             if self.visibility_settings.get('uptime', True):
                 self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
             if self.visibility_settings.get('keyboard_clicks', True):
