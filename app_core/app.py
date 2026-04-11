@@ -991,7 +991,7 @@ class SystemTrayApp:
         zoom_out_button.set_tooltip_text("Zoom out")
         zoom_out_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1 / 1.2, area))
 
-        zoom_reset_button = Gtk.Button(label="1:1")
+        zoom_reset_button = Gtk.Button(label="↻")
         zoom_reset_button.set_tooltip_text("Reset zoom")
         zoom_reset_button.connect("clicked", lambda *_: self._reset_graph_zoom(graph_key, area))
 
