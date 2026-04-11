@@ -353,6 +353,8 @@ class TelegramNotifier:
         mapping = {
             "cpu": ("CPU", list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
             "top": ("CPU", list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
+            "temp": ("CPU Temperature", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, "°C"),
+            "temperature": ("CPU Temperature", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, "°C"),
             "ram": ("RAM", list(getattr(app, "ram_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
             "swap": ("Swap", list(getattr(app, "swap_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
             "disk": ("Disk", list(getattr(app, "disk_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
@@ -532,6 +534,9 @@ class TelegramNotifier:
                                     "\n/uptime - uptime graph"
                                     "\n/disk - disk graph"
                                     "\n/top - cpu graph"
+                                    "\n/cpu_graph /temp_graph /ram_graph /net_graph"
+                                    "\n/disk_graph /swap_graph /uptime_graph"
+                                    "\n/keyboard_graph /mouse_graph"
                                 )
                                 self.send_message(help_text)
 
@@ -539,8 +544,32 @@ class TelegramNotifier:
                                 metric = arg or "cpu"
                                 self._send_metric_graph(metric)
 
-                            elif command in {'/uptime', '/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse'}:
+                            elif command in {'/uptime', '/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:
                                 self._send_metric_graph(command.lstrip('/'))
+
+                            elif command in {
+                                '/uptime_graph',
+                                '/cpu_graph',
+                                '/temp_graph',
+                                '/ram_graph',
+                                '/net_graph',
+                                '/disk_graph',
+                                '/swap_graph',
+                                '/keyboard_graph',
+                                '/mouse_graph',
+                            }:
+                                metric_alias_map = {
+                                    '/uptime_graph': 'uptime',
+                                    '/cpu_graph': 'cpu',
+                                    '/temp_graph': 'temp',
+                                    '/ram_graph': 'ram',
+                                    '/net_graph': 'net',
+                                    '/disk_graph': 'disk',
+                                    '/swap_graph': 'swap',
+                                    '/keyboard_graph': 'keyboard',
+                                    '/mouse_graph': 'mouse',
+                                }
+                                self._send_metric_graph(metric_alias_map.get(command, 'cpu'))
 
                             else:
                                 self.send_message("Unknown command. Use /help")
