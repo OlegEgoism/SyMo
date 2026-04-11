@@ -7,6 +7,7 @@ def test_telegram_graph_commands_are_supported():
     assert "elif command == '/graph':" in code
     assert "elif command in {'/uptime', '/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse'}:" in code
     assert "Unknown command. Use /help" in code
+    assert "/graph [metric] - graph image" in code
 
 
 def test_telegram_notifier_has_graph_render_pipeline():

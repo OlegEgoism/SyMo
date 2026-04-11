@@ -528,7 +528,7 @@ class TelegramNotifier:
                             elif command == '/help':
                                 help_text = tr('bot_help_message')
                                 help_text += (
-                                    "\n/graph <metric> - graph image"
+                                    "\n/graph [metric] - graph image"
                                     "\n/uptime - uptime graph"
                                     "\n/disk - disk graph"
                                     "\n/top - cpu graph"
