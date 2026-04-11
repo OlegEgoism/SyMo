@@ -11,6 +11,7 @@ import time
 from typing import Optional, TYPE_CHECKING
 
 import requests
+import psutil
 from requests import Response
 from gi.repository import GLib
 
@@ -21,6 +22,7 @@ from app_core.click_tracker import get_counts
 
 if TYPE_CHECKING:
     from app_core.power_control import PowerControl
+    from app_core.app import SystemTrayApp
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ class TelegramNotifier:
         self.bot_thread: Optional[threading.Thread] = None
         self.bot_running: bool = False
         self.power_control_ref: Optional["PowerControl"] = None
+        self.app_ref: Optional["SystemTrayApp"] = None
         self.load_config()
 
     def load_config(self) -> None:
@@ -338,6 +341,127 @@ class TelegramNotifier:
     def set_power_control(self, power_control: "PowerControl") -> None:
         self.power_control_ref = power_control
 
+    def set_app_context(self, app: "SystemTrayApp") -> None:
+        self.app_ref = app
+
+    def _metric_samples_for_graph(self, metric: str) -> tuple[str, list[tuple[float, float]], str]:
+        app = self.app_ref
+        if app is None:
+            return "metric", [], ""
+
+        metric_key = (metric or "").strip().lower()
+        mapping = {
+            "cpu": ("CPU", list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
+            "top": ("CPU", list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
+            "ram": ("RAM", list(getattr(app, "ram_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
+            "swap": ("Swap", list(getattr(app, "swap_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
+            "disk": ("Disk", list(getattr(app, "disk_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
+            "net": ("Network RX+TX", list(getattr(app, "net_history", [])), lambda s: float(s[1]) + float(s[2]), "MB/s"),
+            "keyboard": ("Keyboard", list(getattr(app, "keyboard_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "count"),
+            "mouse": ("Mouse", list(getattr(app, "mouse_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "count"),
+        }
+        if metric_key == "uptime":
+            cpu_samples = list(getattr(app, "cpu_history", []))
+            boot_ts = float(psutil.boot_time())
+            points = [(float(s[0]), max(0.0, (float(s[0]) - boot_ts) / 3600.0)) for s in cpu_samples if s]
+            return "Uptime", points, "h"
+
+        title, samples, extractor, unit = mapping.get(metric_key, ("", [], lambda _s: 0.0, ""))
+        points: list[tuple[float, float]] = []
+        for sample in samples:
+            try:
+                ts = float(sample[0])
+                value = max(0.0, float(extractor(sample)))
+                points.append((ts, value))
+            except Exception:
+                continue
+        return title, points, unit
+
+    def _render_metric_graph_to_temp(self, metric: str) -> Optional[tuple[str, str]]:
+        title, points, unit = self._metric_samples_for_graph(metric)
+        if not points or not title:
+            return None
+        if len(points) > 180:
+            points = points[-180:]
+
+        try:
+            import cairo  # type: ignore
+        except Exception:
+            logger.warning("cairo недоступен: не удалось построить изображение графика")
+            return None
+
+        width, height = 980, 420
+        margin_left, margin_right = 56, 24
+        margin_top, margin_bottom = 36, 46
+        plot_w = max(10, width - margin_left - margin_right)
+        plot_h = max(10, height - margin_top - margin_bottom)
+
+        values = [p[1] for p in points]
+        v_min = min(values)
+        v_max = max(values)
+        if abs(v_max - v_min) < 1e-6:
+            v_min = max(0.0, v_min - 1.0)
+            v_max = v_max + 1.0
+
+        fd, path = tempfile.mkstemp(prefix=f"symo-graph-{metric}-", suffix=".png")
+        os.close(fd)
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+        cr = cairo.Context(surface)
+
+        cr.set_source_rgb(0.09, 0.09, 0.09)
+        cr.paint()
+        cr.set_source_rgb(0.18, 0.18, 0.18)
+        cr.rectangle(margin_left, margin_top, plot_w, plot_h)
+        cr.stroke()
+
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        cr.set_font_size(16)
+        cr.set_source_rgb(0.92, 0.92, 0.92)
+        cr.move_to(margin_left, 24)
+        cr.show_text(f"{title} graph")
+
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.set_font_size(12)
+        cr.set_source_rgb(0.65, 0.65, 0.65)
+        cr.move_to(margin_left, height - 16)
+        cr.show_text(f"Samples: {len(points)}")
+
+        for i in range(1, len(points)):
+            x1 = margin_left + (i - 1) * (plot_w / max(1, len(points) - 1))
+            x2 = margin_left + i * (plot_w / max(1, len(points) - 1))
+            y1 = margin_top + plot_h - ((points[i - 1][1] - v_min) / (v_max - v_min)) * plot_h
+            y2 = margin_top + plot_h - ((points[i][1] - v_min) / (v_max - v_min)) * plot_h
+            cr.set_source_rgb(0.21, 0.78, 0.93)
+            cr.set_line_width(2.0)
+            cr.move_to(x1, y1)
+            cr.line_to(x2, y2)
+            cr.stroke()
+
+        cr.set_source_rgb(0.82, 0.82, 0.82)
+        cr.move_to(8, margin_top + 6)
+        cr.show_text(f"{v_max:.1f}{unit}")
+        cr.move_to(8, margin_top + plot_h)
+        cr.show_text(f"{v_min:.1f}{unit}")
+
+        surface.write_to_png(path)
+        return path, title
+
+    def _send_metric_graph(self, metric: str) -> None:
+        render_result = self._render_metric_graph_to_temp(metric)
+        if render_result is None:
+            self.send_message("❌ Graph is unavailable. Try: /graph cpu|ram|swap|disk|net|keyboard|mouse|uptime|top")
+            return
+        path, title = render_result
+        try:
+            caption = f"{title} graph"
+            if not self.send_photo(path, caption):
+                self.send_message("❌ Failed to send graph image.")
+        finally:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
     def start_bot(self) -> None:
         if not self.enabled or not self.token or self.bot_running:
             return
@@ -397,6 +521,14 @@ class TelegramNotifier:
                             elif text == '/help':
                                 help_text = tr('bot_help_message')
                                 self.send_message(help_text)
+
+                            elif text.startswith('/graph'):
+                                parts = text.split(maxsplit=1)
+                                metric = parts[1].strip().lower() if len(parts) > 1 else "cpu"
+                                self._send_metric_graph(metric)
+
+                            elif text in {'/uptime', '/disk', '/top'}:
+                                self._send_metric_graph(text.lstrip('/'))
                     backoff_seconds = 1.0
 
                 elif response.status_code == 409:
