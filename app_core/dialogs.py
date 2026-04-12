@@ -243,7 +243,7 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_card_content.add(graph_history_box)
 
-        graph_colors_card, graph_colors_content = card("Graph colors")
+        graph_colors_card, graph_colors_content = card("Цвета графиков")
         logging_card_content.add(graph_colors_card)
 
         graph_colors_info = Gtk.Label(label="Choose line colors for each graph")
