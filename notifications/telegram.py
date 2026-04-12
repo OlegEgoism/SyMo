@@ -421,6 +421,15 @@ class TelegramNotifier:
         cr.move_to(margin_left, height - 16)
         cr.show_text(f"Samples: {len(points)}")
 
+        time_start_label = self._format_graph_time(points[0][0])
+        time_end_label = self._format_graph_time(points[-1][0])
+        cr.set_source_rgb(0.70, 0.70, 0.70)
+        cr.move_to(margin_left, margin_top + plot_h + 16)
+        cr.show_text(time_start_label)
+        extents = cr.text_extents(time_end_label)
+        cr.move_to(margin_left + plot_w - extents[2], margin_top + plot_h + 16)
+        cr.show_text(time_end_label)
+
         for i in range(1, len(points)):
             x1 = margin_left + (i - 1) * (plot_w / max(1, len(points) - 1))
             x2 = margin_left + i * (plot_w / max(1, len(points) - 1))
@@ -440,6 +449,13 @@ class TelegramNotifier:
 
         surface.write_to_png(path)
         return path, title
+
+    @staticmethod
+    def _format_graph_time(timestamp: float) -> str:
+        try:
+            return time.strftime("%H:%M:%S", time.localtime(float(timestamp)))
+        except Exception:
+            return "--:--:--"
 
     def _send_metric_graph(self, metric: str) -> None:
         render_result = self._render_metric_graph_to_temp(metric)
