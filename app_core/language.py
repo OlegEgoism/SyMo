@@ -90,6 +90,8 @@ LANGUAGES = {
         'max_log_size_mb': 'Размер файла логов (МБ)',
         'graph_history_minutes': 'История графиков (мин.)',
         'graph_history_hint': 'Диапазон: {}–{} мин (до {} часов).',
+        'graph_colors_title': 'Цвета графиков',
+        'graph_colors_info': 'Выберите цвета линий для каждого графика.',
 
         'ping_network': 'Проверить сеть',
         'ping_running': 'Выполняется проверка сети…',
@@ -229,6 +231,8 @@ LANGUAGES = {
         'max_log_size_mb': 'Maximum log file size (MB)',
         'graph_history_minutes': 'Graph history (min)',
         'graph_history_hint': 'Range: {}–{} min (up to {} hours).',
+        'graph_colors_title': 'Graph colors',
+        'graph_colors_info': 'Choose line colors for each graph.',
 
         'ping_network': 'Ping network',
         'ping_running': 'Running network check…',
@@ -368,6 +372,8 @@ LANGUAGES = {
         'max_log_size_mb': '日志文件的最大大小 (MB)',
         'graph_history_minutes': '图表历史记录（分钟）',
         'graph_history_hint': '范围：{}–{} 分钟（最多 {} 小时）。',
+        'graph_colors_title': '图表颜色',
+        'graph_colors_info': '为每个图表选择线条颜色。',
 
         'ping_network': '网络连通性测试（ping）',
         'ping_running': '正在进行网络测试…',
@@ -507,6 +513,8 @@ LANGUAGES = {
         'max_log_size_mb': 'Maximale Protokolldateigröße (MB)',
         'graph_history_minutes': 'Diagrammverlauf (Min.)',
         'graph_history_hint': 'Bereich: {}–{} Min (bis zu {} Stunden).',
+        'graph_colors_title': 'Diagrammfarben',
+        'graph_colors_info': 'Wählen Sie Linienfarben für jedes Diagramm.',
 
         'ping_network': 'Netzwerk prüfen (Ping)',
         'ping_running': 'Netzwerkprüfung läuft…',
@@ -646,6 +654,8 @@ LANGUAGES = {
         'max_log_size_mb': 'Dimensione massima del file di log (MB)',
         'graph_history_minutes': 'Cronologia grafici (min)',
         'graph_history_hint': 'Intervallo: {}–{} min (fino a {} ore).',
+        'graph_colors_title': 'Colori dei grafici',
+        'graph_colors_info': 'Scegli i colori delle linee per ogni grafico.',
 
         'ping_network': 'Verifica rete (ping)',
         'ping_running': 'Verifica della rete in corso…',
@@ -785,6 +795,8 @@ LANGUAGES = {
         'max_log_size_mb': 'Tamaño máximo del archivo de registro (MB)',
         'graph_history_minutes': 'Historial de gráficos (min)',
         'graph_history_hint': 'Rango: {}–{} min (hasta {} horas).',
+        'graph_colors_title': 'Colores de gráficos',
+        'graph_colors_info': 'Elige los colores de línea para cada gráfico.',
 
         'ping_network': 'Probar red (ping)',
         'ping_running': 'Comprobando la red…',
@@ -924,6 +936,8 @@ LANGUAGES = {
         'max_log_size_mb': 'Maksimum günlük dosyası boyutu (MB)',
         'graph_history_minutes': 'Grafik geçmişi (dk.)',
         'graph_history_hint': 'Aralık: {}–{} dk ({} saate kadar).',
+        'graph_colors_title': 'Grafik renkleri',
+        'graph_colors_info': 'Her grafik için çizgi renklerini seçin.',
 
         'ping_network': 'Ağı kontrol et (ping)',
         'ping_running': 'Ağ kontrolü yapılıyor…',
@@ -1063,6 +1077,8 @@ LANGUAGES = {
         'max_log_size_mb': 'Taille maximale du fichier journal (Mo)',
         'graph_history_minutes': 'Historique des graphiques (min)',
         'graph_history_hint': 'Plage : {}–{} min (jusqu’à {} heures).',
+        'graph_colors_title': 'Couleurs des graphiques',
+        'graph_colors_info': 'Choisissez les couleurs de ligne pour chaque graphique.',
 
         'ping_network': 'Vérifier le réseau (ping)',
         'ping_running': 'Vérification du réseau en cours…',

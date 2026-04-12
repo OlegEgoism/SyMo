@@ -12,8 +12,8 @@ def test_graph_line_color_setting_is_persisted_and_exposed_in_settings_dialog():
 
     assert "self.graph_line_color_buttons: dict[str, Gtk.ColorButton] = {}" in dialogs_code
     assert "def get_graph_line_colors(self) -> Dict[str, str]:" in dialogs_code
-    assert 'graph_colors_card, graph_colors_content = card("Цвета графиков")' in dialogs_code
-    assert 'graph_colors_info = Gtk.Label(label="Choose line colors for each graph")' in dialogs_code
+    assert "graph_colors_card, graph_colors_content = card(tr('graph_colors_title'))" in dialogs_code
+    assert "graph_colors_info = Gtk.Label(label=tr('graph_colors_info'))" in dialogs_code
 
 
 def test_telegram_graph_renderer_uses_configured_graph_line_color():
