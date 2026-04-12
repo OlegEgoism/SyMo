@@ -64,6 +64,18 @@ POLL_INTERVAL_SETTING_KEYS = (
     'swap_interval_sec',
 )
 
+GRAPH_COLOR_DEFAULTS = {
+    'graph_line_color_cpu': '#19ccff',
+    'graph_line_color_temp': '#ff6633',
+    'graph_line_color_ram': '#59ff59',
+    'graph_line_color_swap': '#f28cff',
+    'graph_line_color_disk': '#59b8ff',
+    'graph_line_color_net_recv': '#40e65a',
+    'graph_line_color_net_sent': '#ffbf33',
+    'graph_line_color_keyboard': '#ffd93f',
+    'graph_line_color_mouse': '#66e6ff',
+}
+
 
 
 def _text_width(text_extents) -> float:
@@ -478,7 +490,6 @@ class SystemTrayApp:
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
             'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
-            'graph_line_color': '#36c7ed',
             'menu_order': MENU_ORDER_DEFAULT.copy(),
             'tray_cpu_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
             'tray_ram_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
@@ -488,6 +499,7 @@ class SystemTrayApp:
             'disk_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
             'swap_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
         }
+        default.update(GRAPH_COLOR_DEFAULTS)
         try:
             if self.settings_file.exists():
                 saved = json.loads(self.settings_file.read_text(encoding="utf-8"))
@@ -495,7 +507,10 @@ class SystemTrayApp:
         except Exception as e:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
         default['graph_history_minutes'] = self._sanitize_graph_history_minutes(default.get('graph_history_minutes'))
-        default['graph_line_color'] = self._sanitize_graph_line_color(default.get('graph_line_color'))
+        legacy_color = self._sanitize_graph_line_color(default.get('graph_line_color'))
+        for key, fallback in GRAPH_COLOR_DEFAULTS.items():
+            source = default.get(key, legacy_color if 'graph_line_color' in default else fallback)
+            default[key] = self._sanitize_graph_line_color(source)
         default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))
         for key in POLL_INTERVAL_SETTING_KEYS:
             default[key] = self._sanitize_poll_interval(default.get(key))
@@ -522,8 +537,10 @@ class SystemTrayApp:
                 return f"#{hex_part.lower()}"
         return '#36c7ed'
 
-    def _graph_line_color_rgb(self) -> tuple[float, float, float]:
-        hex_color = self._sanitize_graph_line_color(self.visibility_settings.get('graph_line_color'))
+    def _graph_line_color_rgb(self, key: str) -> tuple[float, float, float]:
+        hex_color = self._sanitize_graph_line_color(
+            self.visibility_settings.get(key, GRAPH_COLOR_DEFAULTS.get(key, '#36c7ed'))
+        )
         r = int(hex_color[1:3], 16) / 255.0
         g = int(hex_color[3:5], 16) / 255.0
         b = int(hex_color[5:7], 16) / 255.0
@@ -647,7 +664,8 @@ class SystemTrayApp:
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
-                vs['graph_line_color'] = self._sanitize_graph_line_color(dialog.get_graph_line_color())
+                for color_key, color_value in dialog.get_graph_line_colors().items():
+                    vs[color_key] = self._sanitize_graph_line_color(color_value)
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
                 self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
@@ -1223,7 +1241,8 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
-        line_color = self._graph_line_color_rgb()
+        line_color = self._graph_line_color_rgb('graph_line_color_cpu')
+        temp_line_color = self._graph_line_color_rgb('graph_line_color_temp')
         max_temp = max(100.0, max(temp for _, _, temp in samples) + 5.0)
 
         def draw_line(selector, color, max_value):
@@ -1240,7 +1259,7 @@ class SystemTrayApp:
             cr.stroke()
 
         draw_line(lambda s: s[1], line_color, 100.0)
-        draw_line(lambda s: s[2], (1.0, 0.4, 0.2), max_temp)
+        draw_line(lambda s: s[2], temp_line_color, max_temp)
 
         # Legend/signatures for displayed data
         cr.select_font_face("Sans", 0, 0)
@@ -1253,7 +1272,7 @@ class SystemTrayApp:
         cr.move_to(margin_left + 18, 12)
         cr.show_text(f"{tr('cpu')} (%)")
 
-        cr.set_source_rgb(1.0, 0.4, 0.2)
+        cr.set_source_rgb(*temp_line_color)
         cr.rectangle(margin_left + 150, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(1.0, 0.88, 0.82)
@@ -1386,7 +1405,7 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
-        line_color = self._graph_line_color_rgb()
+        line_color = self._graph_line_color_rgb('graph_line_color_ram')
         cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
@@ -1534,7 +1553,7 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
-        line_color = self._graph_line_color_rgb()
+        line_color = self._graph_line_color_rgb('graph_line_color_swap')
         cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
@@ -1682,7 +1701,7 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
-        line_color = self._graph_line_color_rgb()
+        line_color = self._graph_line_color_rgb('graph_line_color_disk')
         cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
@@ -1846,9 +1865,10 @@ class SystemTrayApp:
                     cr.line_to(x, y)
             cr.stroke()
 
-        line_color = self._graph_line_color_rgb()
+        line_color = self._graph_line_color_rgb('graph_line_color_net_recv')
+        net_sent_color = self._graph_line_color_rgb('graph_line_color_net_sent')
         draw_line(lambda s: s[1], line_color)
-        draw_line(lambda s: s[2], (1.0, 0.75, 0.2))
+        draw_line(lambda s: s[2], net_sent_color)
 
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
@@ -1860,7 +1880,7 @@ class SystemTrayApp:
         cr.move_to(margin_left + 18, 12)
         cr.show_text(f"↓ {tr('mbps')}")
 
-        cr.set_source_rgb(1.0, 0.75, 0.2)
+        cr.set_source_rgb(*net_sent_color)
         cr.rectangle(margin_left + 95, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(1.0, 0.94, 0.8)
@@ -1992,7 +2012,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
             cr.show_text(label)
 
-        line_color = self._graph_line_color_rgb()
+        line_color = self._graph_line_color_rgb('graph_line_color_keyboard')
         cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
@@ -2137,7 +2157,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
             cr.show_text(label)
 
-        line_color = self._graph_line_color_rgb()
+        line_color = self._graph_line_color_rgb('graph_line_color_mouse')
         cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):

@@ -243,16 +243,30 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_card_content.add(graph_history_box)
 
-        graph_color_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        graph_color_label = Gtk.Label(label="Graph line color")
-        graph_color_label.set_xalign(0)
-        graph_color_label.set_width_chars(28)
-        self.graph_line_color_button = Gtk.ColorButton()
-        self.graph_line_color_button.set_use_alpha(False)
-        self.graph_line_color_button.set_rgba(self._hex_to_rgba(self.visibility_settings.get('graph_line_color', '#36c7ed')))
-        graph_color_box.pack_start(graph_color_label, False, False, 0)
-        graph_color_box.pack_start(self.graph_line_color_button, False, False, 0)
-        logging_card_content.add(graph_color_box)
+        graph_color_rows = [
+            ('graph_line_color_cpu', f"{tr('cpu')}"),
+            ('graph_line_color_temp', f"{tr('temperature')}"),
+            ('graph_line_color_ram', f"{tr('ram')}"),
+            ('graph_line_color_swap', f"{tr('swap')}"),
+            ('graph_line_color_disk', f"{tr('disk')}"),
+            ('graph_line_color_net_recv', f"{tr('network')} ↓"),
+            ('graph_line_color_net_sent', f"{tr('network')} ↑"),
+            ('graph_line_color_keyboard', f"{tr('keyboard_clicks')}"),
+            ('graph_line_color_mouse', f"{tr('mouse_clicks')}"),
+        ]
+        self.graph_line_color_buttons: dict[str, Gtk.ColorButton] = {}
+        for color_key, color_label_text in graph_color_rows:
+            graph_color_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            graph_color_label = Gtk.Label(label=color_label_text)
+            graph_color_label.set_xalign(0)
+            graph_color_label.set_width_chars(28)
+            color_button = Gtk.ColorButton()
+            color_button.set_use_alpha(False)
+            color_button.set_rgba(self._hex_to_rgba(self.visibility_settings.get(color_key, '#36c7ed')))
+            self.graph_line_color_buttons[color_key] = color_button
+            graph_color_box.pack_start(graph_color_label, False, False, 0)
+            graph_color_box.pack_start(color_button, False, False, 0)
+            logging_card_content.add(graph_color_box)
 
         telegram_card, telegram_content = card("Telegram")
         notification_content.add(telegram_card)
@@ -514,10 +528,13 @@ class SettingsDialog(Gtk.Dialog):
         rgba.alpha = 1.0
         return rgba
 
-    def get_graph_line_color(self) -> str:
-        rgba = self.graph_line_color_button.get_rgba()
-        return "#{:02x}{:02x}{:02x}".format(
-            int(max(0.0, min(1.0, rgba.red)) * 255),
-            int(max(0.0, min(1.0, rgba.green)) * 255),
-            int(max(0.0, min(1.0, rgba.blue)) * 255),
-        )
+    def get_graph_line_colors(self) -> Dict[str, str]:
+        result: Dict[str, str] = {}
+        for color_key, color_button in self.graph_line_color_buttons.items():
+            rgba = color_button.get_rgba()
+            result[color_key] = "#{:02x}{:02x}{:02x}".format(
+                int(max(0.0, min(1.0, rgba.red)) * 255),
+                int(max(0.0, min(1.0, rgba.green)) * 255),
+                int(max(0.0, min(1.0, rgba.blue)) * 255),
+            )
+        return result
