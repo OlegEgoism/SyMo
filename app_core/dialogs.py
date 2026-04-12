@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Dict, Optional
 
-from gi.repository import Gtk
+from gi.repository import Gtk, Gdk
 
 from .click_tracker import get_counts
 from .constants import (
@@ -242,6 +242,17 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_card_content.add(graph_history_box)
+
+        graph_color_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        graph_color_label = Gtk.Label(label="Graph line color")
+        graph_color_label.set_xalign(0)
+        graph_color_label.set_width_chars(28)
+        self.graph_line_color_button = Gtk.ColorButton()
+        self.graph_line_color_button.set_use_alpha(False)
+        self.graph_line_color_button.set_rgba(self._hex_to_rgba(self.visibility_settings.get('graph_line_color', '#36c7ed')))
+        graph_color_box.pack_start(graph_color_label, False, False, 0)
+        graph_color_box.pack_start(self.graph_line_color_button, False, False, 0)
+        logging_card_content.add(graph_color_box)
 
         telegram_card, telegram_content = card("Telegram")
         notification_content.add(telegram_card)
@@ -494,3 +505,19 @@ class SettingsDialog(Gtk.Dialog):
         kbd, ms = get_counts()
         self.keyboard_check.set_label(f"{tr('keyboard_clicks')}: {kbd}")
         self.mouse_check.set_label(f"{tr('mouse_clicks')}: {ms}")
+
+    @staticmethod
+    def _hex_to_rgba(value: object) -> Gdk.RGBA:
+        rgba = Gdk.RGBA()
+        if not rgba.parse(str(value or "#36c7ed")):
+            rgba.parse("#36c7ed")
+        rgba.alpha = 1.0
+        return rgba
+
+    def get_graph_line_color(self) -> str:
+        rgba = self.graph_line_color_button.get_rgba()
+        return "#{:02x}{:02x}{:02x}".format(
+            int(max(0.0, min(1.0, rgba.red)) * 255),
+            int(max(0.0, min(1.0, rgba.green)) * 255),
+            int(max(0.0, min(1.0, rgba.blue)) * 255),
+        )

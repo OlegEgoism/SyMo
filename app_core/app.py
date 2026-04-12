@@ -478,6 +478,7 @@ class SystemTrayApp:
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
             'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
+            'graph_line_color': '#36c7ed',
             'menu_order': MENU_ORDER_DEFAULT.copy(),
             'tray_cpu_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
             'tray_ram_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
@@ -494,6 +495,7 @@ class SystemTrayApp:
         except Exception as e:
             print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
         default['graph_history_minutes'] = self._sanitize_graph_history_minutes(default.get('graph_history_minutes'))
+        default['graph_line_color'] = self._sanitize_graph_line_color(default.get('graph_line_color'))
         default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))
         for key in POLL_INTERVAL_SETTING_KEYS:
             default[key] = self._sanitize_poll_interval(default.get(key))
@@ -510,6 +512,22 @@ class SystemTrayApp:
     @staticmethod
     def _graph_history_points(minutes: int) -> int:
         return max(1, minutes * 60 // TIME_UPDATE_SEC)
+
+    @staticmethod
+    def _sanitize_graph_line_color(value: object) -> str:
+        raw = str(value or "").strip()
+        if len(raw) == 7 and raw.startswith('#'):
+            hex_part = raw[1:]
+            if all(ch in "0123456789abcdefABCDEF" for ch in hex_part):
+                return f"#{hex_part.lower()}"
+        return '#36c7ed'
+
+    def _graph_line_color_rgb(self) -> tuple[float, float, float]:
+        hex_color = self._sanitize_graph_line_color(self.visibility_settings.get('graph_line_color'))
+        r = int(hex_color[1:3], 16) / 255.0
+        g = int(hex_color[3:5], 16) / 255.0
+        b = int(hex_color[5:7], 16) / 255.0
+        return r, g, b
 
     @staticmethod
     def _sanitize_poll_interval(value) -> int:
@@ -629,6 +647,7 @@ class SystemTrayApp:
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
+                vs['graph_line_color'] = self._sanitize_graph_line_color(dialog.get_graph_line_color())
                 vs['menu_order'] = dialog.get_menu_order()
                 vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
                 self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
@@ -1204,6 +1223,7 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
+        line_color = self._graph_line_color_rgb()
         max_temp = max(100.0, max(temp for _, _, temp in samples) + 5.0)
 
         def draw_line(selector, color, max_value):
@@ -1219,14 +1239,14 @@ class SystemTrayApp:
                     cr.line_to(x, y)
             cr.stroke()
 
-        draw_line(lambda s: s[1], (0.1, 0.8, 1.0), 100.0)
+        draw_line(lambda s: s[1], line_color, 100.0)
         draw_line(lambda s: s[2], (1.0, 0.4, 0.2), max_temp)
 
         # Legend/signatures for displayed data
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
 
-        cr.set_source_rgb(0.1, 0.8, 1.0)
+        cr.set_source_rgb(*line_color)
         cr.rectangle(margin_left, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(0.88, 0.92, 1.0)
@@ -1366,7 +1386,8 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
-        cr.set_source_rgb(0.35, 1.0, 0.35)
+        line_color = self._graph_line_color_rgb()
+        cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
             x = margin_left + plot_w * idx / (len(samples) - 1)
@@ -1380,7 +1401,7 @@ class SystemTrayApp:
 
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
-        cr.set_source_rgb(0.35, 1.0, 0.35)
+        cr.set_source_rgb(*line_color)
         cr.rectangle(margin_left, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(0.9, 1.0, 0.9)
@@ -1513,7 +1534,8 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
-        cr.set_source_rgb(0.95, 0.55, 1.0)
+        line_color = self._graph_line_color_rgb()
+        cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
             x = margin_left + plot_w * idx / (len(samples) - 1)
@@ -1527,7 +1549,7 @@ class SystemTrayApp:
 
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
-        cr.set_source_rgb(0.95, 0.55, 1.0)
+        cr.set_source_rgb(*line_color)
         cr.rectangle(margin_left, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(0.98, 0.88, 1.0)
@@ -1660,7 +1682,8 @@ class SystemTrayApp:
         if len(samples) == 1:
             samples = [samples[0], samples[0]]
 
-        cr.set_source_rgb(0.35, 0.72, 1.0)
+        line_color = self._graph_line_color_rgb()
+        cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
             x = margin_left + plot_w * idx / (len(samples) - 1)
@@ -1674,7 +1697,7 @@ class SystemTrayApp:
 
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
-        cr.set_source_rgb(0.35, 0.72, 1.0)
+        cr.set_source_rgb(*line_color)
         cr.rectangle(margin_left, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(0.88, 0.95, 1.0)
@@ -1823,13 +1846,14 @@ class SystemTrayApp:
                     cr.line_to(x, y)
             cr.stroke()
 
-        draw_line(lambda s: s[1], (0.25, 0.9, 0.35))
+        line_color = self._graph_line_color_rgb()
+        draw_line(lambda s: s[1], line_color)
         draw_line(lambda s: s[2], (1.0, 0.75, 0.2))
 
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
 
-        cr.set_source_rgb(0.25, 0.9, 0.35)
+        cr.set_source_rgb(*line_color)
         cr.rectangle(margin_left, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(0.85, 1.0, 0.87)
@@ -1968,7 +1992,8 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
             cr.show_text(label)
 
-        cr.set_source_rgb(1.0, 0.86, 0.25)
+        line_color = self._graph_line_color_rgb()
+        cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
             x = margin_left + plot_w * idx / (len(samples) - 1)
@@ -1982,7 +2007,7 @@ class SystemTrayApp:
 
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
-        cr.set_source_rgb(1.0, 0.86, 0.25)
+        cr.set_source_rgb(*line_color)
         cr.rectangle(margin_left, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(1.0, 0.96, 0.78)
@@ -2112,7 +2137,8 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
             cr.show_text(label)
 
-        cr.set_source_rgb(0.4, 0.9, 1.0)
+        line_color = self._graph_line_color_rgb()
+        cr.set_source_rgb(*line_color)
         cr.set_line_width(2)
         for idx, sample in enumerate(samples):
             x = margin_left + plot_w * idx / (len(samples) - 1)
@@ -2126,7 +2152,7 @@ class SystemTrayApp:
 
         cr.select_font_face("Sans", 0, 0)
         cr.set_font_size(12)
-        cr.set_source_rgb(0.4, 0.9, 1.0)
+        cr.set_source_rgb(*line_color)
         cr.rectangle(margin_left, 4, 12, 8)
         cr.fill()
         cr.set_source_rgb(0.85, 0.98, 1.0)

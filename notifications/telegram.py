@@ -435,7 +435,7 @@ class TelegramNotifier:
             x2 = margin_left + i * (plot_w / max(1, len(points) - 1))
             y1 = margin_top + plot_h - ((points[i - 1][1] - v_min) / (v_max - v_min)) * plot_h
             y2 = margin_top + plot_h - ((points[i][1] - v_min) / (v_max - v_min)) * plot_h
-            cr.set_source_rgb(0.21, 0.78, 0.93)
+            cr.set_source_rgb(*self._graph_line_color_rgb())
             cr.set_line_width(2.0)
             cr.move_to(x1, y1)
             cr.line_to(x2, y2)
@@ -456,6 +456,20 @@ class TelegramNotifier:
             return time.strftime("%H:%M:%S", time.localtime(float(timestamp)))
         except Exception:
             return "--:--:--"
+
+    def _graph_line_color_rgb(self) -> tuple[float, float, float]:
+        default_hex = "#36c7ed"
+        app = self.app_ref
+        hex_color = default_hex
+        if app is not None:
+            raw = str(getattr(app, "visibility_settings", {}).get("graph_line_color", default_hex)).strip()
+            if len(raw) == 7 and raw.startswith('#') and all(ch in "0123456789abcdefABCDEF" for ch in raw[1:]):
+                hex_color = raw
+        return (
+            int(hex_color[1:3], 16) / 255.0,
+            int(hex_color[3:5], 16) / 255.0,
+            int(hex_color[5:7], 16) / 255.0,
+        )
 
     def _send_metric_graph(self, metric: str) -> None:
         render_result = self._render_metric_graph_to_temp(metric)
