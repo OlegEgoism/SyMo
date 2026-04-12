@@ -8,8 +8,7 @@ SyMo is a lightweight GTK Linux tray app for monitoring system metrics, controll
 
 - Tray monitor for Linux desktop (CPU/RAM/Swap/Disk/Network/Uptime).
 - Quick power actions: shutdown, reboot, lock, timer.
-- Telegram bot commands: `/status`, `/screenshot`.
-- Discord webhook notifications.
+- Notifications from Discord, Telegram.
 
 ## Features
 
@@ -84,26 +83,11 @@ SyMo/
 - Linux desktop environment with GTK3 + AppIndicator (or Ayatana AppIndicator).
 - Python 3.10+ (recommended).
 
-### Optional screenshot dependencies (for Telegram `/screenshot`)
-
-SyMo tries multiple screenshot backends. Install at least one of them:
-
-```bash
-sudo apt install -y gnome-screenshot scrot grim imagemagick
-```
-
-> Notes:
-> - On GNOME/X11, `gnome-screenshot` is usually enough.
-> - On Wayland compositors (e.g., Sway), `grim` is commonly used.
-> - `imagemagick` provides the `import` command fallback.
-
 ### Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
-
-## Main Commands
 
 ### Run in Development Mode
 
