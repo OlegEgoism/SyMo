@@ -4,8 +4,8 @@ from pathlib import Path
 def test_telegram_graph_commands_are_supported():
     code = Path("notifications/telegram.py").read_text(encoding="utf-8")
     assert "command = raw_command.split('@', 1)[0]" in code
-    assert "elif command == '/graph':" in code
-    assert "elif command in {'/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:" in code
+    assert "elif command == '/graph':" not in code
+    assert "elif command in {'/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:" not in code
     assert "'/cpu_graph'" in code
     assert "'/temp_graph'" in code
     assert "'/ram_graph'" in code
@@ -15,7 +15,7 @@ def test_telegram_graph_commands_are_supported():
     assert "'/keyboard_graph'" in code
     assert "'/mouse_graph'" in code
     assert "tr('graph_commands_title')" in code
-    assert "tr('graph_command_hint')" in code
+    assert "/graph [metric]" not in code
     assert "tr('graph_unavailable')" in code
     assert "tr('graph_send_failed')" in code
     assert "tr('unknown_command')" in code
