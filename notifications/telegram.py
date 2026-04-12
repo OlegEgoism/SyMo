@@ -296,7 +296,7 @@ class TelegramNotifier:
     @staticmethod
     def _capture_screenshot_with_gdk(target_path: str) -> bool:
         try:
-            from gi.repository import Gdk, GdkPixbuf  # type: ignore
+            from gi.repository import Gdk  # type: ignore
         except Exception:
             return False
 
