@@ -243,6 +243,14 @@ class SettingsDialog(Gtk.Dialog):
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
         logging_card_content.add(graph_history_box)
 
+        graph_colors_card, graph_colors_content = card("Graph colors")
+        logging_card_content.add(graph_colors_card)
+
+        graph_colors_info = Gtk.Label(label="Choose line colors for each graph")
+        graph_colors_info.set_xalign(0)
+        graph_colors_info.set_line_wrap(True)
+        graph_colors_content.add(graph_colors_info)
+
         graph_color_rows = [
             ('graph_line_color_cpu', f"{tr('cpu')}"),
             ('graph_line_color_temp', f"{tr('temperature')}"),
@@ -266,7 +274,7 @@ class SettingsDialog(Gtk.Dialog):
             self.graph_line_color_buttons[color_key] = color_button
             graph_color_box.pack_start(graph_color_label, False, False, 0)
             graph_color_box.pack_start(color_button, False, False, 0)
-            logging_card_content.add(graph_color_box)
+            graph_colors_content.add(graph_color_box)
 
         telegram_card, telegram_content = card("Telegram")
         notification_content.add(telegram_card)
