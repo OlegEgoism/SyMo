@@ -125,69 +125,6 @@ pip install -r requirements.txt
 ```
 
 ### Install as desktop application
-
-```bash
-chmod +x build.sh
-./build.sh
-```
-
-After build, run from bundle:
-
-```bash
-./SyMo-bundle/run-symo.sh
-```
-
-`build.sh` also generates desktop/autostart entries for app-like usage.
-
-## Telegram `/screenshot` Setup
-
-1. Open **Settings → Notifications → Telegram**.
-2. Fill in:
-   - Bot token
-   - Chat ID
-3. Enable Telegram notifications.
-4. Set **Screenshot quality**:
-   - **Low** — smallest size, fastest upload;
-   - **Medium** — balanced (recommended);
-   - **Maximum** — best quality, larger file.
-5. Click **Apply**.
-6. In Telegram chat with your bot, send:
-
-```text
-/screenshot
-```
-
-The bot will capture the desktop and send the image to your configured chat.
-
-
-## GNOME Extensions upload package
-
-The repository now includes `gnome_extension/` with a minimal GNOME Shell extension (`metadata.json` and `extension.js`) that adds a panel launcher for SyMo.
-
-Build the zip archive for <https://extensions.gnome.org/upload/>:
-
-```bash
-chmod +x package-gnome-extension.sh
-./package-gnome-extension.sh
-```
-
-By default, the package is created at `dist/symo@olegegoism.github.io.zip`.
-
-Before uploading, verify:
-- UUID in `gnome_extension/metadata.json`;
-- supported `shell-version` values;
-- local install works (`gnome-extensions install --force dist/symo@olegegoism.github.io.zip`).
-
-## Build
-
-`build.sh` performs:
-
-1. Nuitka `standalone` build;
-2. attempted Nuitka `onefile` build;
-3. launcher script generation;
-4. artifact bundling into `SyMo-bundle/`;
-5. desktop and autostart entry creation.
-
 Run:
 
 ```bash
@@ -224,5 +161,6 @@ pytest -q
 <img src="img.png" width="960" alt="SyMo preview" />
 
 ## Video on YouTube:
+
 [![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtube.com/shorts/X1tlQ4XuLSM?feature=share)
 [![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/zvdoo9JA88k)
