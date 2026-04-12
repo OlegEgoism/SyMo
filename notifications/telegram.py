@@ -435,7 +435,7 @@ class TelegramNotifier:
             x2 = margin_left + i * (plot_w / max(1, len(points) - 1))
             y1 = margin_top + plot_h - ((points[i - 1][1] - v_min) / (v_max - v_min)) * plot_h
             y2 = margin_top + plot_h - ((points[i][1] - v_min) / (v_max - v_min)) * plot_h
-            cr.set_source_rgb(*self._graph_line_color_rgb())
+            cr.set_source_rgb(*self._graph_line_color_rgb(metric))
             cr.set_line_width(2.0)
             cr.move_to(x1, y1)
             cr.line_to(x2, y2)
@@ -457,12 +457,26 @@ class TelegramNotifier:
         except Exception:
             return "--:--:--"
 
-    def _graph_line_color_rgb(self) -> tuple[float, float, float]:
+    def _graph_line_color_rgb(self, metric: str) -> tuple[float, float, float]:
+        metric_key = (metric or "").strip().lower()
+        color_key_by_metric = {
+            "cpu": "graph_line_color_cpu",
+            "top": "graph_line_color_cpu",
+            "temp": "graph_line_color_temp",
+            "temperature": "graph_line_color_temp",
+            "ram": "graph_line_color_ram",
+            "swap": "graph_line_color_swap",
+            "disk": "graph_line_color_disk",
+            "net": "graph_line_color_net_recv",
+            "keyboard": "graph_line_color_keyboard",
+            "mouse": "graph_line_color_mouse",
+        }
         default_hex = "#36c7ed"
+        selected_key = color_key_by_metric.get(metric_key, "graph_line_color_cpu")
         app = self.app_ref
         hex_color = default_hex
         if app is not None:
-            raw = str(getattr(app, "visibility_settings", {}).get("graph_line_color", default_hex)).strip()
+            raw = str(getattr(app, "visibility_settings", {}).get(selected_key, default_hex)).strip()
             if len(raw) == 7 and raw.startswith('#') and all(ch in "0123456789abcdefABCDEF" for ch in raw[1:]):
                 hex_color = raw
         return (
