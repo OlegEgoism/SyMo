@@ -125,69 +125,6 @@ pip install -r requirements.txt
 ```
 
 ### Установка как приложения
-
-```bash
-chmod +x build.sh
-./build.sh
-```
-
-После сборки запуск из бандла:
-
-```bash
-./SyMo-bundle/run-symo.sh
-```
-
-`build.sh` также создаёт desktop/autostart записи для использования как обычного приложения.
-
-## Настройка `/screenshot` в Telegram
-
-1. Откройте **Настройки → Уведомления → Telegram**.
-2. Заполните:
-   - токен бота;
-   - chat ID.
-3. Включите уведомления Telegram.
-4. Выберите **Качество скриншота**:
-   - **Низкое** — минимальный размер, быстрая отправка;
-   - **Среднее** — баланс (рекомендуется);
-   - **Максимальное** — лучшее качество, больший файл.
-5. Нажмите **Применить**.
-6. В чате с ботом отправьте:
-
-```text
-/screenshot
-```
-
-Бот сделает скриншот рабочего стола и отправит его в указанный чат.
-
-
-## Пакет для GNOME Extensions
-
-В репозитории добавлена папка `gnome_extension/` с минимальным GNOME Shell extension (`metadata.json` и `extension.js`) для запуска приложения SyMo из панели GNOME.
-
-Собрать zip-архив для загрузки на <https://extensions.gnome.org/upload/>:
-
-```bash
-chmod +x package-gnome-extension.sh
-./package-gnome-extension.sh
-```
-
-По умолчанию архив создаётся в `dist/symo@olegegoism.github.io.zip`.
-
-Перед загрузкой проверьте:
-- UUID в `gnome_extension/metadata.json`;
-- поддерживаемые версии `shell-version`;
-- что расширение корректно устанавливается локально (`gnome-extensions install --force dist/symo@olegegoism.github.io.zip`).
-
-## Сборка
-
-`build.sh` выполняет:
-
-1. сборку Nuitka `standalone`;
-2. попытку сборки Nuitka `onefile`;
-3. генерацию launcher-скрипта;
-4. упаковку артефактов в `SyMo-bundle/`;
-5. создание desktop- и autostart-записей.
-
 Запуск:
 
 ```bash
