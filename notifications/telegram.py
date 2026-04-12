@@ -444,7 +444,10 @@ class TelegramNotifier:
     def _send_metric_graph(self, metric: str) -> None:
         render_result = self._render_metric_graph_to_temp(metric)
         if render_result is None:
-            self.send_message(f"❌ {tr('graph_unavailable')}. /graph cpu|ram|swap|disk|net|keyboard|mouse|top|temp")
+            self.send_message(
+                f"❌ {tr('graph_unavailable')}. "
+                "/cpu_graph|/temp_graph|/ram_graph|/net_graph|/disk_graph|/swap_graph|/keyboard_graph|/mouse_graph"
+            )
             return
         path, title = render_result
         try:
@@ -499,7 +502,6 @@ class TelegramNotifier:
                             parts = text.split(maxsplit=1)
                             raw_command = parts[0].strip().lower()
                             command = raw_command.split('@', 1)[0]
-                            arg = parts[1].strip().lower() if len(parts) > 1 else ""
 
                             if command == '/poweroff' and self.power_control_ref:
                                 self.send_message(tr('bot_shutdown_message'))
@@ -524,7 +526,6 @@ class TelegramNotifier:
                                 help_text = tr('bot_help_message')
                                 help_text += (
                                     f"\n\n📊 {tr('graph_commands_title')}:"
-                                    f"\n/graph [metric] - {tr('graph_command_hint')}"
                                     f"\n/cpu_graph - {tr('cpu')}"
                                     f"\n/temp_graph - {tr('cpu')} {tr('temperature')}"
                                     f"\n/ram_graph - {tr('ram')}"
@@ -535,13 +536,6 @@ class TelegramNotifier:
                                     f"\n/mouse_graph - {tr('mouse_clicks')}"
                                 )
                                 self.send_message(help_text)
-
-                            elif command == '/graph':
-                                metric = arg or "cpu"
-                                self._send_metric_graph(metric)
-
-                            elif command in {'/disk', '/top', '/cpu', '/ram', '/swap', '/net', '/keyboard', '/mouse', '/temp', '/temperature'}:
-                                self._send_metric_graph(command.lstrip('/'))
 
                             elif command in {
                                 '/cpu_graph',
