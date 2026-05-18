@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import timedelta
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import psutil
 
@@ -70,3 +70,57 @@ class SystemUsage:
     def get_uptime() -> str:
         seconds = time.time() - psutil.boot_time()
         return str(timedelta(seconds=int(seconds)))
+
+
+class MetricsSampler:
+    """Collect metrics using per-metric cache intervals to reduce psutil polling."""
+
+    _METRIC_KEYS = (
+        "cpu_temp",
+        "cpu_usage",
+        "ram",
+        "swap",
+        "disk",
+        "net",
+        "uptime",
+    )
+
+    def __init__(self) -> None:
+        self._cache: Dict[str, Any] = {
+            "cpu_temp": 0,
+            "cpu_usage": 0.0,
+            "ram": (0.0, 0.0),
+            "swap": (0.0, 0.0),
+            "disk": (0.0, 0.0),
+            "net": (0.0, 0.0),
+            "uptime": "00:00:00",
+        }
+        self._last_update_ts: Dict[str, float] = {key: 0.0 for key in self._METRIC_KEYS}
+
+    def collect(self, prev_net_data: Dict[str, float], intervals: Dict[str, int]) -> Dict[str, Any]:
+        now = time.time()
+        for key in self._METRIC_KEYS:
+            min_interval = max(1, int(intervals.get(key, 1)))
+            if now - self._last_update_ts[key] < min_interval:
+                continue
+            self._cache[key] = self._collect_metric(key, prev_net_data)
+            self._last_update_ts[key] = now
+        return dict(self._cache)
+
+    @staticmethod
+    def _collect_metric(key: str, prev_net_data: Dict[str, float]) -> Any:
+        if key == "cpu_temp":
+            return SystemUsage.get_cpu_temp()
+        if key == "cpu_usage":
+            return SystemUsage.get_cpu_usage()
+        if key == "ram":
+            return SystemUsage.get_ram_usage()
+        if key == "swap":
+            return SystemUsage.get_swap_usage()
+        if key == "disk":
+            return SystemUsage.get_disk_usage()
+        if key == "net":
+            return SystemUsage.get_network_speed(prev_net_data)
+        if key == "uptime":
+            return SystemUsage.get_uptime()
+        return 0
