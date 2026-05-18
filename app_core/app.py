@@ -46,7 +46,7 @@ from .localization import tr, detect_system_language, set_language, get_language
 from .logging_utils import rotate_log_if_needed
 from notifications import TelegramNotifier, DiscordNotifier
 from .power_control import PowerControl
-from .system_usage import SystemUsage
+from .system_usage import MetricsSampler
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,10 @@ class SystemTrayApp:
 
         self.settings_dialog: Optional[SettingsDialog] = None
         self._progress_dialog: Optional[Gtk.MessageDialog] = None
+        self.metrics_sampler = MetricsSampler()
+        self._profiling_cycle_count = 0
+        self._profiling_total_ms = 0.0
+        self._profiling_max_ms = 0.0
 
         self.cpu_graph_window: Optional[Gtk.Window] = None
         self.cpu_graph_area: Optional[Gtk.DrawingArea] = None
@@ -498,6 +502,7 @@ class SystemTrayApp:
             'net_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
             'disk_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
             'swap_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
+            'profiling_enabled': False,
         }
         default.update(GRAPH_COLOR_DEFAULTS)
         try:
@@ -753,19 +758,38 @@ class SystemTrayApp:
         return f"{days} {day_label}, {time_part}"
 
     def update_info(self) -> bool:
+        cycle_start = time.perf_counter()
         try:
             kbd, ms = self._safe_call(get_counts, (0, 0))
 
-            cpu_temp = self._safe_call(SystemUsage.get_cpu_temp, 0)
-            cpu_usage = self._safe_call(SystemUsage.get_cpu_usage, 0.0)
-            ram_used, ram_total = self._safe_call(SystemUsage.get_ram_usage, (0.0, 0.0))
-            disk_used, disk_total = self._safe_call(SystemUsage.get_disk_usage, (0.0, 0.0))
-            swap_used, swap_total = self._safe_call(SystemUsage.get_swap_usage, (0.0, 0.0))
-            net_recv_speed, net_sent_speed = self._safe_call(
-                lambda: SystemUsage.get_network_speed(self.prev_net_data),
-                (0.0, 0.0),
+            metric_intervals = {
+                'cpu_temp': max(2, int(self.visibility_settings.get('cpu_interval_sec', POLL_INTERVAL_DEFAULT_SEC))),
+                'cpu_usage': int(self.visibility_settings.get('cpu_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+                'ram': int(self.visibility_settings.get('ram_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+                'disk': int(self.visibility_settings.get('disk_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+                'swap': int(self.visibility_settings.get('swap_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+                'net': int(self.visibility_settings.get('net_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+                'uptime': POLL_INTERVAL_DEFAULT_SEC,
+            }
+            sample = self._safe_call(
+                lambda: self.metrics_sampler.collect(self.prev_net_data, metric_intervals),
+                {
+                    'cpu_temp': 0,
+                    'cpu_usage': 0.0,
+                    'ram': (0.0, 0.0),
+                    'disk': (0.0, 0.0),
+                    'swap': (0.0, 0.0),
+                    'net': (0.0, 0.0),
+                    'uptime': "00:00:00",
+                },
             )
-            uptime = self._safe_call(SystemUsage.get_uptime, "00:00:00")
+            cpu_temp = int(sample.get('cpu_temp', 0))
+            cpu_usage = float(sample.get('cpu_usage', 0.0))
+            ram_used, ram_total = sample.get('ram', (0.0, 0.0))
+            disk_used, disk_total = sample.get('disk', (0.0, 0.0))
+            swap_used, swap_total = sample.get('swap', (0.0, 0.0))
+            net_recv_speed, net_sent_speed = sample.get('net', (0.0, 0.0))
+            uptime = str(sample.get('uptime', "00:00:00"))
             uptime_display = self._format_uptime_localized(uptime)
 
             self._update_ui(cpu_temp, cpu_usage,
@@ -813,6 +837,23 @@ class SystemTrayApp:
 
                 except Exception as e:
                     print("Ошибка записи в лог:", e)
+
+            if self.visibility_settings.get('profiling_enabled', False):
+                cycle_ms = (time.perf_counter() - cycle_start) * 1000.0
+                self._profiling_cycle_count += 1
+                self._profiling_total_ms += cycle_ms
+                self._profiling_max_ms = max(self._profiling_max_ms, cycle_ms)
+                if self._profiling_cycle_count >= 60:
+                    avg_ms = self._profiling_total_ms / float(self._profiling_cycle_count)
+                    logger.info(
+                        "Profiling update_info: avg=%.2fms max=%.2fms samples=%d",
+                        avg_ms,
+                        self._profiling_max_ms,
+                        self._profiling_cycle_count,
+                    )
+                    self._profiling_cycle_count = 0
+                    self._profiling_total_ms = 0.0
+                    self._profiling_max_ms = 0.0
 
             return True
         except Exception as e:
