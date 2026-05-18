@@ -991,6 +991,22 @@ class SystemTrayApp:
         end = start + window_len
         return samples[start:end]
 
+    @staticmethod
+    def _decimate_samples(samples: list[tuple], max_points: int) -> list[tuple]:
+        """Downsample samples to cap drawing cost on large histories."""
+        if max_points <= 0 or len(samples) <= max_points:
+            return samples
+        if max_points == 1:
+            return [samples[-1]]
+        step = (len(samples) - 1) / float(max_points - 1)
+        result: list[tuple] = []
+        for idx in range(max_points):
+            src_index = int(round(idx * step))
+            if src_index >= len(samples):
+                src_index = len(samples) - 1
+            result.append(samples[src_index])
+        return result
+
     def _connect_graph_zoom(self, area: Gtk.DrawingArea, graph_key: str) -> None:
         area.set_events(
             area.get_events()
@@ -1275,7 +1291,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = self._visible_samples('cpu', list(self.cpu_history))
+        samples = self._decimate_samples(self._visible_samples('cpu', list(self.cpu_history)), max(200, width * 2))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1439,7 +1455,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = self._visible_samples('ram', list(self.ram_history))
+        samples = self._decimate_samples(self._visible_samples('ram', list(self.ram_history)), max(200, width * 2))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1587,7 +1603,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = self._visible_samples('swap', list(self.swap_history))
+        samples = self._decimate_samples(self._visible_samples('swap', list(self.swap_history)), max(200, width * 2))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1735,7 +1751,7 @@ class SystemTrayApp:
             cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
             cr.show_text(label)
 
-        samples = self._visible_samples('disk', list(self.disk_history))
+        samples = self._decimate_samples(self._visible_samples('disk', list(self.disk_history)), max(200, width * 2))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -1873,7 +1889,7 @@ class SystemTrayApp:
             cr.line_to(margin_left + plot_w, y)
         cr.stroke()
 
-        samples = self._visible_samples('net', list(self.net_history))
+        samples = self._decimate_samples(self._visible_samples('net', list(self.net_history)), max(200, width * 2))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -2032,7 +2048,7 @@ class SystemTrayApp:
             cr.line_to(margin_left + plot_w, y)
         cr.stroke()
 
-        samples = self._visible_samples('keyboard', list(self.keyboard_history))
+        samples = self._decimate_samples(self._visible_samples('keyboard', list(self.keyboard_history)), max(200, width * 2))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
@@ -2177,7 +2193,7 @@ class SystemTrayApp:
             cr.line_to(margin_left + plot_w, y)
         cr.stroke()
 
-        samples = self._visible_samples('mouse', list(self.mouse_history))
+        samples = self._decimate_samples(self._visible_samples('mouse', list(self.mouse_history)), max(200, width * 2))
         if not samples:
             self._draw_no_data(widget, cr, 'No data yet…')
             return
