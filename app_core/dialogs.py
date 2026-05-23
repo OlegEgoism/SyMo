@@ -95,6 +95,9 @@ class SettingsDialog(Gtk.Dialog):
 
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
+        self.tray_logo_check = Gtk.CheckButton(label='Логотип в трее')
+        self.tray_logo_check.set_active(self.visibility_settings.get('tray_logo', True))
+        visibility_content.add(self.tray_logo_check)
 
         intervals_card, intervals_content = card(tr('poll_interval_section'))
         interval_content.add(intervals_card)

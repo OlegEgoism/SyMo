@@ -116,18 +116,8 @@ class SystemTrayApp:
             Path(__file__).resolve().parent.parent / "logo.png",
             Path.cwd() / "logo.png",
         ]
-        icon_path = next((path for path in icon_candidates if path.exists()), None)
-        try:
-            if icon_path:
-                if hasattr(self.indicator, "set_icon_full"):
-                    self.indicator.set_icon_full(str(icon_path), APP_NAME)
-                else:
-                    self.indicator.set_icon(str(icon_path))
-            else:
-                self.indicator.set_icon(ICON_FALLBACK)
-        except Exception as e:
-            print(f"Не удалось установить иконку: {e}")
-            self.indicator.set_icon(ICON_FALLBACK)
+        self.icon_path = next((path for path in icon_candidates if path.exists()), None)
+        self._apply_tray_icon()
         self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
 
         signal.signal(signal.SIGTERM, self.quit)
@@ -472,6 +462,21 @@ class SystemTrayApp:
         self.menu.show_all()
         self.indicator.set_menu(self.menu)
 
+
+    def _apply_tray_icon(self) -> None:
+        try:
+            show_logo = self.visibility_settings.get('tray_logo', True)
+            if show_logo and self.icon_path:
+                if hasattr(self.indicator, "set_icon_full"):
+                    self.indicator.set_icon_full(str(self.icon_path), APP_NAME)
+                else:
+                    self.indicator.set_icon(str(self.icon_path))
+            else:
+                self.indicator.set_icon(ICON_FALLBACK)
+        except Exception as e:
+            print(f"Не удалось установить иконку: {e}")
+            self.indicator.set_icon(ICON_FALLBACK)
+
     def _on_language_selected(self, widget, lang_code: str):
         if widget.get_active() and get_language() != lang_code:
             set_language(lang_code)
@@ -489,7 +494,7 @@ class SystemTrayApp:
     def load_settings(self) -> Dict:
         default = {
             'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
-            'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
+            'tray_cpu': True, 'tray_ram': True, 'tray_logo': True, 'keyboard_clicks': True, 'mouse_clicks': True,
             'language': None, 'logging_enabled': True, 'show_graph_zoom_controls': True,
             'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
             'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
@@ -667,6 +672,7 @@ class SystemTrayApp:
                 vs.update(menu_visibility)
                 vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
                 vs['tray_ram'] = dialog.tray_ram_check.get_active()
+                vs['tray_logo'] = dialog.tray_logo_check.get_active()
                 vs['logging_enabled'] = dialog.logging_check.get_active()
                 vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
                 for color_key, color_value in dialog.get_graph_line_colors().items():
@@ -711,6 +717,7 @@ class SystemTrayApp:
                         self.last_discord_notification_time = 0.0
 
                 self.save_settings()
+                self._apply_tray_icon()
                 self.create_menu()
 
         finally:
