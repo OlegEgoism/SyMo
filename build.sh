@@ -24,30 +24,28 @@ need_pkg() {
 need_pkg gcc build-essential
 need_pkg patchelf patchelf
 
-if ! command -v nuitka3 &>/dev/null && ! command -v nuitka &>/dev/null; then
-    echo "📦 Installing Nuitka..."
-    pip3 install nuitka
+# ---------- Обновление Nuitka в виртуальном окружении ----------
+echo "📦 Updating Nuitka..."
+pip install --upgrade nuitka ordered-set
+
+# Определяем как запускать Nuitka через python -m
+NUITKA_CMD="python -m nuitka"
+
+# Проверяем, что Nuitka установлена
+if ! python -c "import nuitka" 2>/dev/null; then
+    echo "❌ Nuitka not found in virtual environment"
+    exit 1
 fi
 
-# Определяем бинарь Nuitka
-NUITKA=nuitka
-command -v nuitka3 &>/dev/null && NUITKA=nuitka3
-
-echo "➡️  Using Nuitka: $NUITKA"
-
+echo "➡️  Using Nuitka: $NUITKA_CMD"
+echo "➡️  Nuitka version: $(python -m nuitka --version)"
 
 # ---------- Опциональные модули для Nuitka ----------
 NUITKA_EXTRA_MODULE_ARGS=()
 
 add_optional_module() {
     local module_name="$1"
-    if python3 - "$module_name" <<'PYMOD'
-import importlib.util
-import sys
-name = sys.argv[1]
-raise SystemExit(0 if importlib.util.find_spec(name) is not None else 1)
-PYMOD
-    then
+    if python -c "import importlib.util; import sys; sys.exit(0 if importlib.util.find_spec('$module_name') else 1)" 2>/dev/null; then
         NUITKA_EXTRA_MODULE_ARGS+=("--include-module=${module_name}")
         echo "➕ Include optional module: ${module_name}"
     else
@@ -58,7 +56,6 @@ PYMOD
 add_optional_module gi._gi_cairo
 add_optional_module cairo
 
-
 # ---------- Пути для ярлыков ----------
 DESKTOP_MAIN="$HOME/.local/share/applications/${APP_NAME}.desktop"
 DESKTOP_AUTOSTART="$HOME/.config/autostart/${APP_NAME}.desktop"
@@ -66,11 +63,9 @@ DESKTOP_AUTOSTART="$HOME/.config/autostart/${APP_NAME}.desktop"
 mkdir -p "$(dirname "$DESKTOP_MAIN")"
 mkdir -p "$(dirname "$DESKTOP_AUTOSTART")"
 
-
 # ---------- Очистка предыдущих сборок ----------
 rm -rf "${OUTPUT_DIR}" "${APP_NAME}-standalone" *.build *.dist build_standalone *.onefile-build
 rm -f "${APP_NAME}-run" "${APP_NAME}-onefile" "${APP_NAME}-launch"
-
 
 # ---------- Утилита генерации .desktop ----------
 write_desktop() {
@@ -97,11 +92,10 @@ write_desktop() {
     echo "📝 Desktop file written: $path"
 }
 
-
 # ---------- Сборка STANDALONE ----------
 echo "🚀 Building STANDALONE..."
 
-$NUITKA --standalone \
+$NUITKA_CMD --standalone \
     --enable-plugin=gi \
     --follow-imports \
     "${NUITKA_EXTRA_MODULE_ARGS[@]}" \
@@ -127,7 +121,6 @@ mv build_standalone/app.dist "${APP_NAME}-standalone"
 
 echo "📦 Standalone built: ${APP_NAME}-standalone/"
 
-
 # ---------- Создание раннера ----------
 cat > "${APP_NAME}-run" <<EOF_RUN
 #!/bin/bash
@@ -135,7 +128,6 @@ set -e
 DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 cd "\$DIR/${APP_NAME}-standalone"
 
-# Nuitka может назвать бинарник как app или app.bin (зависит от версии/режима).
 if [[ -x "./app" ]]; then
     exec ./app "\$@"
 fi
@@ -150,14 +142,11 @@ chmod +x "${APP_NAME}-run"
 
 echo "▶️  Standalone runner created: ${APP_NAME}-run"
 
-
-# ---------- Универсальный лаунчер (фикс рендера графиков) ----------
+# ---------- Универсальный лаунчер ----------
 cat > "${APP_NAME}-launch" <<'EOF_LAUNCH'
 #!/bin/bash
 set -e
 
-# Для Wayland/GPU-драйверов у GTK3 иногда возникает чёрный DrawingArea.
-# Включаем более безопасные дефолты рендера (их можно переопределить извне).
 if [[ -z "${GDK_BACKEND:-}" && "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
     export GDK_BACKEND="wayland,x11"
 fi
@@ -168,8 +157,6 @@ export LIBGL_DRI3_DISABLE="${LIBGL_DRI3_DISABLE:-1}"
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 cd "$DIR"
 
-# По умолчанию запускаем standalone-версию: она стабильнее для GTK-графиков.
-# Onefile оставляем как резервный вариант или для явного принудительного запуска.
 if [[ "${SYMO_FORCE_ONEFILE:-0}" == "1" && -x "./SyMo-onefile" ]]; then
     exec "./SyMo-onefile" "$@"
 fi
@@ -189,12 +176,11 @@ chmod +x "${APP_NAME}-launch"
 
 echo "▶️  Launcher created: ${APP_NAME}-launch"
 
-
 # ---------- Сборка ONEFILE ----------
 echo "🗜️  Building ONEFILE..."
 
 set +e
-$NUITKA --onefile \
+$NUITKA_CMD --onefile \
     --enable-plugin=gi \
     --follow-imports \
     "${NUITKA_EXTRA_MODULE_ARGS[@]}" \
@@ -220,14 +206,13 @@ else
     echo "⚠️  Onefile FAILED — standalone only."
 fi
 
-
 # ---------- Сборка всех артефактов в одну папку ----------
 mkdir -p "${OUTPUT_DIR}"
 
 move_if_exists() {
     local target="$1"
     if [[ -e "$target" ]]; then
-        mv "$target" "${OUTPUT_DIR}/"
+        mv "$target" "${OUTPUT_DIR}/" 2>/dev/null || true
     fi
 }
 
@@ -244,13 +229,13 @@ move_if_exists "${APP_NAME}-run"
 EXEC_TARGET="$(pwd)/${OUTPUT_DIR}/${APP_NAME}-launch"
 ICON_PATH="$(pwd)/logo.png"
 
-
 # ---------- Создаём единый ярлык ----------
-write_desktop "$DESKTOP_MAIN" "$EXEC_TARGET" "$ICON_PATH" "no"
-
-# ---------- Автозапуск ----------
-write_desktop "$DESKTOP_AUTOSTART" "$EXEC_TARGET" "$ICON_PATH" "yes"
-
+if [[ -f "$ICON_PATH" ]]; then
+    write_desktop "$DESKTOP_MAIN" "$EXEC_TARGET" "$ICON_PATH" "no"
+    write_desktop "$DESKTOP_AUTOSTART" "$EXEC_TARGET" "$ICON_PATH" "yes"
+else
+    echo "⚠️  Icon not found at $ICON_PATH, skipping .desktop creation"
+fi
 
 # ---------- Финал ----------
 echo ""
@@ -260,9 +245,7 @@ echo "Build artifacts dir: ${OUTPUT_DIR}/"
 echo "Standalone dir      : ${OUTPUT_DIR}/${APP_NAME}-standalone/"
 echo "Standalone run      : ${OUTPUT_DIR}/SyMo-run"
 echo "Launcher            : ${OUTPUT_DIR}/SyMo-launch"
-echo "Onefile             : ${OUTPUT_DIR}/SyMo-onefile (если собрался)"
-echo "Desktop icon        : $DESKTOP_MAIN"
-echo "Autostart file      : $DESKTOP_AUTOSTART"
+[[ -f "${OUTPUT_DIR}/SyMo-onefile" ]] && echo "Onefile             : ${OUTPUT_DIR}/SyMo-onefile"
 echo ""
 echo "✔ Готово к распространению:"
 echo "   tar -czf ${APP_NAME}-bundle.tar.gz ${OUTPUT_DIR}/"
