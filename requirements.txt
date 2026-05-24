@@ -1,3 +1,14 @@
-psutil>=5.9
-pynput>=1.7
-requests>=2.31
+certifi==2026.5.20
+charset-normalizer==3.4.7
+evdev==1.9.3
+idna==3.16
+Nuitka==4.1.1
+ordered-set==4.1.0
+psutil==7.2.2
+pycairo==1.29.0
+PyGObject==3.46.0
+pynput==1.8.2
+python-xlib==0.33
+requests==2.34.2
+six==1.17.0
+urllib3==2.7.0

@@ -1,0 +1,47 @@
+# Обновите списки пакетов
+sudo apt update
+
+# Установите необходимые системные библиотеки для GTK и PyGObject
+sudo apt install -y \
+    libgirepository1.0-dev \
+    gcc \
+    libcairo2-dev \
+    pkg-config \
+    python3-dev \
+    gir1.2-gtk-3.0 \
+    python3-gi \
+    python3-gi-cairo \
+    libappindicator3-dev \
+    gir1.2-appindicator3-0.1
+
+
+
+# Установите все необходимые пакеты с правильными версиями
+pip install \
+    pycairo>=1.23.0 \
+    "PyGObject<3.48" \
+    psutil>=5.9.0 \
+    pynput>=1.7.6 \
+    requests>=2.31.0
+
+
+
+# 1. Системные пакеты
+sudo apt update && sudo apt install -y libgirepository1.0-dev gcc libcairo2-dev pkg-config python3-dev gir1.2-gtk-3.0 python3-gi python3-gi-cairo libappindicator3-dev gir1.2-appindicator3-0.1
+
+# 2. Перейти в проект и настроить venv
+cd ~/PycharmProjects/SyMo
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+
+# 3. Установить Python-зависимости
+pip install pycairo>=1.23.0 "PyGObject<3.48" psutil>=5.9.0 pynput>=1.7.6 requests>=2.31.0
+
+# 4. Создать requirements.txt
+pip freeze > requirements.txt
+sed -i 's/^PyGObject.*/PyGObject<3.48/' requirements.txt
+
+# 5. Проверка и запуск
+python -c "import gi; gi.require_version('Gtk','3.0'); print('✓ OK')"
+python app.py
