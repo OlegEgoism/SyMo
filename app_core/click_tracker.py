@@ -24,9 +24,3 @@ def get_counts() -> Tuple[int, int]:
     with _clicks_lock:
         return keyboard_clicks, mouse_clicks
 
-
-def reset_counts() -> None:
-    global keyboard_clicks, mouse_clicks
-    with _clicks_lock:
-        keyboard_clicks = 0
-        mouse_clicks = 0

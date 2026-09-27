@@ -11,11 +11,11 @@ GRAPH_HISTORY_MINUTES_DEFAULT = 5
 GRAPH_HISTORY_MINUTES_MIN = 1
 GRAPH_HISTORY_MINUTES_MAX = 480
 
-HOME = Path.home()
-LOG_FILE = HOME / ".symo_log.txt"
-SETTINGS_FILE = HOME / ".symo_settings.json"
-TELEGRAM_CONFIG_FILE = HOME / ".symo_telegram.json"
-DISCORD_CONFIG_FILE = HOME / ".symo_discord.json"
+_HOME = Path.home()
+LOG_FILE = _HOME / ".symo_log.txt"
+SETTINGS_FILE = _HOME / ".symo_settings.json"
+TELEGRAM_CONFIG_FILE = _HOME / ".symo_telegram.json"
+DISCORD_CONFIG_FILE = _HOME / ".symo_discord.json"
 
 MENU_ORDER_DEFAULT = [
     'cpu',

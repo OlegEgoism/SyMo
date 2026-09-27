@@ -5,15 +5,12 @@ import math
 import subprocess
 import time
 from enum import Enum
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk
 
 from .localization import tr
 from .ui import mapped_or_none, show_message
-
-if TYPE_CHECKING:
-    from .app import SystemTrayApp
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +43,7 @@ def run_command(cmd: list[str]) -> bool:
 
 
 class PowerControl:
-    def __init__(self, app: "SystemTrayApp"):
-        self.app = app
+    def __init__(self):
         self.scheduled_action: Optional[Action] = None
         self._deadline: Optional[float] = None
         self._notify_timer_id: Optional[int] = None
@@ -57,8 +53,6 @@ class PowerControl:
 
     def set_parent_window(self, parent: Optional[Gtk.Widget]) -> None:
         self.parent_window = mapped_or_none(parent)
-
-    # ---------- Немедленные действия ----------
 
     @staticmethod
     def power_off() -> None:
@@ -85,8 +79,6 @@ class PowerControl:
             Action.REBOOT: self.reboot,
             Action.LOCK: self.lock_screen,
         }[act]()
-
-    # ---------- Диалоги ----------
 
     def _replace_current_dialog(self, dialog: Optional[Gtk.Dialog]) -> None:
         if self.current_dialog is not None and self.current_dialog is not dialog:
@@ -169,9 +161,6 @@ class PowerControl:
             action_id = action_combo.get_active_id()
             self._forget_dialog(d)
             if response_id == Gtk.ResponseType.OK:
-                if minutes <= 0:
-                    show_message(tr('error'), tr('error_minutes_positive'), self.parent_window)
-                    return
                 act = Action(action_id)
                 self.schedule(act, minutes)
                 show_message(tr('scheduled'), tr('action_in_time').format(action_label(act), minutes), self.parent_window)
@@ -181,8 +170,6 @@ class PowerControl:
 
         dialog.connect("response", on_response)
         dialog.show_all()
-
-    # ---------- Планировщик ----------
 
     def schedule(self, act: Action, minutes: int) -> None:
         """Запланировать действие. Предыдущее расписание полностью снимается."""

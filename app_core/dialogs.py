@@ -158,7 +158,6 @@ class SettingsDialog(Gtk.Dialog):
         self.menu_order_view = Gtk.TreeView(model=self.menu_order_store)
         self.menu_order_view.set_headers_visible(False)
         self.menu_order_view.set_reorderable(True)
-        self.menu_order_selection = self.menu_order_view.get_selection()
 
         toggle_renderer = Gtk.CellRendererToggle()
         toggle_renderer.set_activatable(True)

@@ -91,7 +91,7 @@ class SystemTrayApp:
         self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
 
         self._quitting = False
-        self.power_control = PowerControl(self)
+        self.power_control = PowerControl()
         self.settings_dialog: Optional[SettingsDialog] = None
         self._progress_dialog: Optional[Gtk.MessageDialog] = None
 
@@ -138,8 +138,6 @@ class SystemTrayApp:
             except OSError as e:
                 logger.warning("Не удалось создать файл лога: %s", e)
 
-    # ---------- Инициализация ----------
-
     def _set_indicator_icon(self) -> None:
         icon_candidates = [
             Path(__file__).resolve().parent / "logo.png",
@@ -184,8 +182,6 @@ class SystemTrayApp:
         if pressed:
             increment_mouse()
 
-    # ---------- Настройки ----------
-
     @staticmethod
     def _graph_history_points(minutes: int) -> int:
         return max(1, minutes * 60 // TIME_UPDATE_SEC)
@@ -200,8 +196,6 @@ class SystemTrayApp:
 
     def graph_line_color(self, key: str) -> tuple[float, float, float]:
         return graph_line_color_rgb(self.visibility_settings, key)
-
-    # ---------- Меню ----------
 
     def _new_item(self, key: str, label: str, callback) -> Gtk.MenuItem:
         item = Gtk.MenuItem(label=label)
@@ -301,8 +295,6 @@ class SystemTrayApp:
             self.indicator.set_label(text, "")
             self._indicator_label = text
 
-    # ---------- Диалоги ----------
-
     def show_settings(self, _w=None):
         if self.settings_dialog and self.settings_dialog.get_mapped():
             self.settings_dialog.present()
@@ -355,7 +347,6 @@ class SystemTrayApp:
             if tel.enabled and not tel_before[2]:
                 self.last_telegram_notification_time = 0.0
             if tel_after != tel_before:
-                # Не ждём завершения старого потока: он сам выйдет после long-poll.
                 tel.stop_bot()
             tel.start_bot()
         else:
@@ -481,8 +472,6 @@ class SystemTrayApp:
             return
         self._show_message(tr('system_info_title'), info_text)
 
-    # ---------- Графики ----------
-
     def show_graph(self, graph_key: str) -> None:
         window = self.graph_windows.get(graph_key)
         if window is not None and window.is_visible():
@@ -499,8 +488,6 @@ class SystemTrayApp:
     def _on_graph_destroyed(self, window: GraphWindow) -> None:
         if self.graph_windows.get(window.spec.key) is window:
             del self.graph_windows[window.spec.key]
-
-    # ---------- Основной цикл ----------
 
     @staticmethod
     def _plural_ru(value: int) -> str:
@@ -663,8 +650,6 @@ class SystemTrayApp:
             tray_text = "⤴  " + tray_text
         self._set_indicator_label(tray_text)
 
-    # ---------- Завершение ----------
-
     def _on_unix_signal(self) -> bool:
         self.quit()
         return GLib.SOURCE_REMOVE
@@ -705,7 +690,6 @@ class SystemTrayApp:
         Gtk.main_quit()
 
     def run(self):
-        # Сигналы через GLib: обработчик срабатывает сразу, а не на следующем тике таймера.
         for sig in (signal.SIGINT, signal.SIGTERM):
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, self._on_unix_signal)
         # Начальный снимок, чтобы графики не открывались полностью пустыми.

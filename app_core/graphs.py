@@ -23,12 +23,11 @@ MARGIN_RIGHT, MARGIN_TOP, MARGIN_BOTTOM = 16, 16, 36
 
 
 def text_width(text_extents) -> float:
-    """Ширина текста из cairo text_extents (поддерживаются объектный и кортежный API)."""
+    """Ширина текста из cairo text_extents: объект с .width или кортеж, где ширина — [2]."""
     width = getattr(text_extents, "width", None)
     if width is not None:
         return float(width)
     try:
-        # кортеж: (x_bearing, y_bearing, width, height, x_advance, y_advance)
         return float(text_extents[2])
     except Exception:
         return 0.0
@@ -170,8 +169,6 @@ class GraphWindow:
         self.refresh_texts()
         self.window.show_all()
 
-    # ---------- Жизненный цикл ----------
-
     def present(self) -> None:
         self.window.present()
 
@@ -188,8 +185,6 @@ class GraphWindow:
     def destroy(self) -> None:
         self.window.destroy()
 
-    # ---------- Управление масштабом ----------
-
     def zoom_by(self, factor: float, anchor_ratio: float = 0.5) -> None:
         if self.zoom.zoom(factor, anchor_ratio):
             self.queue_draw()
@@ -201,7 +196,6 @@ class GraphWindow:
     def _build_zoom_controls(self) -> Gtk.Box:
         controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         controls.set_halign(Gtk.Align.END)
-        # Порядок кнопок: «−», «+», затем сброс.
         buttons = (
             ("-", tr('zoom_out'), lambda *_: self.zoom_by(1 / ZOOM_STEP)),
             ("+", tr('zoom_in'), lambda *_: self.zoom_by(ZOOM_STEP)),
@@ -278,8 +272,6 @@ class GraphWindow:
         widget.queue_draw()
         return False
 
-    # ---------- Отрисовка ----------
-
     def _on_draw(self, widget, cr) -> None:
         spec = self.spec
         width = widget.get_allocated_width()
@@ -329,7 +321,6 @@ class GraphWindow:
                     cr.line_to(x, y)
             cr.stroke()
 
-        # Легенда
         cr.set_font_size(12)
         legend_x = float(margin_left)
         for series, color in zip(spec.series, colors):

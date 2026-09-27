@@ -18,8 +18,6 @@ from gi.repository import GLib
 from app_core.constants import TELEGRAM_CONFIG_FILE
 from app_core.localization import tr
 from app_core.settings import atomic_write_json, graph_line_color_rgb, read_json
-from app_core.system_usage import MetricsSnapshot, SystemUsage
-from app_core.click_tracker import get_counts
 from notifications.base import format_status_message, normalize_interval, post_with_retries, truncate_message
 
 if TYPE_CHECKING:
@@ -57,7 +55,6 @@ _GRAPH_METRICS: dict[str, _GraphMetric] = {
     "mouse": _GraphMetric("mouse", lambda: tr("mouse_clicks"), lambda s: float(s[1]),
                           lambda: tr("clicks"), "graph_line_color_mouse"),
 }
-_GRAPH_METRIC_ALIASES = {"top": "cpu", "temperature": "temp"}
 
 GRAPH_COMMANDS = {
     '/cpu_graph': 'cpu',
@@ -95,8 +92,6 @@ class TelegramNotifier:
         self.app_ref: Optional["SystemTrayApp"] = None
         if autoload:
             self.load_config()
-
-    # ---------- Конфигурация ----------
 
     def configure(self, token: str, chat_id: str, enabled: bool, interval: int,
                   screenshot_quality: str = "medium") -> None:
@@ -141,8 +136,6 @@ class TelegramNotifier:
 
     def _api_url(self, method: str) -> str:
         return f"https://api.telegram.org/bot{self.token}/{method}"
-
-    # ---------- Отправка ----------
 
     @classmethod
     def _prepare_text(cls, message: str) -> tuple[str, Optional[str]]:
@@ -256,8 +249,6 @@ class TelegramNotifier:
         }
         return profiles[self._normalize_screenshot_quality(self.screenshot_quality)]
 
-    # ---------- Скриншоты ----------
-
     def _capture_screenshot_to_temp(self) -> Optional[str]:
         fd, temp_path = tempfile.mkstemp(prefix="symo-screen-", suffix=".png")
         os.close(fd)
@@ -296,9 +287,8 @@ class TelegramNotifier:
 
     def _capture_screenshot_with_gdk(self, target_path: str) -> bool:
         """Снять экран через GDK. GTK не потокобезопасен, поэтому из фонового
-        потока съёмка передаётся в главный цикл, а результат ожидается."""
+        потока съёмка передаётся в главный цикл. Под Wayland корневого окна нет."""
         if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
-            # Под Wayland корневое окно X11 недоступно — используем внешние утилиты.
             return False
         if threading.current_thread() is threading.main_thread():
             return self._capture_gdk_now(target_path)
@@ -355,8 +345,6 @@ class TelegramNotifier:
         finally:
             _remove_quietly(screenshot_path)
 
-    # ---------- Графики ----------
-
     def set_power_control(self, power_control: "PowerControl") -> None:
         self.power_control_ref = power_control
 
@@ -365,8 +353,7 @@ class TelegramNotifier:
 
     @staticmethod
     def _resolve_graph_metric(metric: str) -> Optional[_GraphMetric]:
-        key = (metric or "").strip().lower()
-        return _GRAPH_METRICS.get(_GRAPH_METRIC_ALIASES.get(key, key))
+        return _GRAPH_METRICS.get((metric or "").strip().lower())
 
     def _metric_samples_for_graph(self, metric: str) -> tuple[str, list[tuple[float, float]], str]:
         spec = self._resolve_graph_metric(metric)
@@ -487,8 +474,6 @@ class TelegramNotifier:
         finally:
             _remove_quietly(path)
 
-    # ---------- Бот ----------
-
     @property
     def bot_running(self) -> bool:
         return self._bot_stop_event is not None and not self._bot_stop_event.is_set()
@@ -496,9 +481,8 @@ class TelegramNotifier:
     def start_bot(self) -> None:
         if not self.enabled or not self.token or self.bot_running:
             return
-        # У каждого потока своё событие остановки: старый поток, ещё висящий в
-        # long-poll, после возврата увидит своё событие и завершится, а не
-        # продолжит работу параллельно новому.
+        # Своё событие у каждого потока: старый, ещё висящий в long-poll, после
+        # возврата увидит его и завершится, а не будет работать рядом с новым.
         stop_event = threading.Event()
         self._bot_stop_event = stop_event
         self.bot_thread = threading.Thread(target=self._bot_worker, args=(stop_event,),
@@ -629,28 +613,14 @@ class TelegramNotifier:
             + f"\n/mouse_graph - {tr('mouse_clicks')}"
         )
 
-    def _current_snapshot(self) -> MetricsSnapshot:
-        """Последний срез из основного цикла. Прямой вызов psutil.cpu_percent()
-        из этого потока сбил бы замер загрузки CPU в основном цикле."""
-        snapshot = getattr(self.app_ref, "latest_snapshot", None)
-        if snapshot is not None:
-            return snapshot
-        ram_used, ram_total = SystemUsage.get_ram_usage()
-        swap_used, swap_total = SystemUsage.get_swap_usage()
-        disk_used, disk_total = SystemUsage.get_disk_usage()
-        kbd, ms = get_counts()
-        return MetricsSnapshot(
-            timestamp=time.time(), cpu_temp=SystemUsage.get_cpu_temp(), cpu_usage=SystemUsage.get_cpu_usage(),
-            ram_used=ram_used, ram_total=ram_total, swap_used=swap_used, swap_total=swap_total,
-            disk_used=disk_used, disk_total=disk_total, net_recv=0.0, net_sent=0.0,
-            uptime=SystemUsage.get_uptime(), keyboard_clicks=kbd, mouse_clicks=ms,
-        )
-
     def _send_system_status(self) -> None:
-        try:
-            self.send_message(format_status_message(self._current_snapshot(), "html"))
-        except Exception as e:
-            self.send_message(f"❌ {html.escape(tr('error'))}: {html.escape(str(e))}")
+        # Берём срез из основного цикла: вызов psutil.cpu_percent() из этого
+        # потока сбил бы замер загрузки CPU.
+        snapshot = getattr(self.app_ref, "latest_snapshot", None)
+        if snapshot is None:
+            self.send_message(f"❌ {html.escape(tr('error'))}")
+            return
+        self.send_message(format_status_message(snapshot, "html"))
 
 
 def _remove_quietly(path: str) -> None:

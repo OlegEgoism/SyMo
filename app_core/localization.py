@@ -10,11 +10,7 @@ from .constants import SUPPORTED_LANGS
 
 current_lang = 'ru'
 
-# Коды локали, которые отличаются от внутренних кодов словаря.
-_LOCALE_ALIASES = {
-    'zh': 'cn',
-}
-# Язык интерфейса, если системная локаль не поддерживается.
+_LOCALE_ALIASES = {'zh': 'cn'}
 _SYSTEM_FALLBACK_LANG = 'en'
 
 
