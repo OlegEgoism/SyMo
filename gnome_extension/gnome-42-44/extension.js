@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 // SyMo Launcher for GNOME Shell 42-44 (legacy imports).
 
 const {GLib, GObject, Gio, Shell, St} = imports.gi;

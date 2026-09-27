@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 // SyMo Launcher for GNOME Shell 45 and newer (ES modules).
 
 import GLib from 'gi://GLib';

@@ -84,6 +84,7 @@ SyMo/
 ├─ package-gnome-extension.sh
 ├─ requirements.txt          # runtime dependencies
 ├─ requirements-build.txt    # build dependencies (Nuitka)
+├─ LICENSE                   # GPL-2.0
 ├─ logo.png
 ├─ img.png
 └─ README.md
@@ -165,6 +166,13 @@ Output in `dist/`:
 
 The version is set in `app_core/constants.py` (`APP_VERSION`); the extension
 version is `version-name` in `gnome_extension/*/metadata.json`.
+
+## License
+
+Copyright © 2025–2026 OlegEgoism.
+
+SyMo and the SyMo Launcher extension are free software, licensed under the
+GNU General Public License v2.0 or later (GPL-2.0-or-later). See [LICENSE](LICENSE).
 
 ## Contact
 

@@ -84,6 +84,7 @@ SyMo/
 ├─ package-gnome-extension.sh
 ├─ requirements.txt          # зависимости приложения
 ├─ requirements-build.txt    # зависимости сборки (Nuitka)
+├─ LICENSE                   # GPL-2.0
 ├─ logo.png
 ├─ img.png
 └─ README.md
@@ -166,6 +167,13 @@ sudo apt install build-essential patchelf
 
 Версия приложения задаётся в `app_core/constants.py` (`APP_VERSION`), версия
 расширения — `version-name` в `gnome_extension/*/metadata.json`.
+
+## Лицензия
+
+Copyright © 2025–2026 OlegEgoism.
+
+SyMo и расширение SyMo Launcher — свободное ПО, распространяется по лицензии
+GNU General Public License версии 2.0 или более поздней (GPL-2.0-or-later). См. [LICENSE](LICENSE).
 
 ## Контакты
 
