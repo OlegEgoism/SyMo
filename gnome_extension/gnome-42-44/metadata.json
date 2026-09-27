@@ -1,12 +1,12 @@
 {
   "uuid": "symo@olegegoism.github.io",
   "name": "SyMo Launcher",
-  "description": "Panel launcher for SyMo, a lightweight system monitor with tray metrics, graphs, power actions and Telegram/Discord notifications.\n\nThe SyMo application must be installed separately: https://github.com/OlegEgoism/SyMo",
+  "description": "Panel launcher for SyMo, a lightweight system monitor with tray metrics, graphs, power actions and Telegram/Discord notifications.\n\nThe button is shown only while SyMo is not running, so there is never a second icon next to the SyMo tray icon.\n\nThe SyMo application must be installed separately: https://github.com/OlegEgoism/SyMo",
   "shell-version": [
     "42",
     "43",
     "44"
   ],
   "url": "https://github.com/OlegEgoism/SyMo",
-  "version-name": "1.1"
+  "version-name": "1.2"
 }

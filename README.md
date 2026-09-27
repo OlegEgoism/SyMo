@@ -129,6 +129,9 @@ sudo apt install gnome-screenshot scrot grim imagemagick
 panel button with **Open SyMo** and **Project page**. Install the SyMo app first
 (see above): extensions.gnome.org does not allow extensions to ship programs.
 
+The button is shown only while SyMo is not running. Once SyMo starts, only its own
+tray icon stays on the panel; when SyMo quits, the button comes back.
+
 | GNOME Shell | Ubuntu | Extension archive |
 |---|---|---|
 | 42–44 | 22.04 | `symo-launcher-gnome-42-44.shell-extension.zip` |

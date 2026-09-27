@@ -5,7 +5,10 @@ from pathlib import Path
 SUPPORTED_LANGS = ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'fr']
 APP_ID = "SystemMonitor"
 APP_NAME = "SyMo"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
+# Имя на сессионной шине D-Bus: по нему расширение SyMo Launcher понимает,
+# что приложение уже запущено, и скрывает свою кнопку.
+DBUS_NAME = "io.github.olegegoism.SyMo"
 ICON_FALLBACK = "system-run-symbolic"
 TIME_UPDATE_SEC = 1
 GRAPH_HISTORY_MINUTES_DEFAULT = 5

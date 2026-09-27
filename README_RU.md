@@ -131,6 +131,9 @@ sudo apt install gnome-screenshot scrot grim imagemagick
 приложение SyMo (см. выше): extensions.gnome.org не разрешает расширениям содержать
 программы.
 
+Кнопка видна, только пока SyMo не запущен. Как только SyMo стартует, на панели
+остаётся лишь его собственный значок; когда SyMo закрывают, кнопка возвращается.
+
 | GNOME Shell | Ubuntu | Архив расширения |
 |---|---|---|
 | 42–44 | 22.04 | `symo-launcher-gnome-42-44.shell-extension.zip` |

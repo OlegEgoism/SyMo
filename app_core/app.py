@@ -21,11 +21,12 @@ import gi
 gi.require_version("Gtk", "3.0")
 
 import psutil
-from gi.repository import Gtk, GLib
+from gi.repository import Gio, Gtk, GLib
 
 from .constants import (
     APP_ID,
     APP_NAME,
+    DBUS_NAME,
     ICON_FALLBACK,
     LOG_FILE,
     SETTINGS_FILE,
@@ -128,6 +129,7 @@ class SystemTrayApp:
         self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
 
         self._quitting = False
+        self._bus_name_id = 0
         self.power_control = PowerControl()
         self.settings_dialog: Optional[SettingsDialog] = None
         self._progress_dialog: Optional[Gtk.MessageDialog] = None
@@ -730,12 +732,17 @@ class SystemTrayApp:
             except Exception:
                 pass
 
+        if self._bus_name_id:
+            Gio.bus_unown_name(self._bus_name_id)
+            self._bus_name_id = 0
         self.metrics_log.close()
         Gtk.main_quit()
 
     def run(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
             _add_unix_signal_handler(sig, self._on_unix_signal)
+        self._bus_name_id = Gio.bus_own_name(
+            Gio.BusType.SESSION, DBUS_NAME, Gio.BusNameOwnerFlags.NONE, None, None, None)
         # Начальный снимок, чтобы графики не открывались полностью пустыми.
         self.update_info()
         GLib.timeout_add_seconds(TIME_UPDATE_SEC, self.update_info)

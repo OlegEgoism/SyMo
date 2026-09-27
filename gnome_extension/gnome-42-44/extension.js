@@ -10,6 +10,9 @@ const ExtensionUtils = imports.misc.extensionUtils;
 
 const DESKTOP_ID = 'SyMo.desktop';
 const COMMANDS = ['symo', 'SyMo'];
+// SyMo owns this name on the session bus while it runs; its own tray icon is
+// shown then, so the launcher button hides to avoid a second icon.
+const BUS_NAME = 'io.github.olegegoism.SyMo';
 
 function findCommand() {
     for (const command of COMMANDS) {
@@ -74,13 +77,29 @@ class SyMoLauncherExtension {
         const metadata = ExtensionUtils.getCurrentExtension().metadata;
         this._indicator = new SyMoIndicator(metadata);
         Main.panel.addToStatusArea(metadata.uuid, this._indicator);
+        // Hidden until the watcher reports that SyMo is not running: it always
+        // reports the initial state, so the button never flashes at login.
+        this._setButtonVisible(false);
+        this._watchId = Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
+            Gio.BusNameWatcherFlags.NONE,
+            () => this._setButtonVisible(false),
+            () => this._setButtonVisible(true));
     }
 
     disable() {
+        if (this._watchId) {
+            Gio.bus_unwatch_name(this._watchId);
+            this._watchId = 0;
+        }
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;
         }
+    }
+
+    _setButtonVisible(visible) {
+        if (this._indicator)
+            this._indicator.container.visible = visible;
     }
 }
 
