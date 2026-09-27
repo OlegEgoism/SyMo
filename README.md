@@ -123,9 +123,45 @@ sudo apt install gnome-screenshot scrot grim imagemagick
 
 ### GNOME Shell extension
 
+[![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-SyMo_Launcher-4A86CF?style=for-the-badge&logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/9526/symo-launcher/)
+
 [SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) adds a
-panel button that starts SyMo. It works on GNOME 42 and newer and requires the app
-to be installed as described above.
+panel button with **Open SyMo** and **Project page**. Install the SyMo app first
+(see above): extensions.gnome.org does not allow extensions to ship programs.
+
+| GNOME Shell | Ubuntu | Extension archive |
+|---|---|---|
+| 42–44 | 22.04 | `symo-launcher-gnome-42-44.shell-extension.zip` |
+| 45–50 | 24.04, 24.10, 25.04, 25.10, 26.04 | `symo-launcher-gnome-45.shell-extension.zip` |
+
+Check your version with `gnome-shell --version`.
+
+**Extension Manager app** (easiest):
+
+```bash
+sudo apt install gnome-shell-extension-manager
+```
+
+Open *Extension Manager* → *Browse* → search for **SyMo Launcher** → *Install*.
+
+**Web browser:** install the browser connector (`chrome-gnome-shell` on Ubuntu 22.04,
+`gnome-browser-connector` on 24.04 and newer) and the *GNOME Shell integration*
+add-on for Firefox or Chrome, then open the
+[extension page](https://extensions.gnome.org/extension/9526/symo-launcher/) and
+switch it on.
+
+**Manual install:** if the site shows *INCOMPATIBLE* for your GNOME version,
+download the matching archive from GitHub Releases and run:
+
+```bash
+gnome-extensions install --force symo-launcher-gnome-*.shell-extension.zip
+```
+
+Log out and back in (required on Wayland), then enable it:
+
+```bash
+gnome-extensions enable symo@olegegoism.github.io
+```
 
 ## Uninstall
 
@@ -163,7 +199,8 @@ Output in `dist/`:
 - `SyMo-<version>-linux-<arch>.tar.gz` and `.sha256` — attach to a GitHub release;
 - `symo-launcher-gnome-42-44.shell-extension.zip` and
   `symo-launcher-gnome-45.shell-extension.zip` — upload both to extensions.gnome.org
-  as separate versions of the same extension.
+  as separate versions of the same extension, and attach them to the GitHub release
+  for manual installation.
 
 The version is set in `app_core/constants.py` (`APP_VERSION`); the extension
 version is `version-name` in `gnome_extension/*/metadata.json`.

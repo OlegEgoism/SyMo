@@ -124,9 +124,47 @@ sudo apt install gnome-screenshot scrot grim imagemagick
 
 ### Расширение GNOME Shell
 
+[![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-SyMo_Launcher-4A86CF?style=for-the-badge&logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/9526/symo-launcher/)
+
 [SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) добавляет
-на панель кнопку запуска SyMo. Работает в GNOME 42 и новее; само приложение нужно
-установить, как описано выше.
+на панель кнопку с пунктами **Open SyMo** и **Project page**. Сначала установите само
+приложение SyMo (см. выше): extensions.gnome.org не разрешает расширениям содержать
+программы.
+
+| GNOME Shell | Ubuntu | Архив расширения |
+|---|---|---|
+| 42–44 | 22.04 | `symo-launcher-gnome-42-44.shell-extension.zip` |
+| 45–50 | 24.04, 24.10, 25.04, 25.10, 26.04 | `symo-launcher-gnome-45.shell-extension.zip` |
+
+Узнать свою версию: `gnome-shell --version`.
+
+**Приложение «Менеджер расширений»** (проще всего):
+
+```bash
+sudo apt install gnome-shell-extension-manager
+```
+
+Откройте «Менеджер расширений» → «Просмотр» → найдите **SyMo Launcher** → «Установить».
+
+**Через браузер:** установите мост для браузера (`chrome-gnome-shell` в Ubuntu 22.04,
+`gnome-browser-connector` в 24.04 и новее) и дополнение *GNOME Shell integration*
+для Firefox или Chrome, затем откройте
+[страницу расширения](https://extensions.gnome.org/extension/9526/symo-launcher/) и
+включите переключатель.
+
+**Вручную:** если сайт показывает *INCOMPATIBLE* для вашей версии GNOME, скачайте
+подходящий архив из GitHub Releases и выполните:
+
+```bash
+gnome-extensions install --force symo-launcher-gnome-*.shell-extension.zip
+```
+
+Выйдите из системы и войдите снова (обязательно в сеансе Wayland), затем включите
+расширение:
+
+```bash
+gnome-extensions enable symo@olegegoism.github.io
+```
 
 ## Удаление
 
@@ -164,7 +202,8 @@ sudo apt install build-essential patchelf
 - `SyMo-<версия>-linux-<arch>.tar.gz` и `.sha256` — прикрепить к релизу на GitHub;
 - `symo-launcher-gnome-42-44.shell-extension.zip` и
   `symo-launcher-gnome-45.shell-extension.zip` — загрузить оба на
-  extensions.gnome.org как отдельные версии одного расширения.
+  extensions.gnome.org как отдельные версии одного расширения и прикрепить к
+  релизу на GitHub для ручной установки.
 
 Версия приложения задаётся в `app_core/constants.py` (`APP_VERSION`), версия
 расширения — `version-name` в `gnome_extension/*/metadata.json`.
