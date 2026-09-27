@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import dataclasses
+import fcntl
 import logging
 import os
 import platform
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import IO, Any, Dict, Optional
 
 import gi
 
@@ -698,10 +700,27 @@ class SystemTrayApp:
         Gtk.main()
 
 
+def _acquire_single_instance_lock() -> Optional[IO[str]]:
+    """Не дать запустить второй экземпляр (второй значок в трее и второй Telegram-бот)."""
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    lock_file = open(Path(runtime_dir) / f"{APP_NAME.lower()}.lock", "w")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_file.close()
+        return None
+    return lock_file
+
+
 def main() -> None:
     setup_logging()
+    lock = _acquire_single_instance_lock()
+    if lock is None:
+        logger.info("%s уже запущен", APP_NAME)
+        return
     Gtk.init([])
     SystemTrayApp().run()
+    lock.close()
 
 
 if __name__ == "__main__":

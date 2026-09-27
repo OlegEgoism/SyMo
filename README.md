@@ -75,71 +75,96 @@ SyMo/
 │  ├─ base.py                # retries, status formatting, background dispatcher
 │  ├─ telegram.py            # Telegram notifier + command polling
 │  └─ discord.py             # Discord webhook notifier
-├─ tests/                    # pytest suites
-├─ build.sh                  # Nuitka build (standalone + onefile)
-├─ uninstall-symo.sh         # removes artifacts/desktop files/binaries
-├─ requirements.txt
+├─ gnome_extension/          # SyMo Launcher for GNOME Shell
+│  ├─ gnome-42-44/           # legacy format (Ubuntu 22.04)
+│  └─ gnome-45/              # ES modules (Ubuntu 24.04 and newer)
+├─ build.sh                  # release build: app archive + extension zips
+├─ install.sh                # per-user installer shipped in the release archive
+├─ uninstall-symo.sh         # removes SyMo (--purge also removes settings)
+├─ package-gnome-extension.sh
+├─ requirements.txt          # runtime dependencies
+├─ requirements-build.txt    # build dependencies (Nuitka)
 ├─ logo.png
 ├─ img.png
 └─ README.md
 ```
 
-## Requirements
+## Supported systems
 
-- Linux desktop environment with GTK3 + AppIndicator (or Ayatana AppIndicator).
-- Python 3.10+ (recommended).
+| Ubuntu | GNOME Shell | Python |
+|---|---|---|
+| 22.04 LTS | 42 | 3.10 |
+| 24.04 LTS | 46 | 3.12 |
+| 24.10 / 25.04 / 25.10 / 26.04 | 47 / 48 / 49 / 50 | 3.12+ |
 
-### Python dependencies
+The tray icon needs AppIndicator support. Ubuntu ships it by default
+(the "Ubuntu AppIndicators" extension); on vanilla GNOME install
+`gnome-shell-extension-appindicator`.
 
-```bash
-pip install -r requirements.txt
-```
+## Install (release archive)
 
-### Run in Development Mode
-
-```bash
-python3 app.py
-```
-
-### Install dependencies (dev)
+Download `SyMo-<version>-linux-x86_64.tar.gz` from GitHub Releases, then:
 
 ```bash
-sudo apt update
-sudo apt install -y \
-  python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-appindicator3-0.1 \
-  gnome-shell-extension-appindicator \
-  build-essential libgirepository1.0-dev gir1.2-glib-2.0 \
-  gobject-introspection pkg-config libcairo2-dev \
-  gnome-screenshot scrot grim imagemagick
-pip install -r requirements.txt
+tar xzf SyMo-*-linux-x86_64.tar.gz
+./SyMo-*-linux-x86_64/install.sh
 ```
 
-### Install as desktop application
-Run:
+The app is installed to `~/.local/opt/SyMo`, gets a menu entry, the `symo`
+command and autostart on login (`--no-autostart` to disable).
+
+Optional tools for the Telegram `/screenshot` command:
 
 ```bash
-chmod +x build.sh
-./build.sh
+sudo apt install gnome-screenshot scrot grim imagemagick
 ```
 
-Check output:
+### GNOME Shell extension
 
-```bash
-ls -la SyMo-bundle
-```
+[SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) adds a
+panel button that starts SyMo. It works on GNOME 42 and newer and requires the app
+to be installed as described above.
 
 ## Uninstall
 
 ```bash
-chmod +x uninstall-symo.sh
-./uninstall-symo.sh
+~/.local/opt/SyMo/uninstall-symo.sh           # keep settings and tokens
+~/.local/opt/SyMo/uninstall-symo.sh --purge   # remove everything
 ```
 
-## Tests
+## Run from source
 
 ```bash
-pytest -q
+sudo apt install python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+  gir1.2-ayatanaappindicator3-0.1
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python app.py
 ```
+
+`--system-site-packages` reuses PyGObject and pycairo from apt, so nothing has to
+be compiled and the same steps work on every supported Ubuntu version.
+
+## Build a release
+
+Build on Ubuntu 22.04: the binary depends on glibc and runs on that version and
+all newer ones.
+
+```bash
+sudo apt install build-essential patchelf
+.venv/bin/pip install -r requirements-build.txt
+./build.sh
+```
+
+Output in `dist/`:
+
+- `SyMo-<version>-linux-<arch>.tar.gz` and `.sha256` — attach to a GitHub release;
+- `symo-launcher-gnome-42-44.shell-extension.zip` and
+  `symo-launcher-gnome-45.shell-extension.zip` — upload both to extensions.gnome.org
+  as separate versions of the same extension.
+
+The version is set in `app_core/constants.py` (`APP_VERSION`); the extension
+version is `version-name` in `gnome_extension/*/metadata.json`.
 
 ## Contact
 

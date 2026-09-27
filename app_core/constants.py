@@ -5,6 +5,7 @@ from pathlib import Path
 SUPPORTED_LANGS = ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'fr']
 APP_ID = "SystemMonitor"
 APP_NAME = "SyMo"
+APP_VERSION = "1.1.0"
 ICON_FALLBACK = "system-run-symbolic"
 TIME_UPDATE_SEC = 1
 GRAPH_HISTORY_MINUTES_DEFAULT = 5

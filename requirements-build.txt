@@ -1,0 +1,4 @@
+# Зависимости для сборки релиза через build.sh.
+-r requirements.txt
+Nuitka==4.1.1
+ordered-set>=4.1

@@ -9,3 +9,5 @@ __pycache__/
 *.dist
 *.onefile-build
 build_standalone
+dist/
+build/

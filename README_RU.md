@@ -75,71 +75,97 @@ SyMo/
 │  ├─ base.py                # повторы запросов, формат статуса, фоновая отправка
 │  ├─ telegram.py            # уведомления Telegram + опрос команд
 │  └─ discord.py             # уведомления Discord webhook
-├─ tests/                    # наборы тестов pytest
-├─ build.sh                  # сборка Nuitka (standalone + onefile)
-├─ uninstall-symo.sh         # удаляет артефакты/desktop-файлы/бинарники
-├─ requirements.txt
+├─ gnome_extension/          # расширение SyMo Launcher для GNOME Shell
+│  ├─ gnome-42-44/           # старый формат (Ubuntu 22.04)
+│  └─ gnome-45/              # ES-модули (Ubuntu 24.04 и новее)
+├─ build.sh                  # сборка релиза: архив приложения + архивы расширения
+├─ install.sh                # установщик, входит в архив релиза
+├─ uninstall-symo.sh         # удаление SyMo (--purge удаляет и настройки)
+├─ package-gnome-extension.sh
+├─ requirements.txt          # зависимости приложения
+├─ requirements-build.txt    # зависимости сборки (Nuitka)
 ├─ logo.png
 ├─ img.png
 └─ README.md
 ```
 
-## Требования
+## Поддерживаемые системы
 
-- Linux-окружение рабочего стола с GTK3 + AppIndicator (или Ayatana AppIndicator).
-- Python 3.10+ (рекомендуется).
+| Ubuntu | GNOME Shell | Python |
+|---|---|---|
+| 22.04 LTS | 42 | 3.10 |
+| 24.04 LTS | 46 | 3.12 |
+| 24.10 / 25.04 / 25.10 / 26.04 | 47 / 48 / 49 / 50 | 3.12+ |
 
-### Python-зависимости
+Для значка в трее нужна поддержка AppIndicator. В Ubuntu она есть по умолчанию
+(расширение «Ubuntu AppIndicators»); в «чистом» GNOME установите
+`gnome-shell-extension-appindicator`.
 
-```bash
-pip install -r requirements.txt
-```
+## Установка (архив релиза)
 
-### Запуск в режиме разработки
-
-```bash
-python3 app.py
-```
-
-### Установка зависимостей (разработка)
+Скачайте `SyMo-<версия>-linux-x86_64.tar.gz` из GitHub Releases и выполните:
 
 ```bash
-sudo apt update
-sudo apt install -y \
-  python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-appindicator3-0.1 \
-  gnome-shell-extension-appindicator \
-  build-essential libgirepository1.0-dev gir1.2-glib-2.0 \
-  gobject-introspection pkg-config libcairo2-dev \
-  gnome-screenshot scrot grim imagemagick
-pip install -r requirements.txt
+tar xzf SyMo-*-linux-x86_64.tar.gz
+./SyMo-*-linux-x86_64/install.sh
 ```
 
-### Установка как приложения
-Запуск:
+Приложение устанавливается в `~/.local/opt/SyMo`, появляется в меню приложений,
+доступно командой `symo` и запускается при входе в систему (`--no-autostart`
+отключает автозапуск).
+
+Дополнительные утилиты для команды Telegram `/screenshot`:
 
 ```bash
-chmod +x build.sh
-./build.sh
+sudo apt install gnome-screenshot scrot grim imagemagick
 ```
 
-Проверить результат:
+### Расширение GNOME Shell
 
-```bash
-ls -la SyMo-bundle
-```
+[SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) добавляет
+на панель кнопку запуска SyMo. Работает в GNOME 42 и новее; само приложение нужно
+установить, как описано выше.
 
 ## Удаление
 
 ```bash
-chmod +x uninstall-symo.sh
-./uninstall-symo.sh
+~/.local/opt/SyMo/uninstall-symo.sh           # настройки и токены сохраняются
+~/.local/opt/SyMo/uninstall-symo.sh --purge   # удалить всё
 ```
 
-## Тесты
+## Запуск из исходников
 
 ```bash
-pytest -q
+sudo apt install python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+  gir1.2-ayatanaappindicator3-0.1
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python app.py
 ```
+
+`--system-site-packages` берёт PyGObject и pycairo из apt: ничего не нужно
+компилировать, и шаги одинаковы для всех поддерживаемых версий Ubuntu.
+
+## Сборка релиза
+
+Собирайте на Ubuntu 22.04: бинарник зависит от glibc и работает на этой версии
+и на всех более новых.
+
+```bash
+sudo apt install build-essential patchelf
+.venv/bin/pip install -r requirements-build.txt
+./build.sh
+```
+
+Результат в `dist/`:
+
+- `SyMo-<версия>-linux-<arch>.tar.gz` и `.sha256` — прикрепить к релизу на GitHub;
+- `symo-launcher-gnome-42-44.shell-extension.zip` и
+  `symo-launcher-gnome-45.shell-extension.zip` — загрузить оба на
+  extensions.gnome.org как отдельные версии одного расширения.
+
+Версия приложения задаётся в `app_core/constants.py` (`APP_VERSION`), версия
+расширения — `version-name` в `gnome_extension/*/metadata.json`.
 
 ## Контакты
 

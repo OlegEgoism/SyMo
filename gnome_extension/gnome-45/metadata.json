@@ -1,0 +1,8 @@
+{
+  "uuid": "symo@olegegoism.github.io",
+  "name": "SyMo Launcher",
+  "description": "Panel launcher for SyMo, a lightweight system monitor with tray metrics, graphs, power actions and Telegram/Discord notifications.\n\nThe SyMo application must be installed separately: https://github.com/OlegEgoism/SyMo",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/OlegEgoism/SyMo",
+  "version-name": "1.1"
+}
