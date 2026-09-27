@@ -57,16 +57,22 @@ SyMo — это лёгкое GTK-приложение для Linux-трея: п�
 SyMo/
 ├─ app.py                    # тонкий launcher
 ├─ app_core/                 # основная логика приложения
-│  ├─ app.py                 # runtime, tray, menu, graphs, updates
+│  ├─ app.py                 # runtime: трей, меню, цикл обновления, завершение
+│  ├─ graphs.py              # описания графиков + единое окно GraphWindow
+│  ├─ graph_math.py          # зум, панорамирование, прореживание (без GTK)
+│  ├─ history.py             # потокобезопасная история метрик для графиков
+│  ├─ settings.py            # настройки по умолчанию, нормализация, атомарная запись JSON
 │  ├─ dialogs.py             # диалог настроек
-│  ├─ power_control.py       # команды питания и таймеры
-│  ├─ system_usage.py        # сбор системных метрик
+│  ├─ power_control.py       # команды питания и планировщик
+│  ├─ system_usage.py        # сбор системных метрик + MetricsSnapshot
 │  ├─ click_tracker.py       # счётчики клавиатуры/мыши
 │  ├─ localization.py        # i18n-утилиты
 │  ├─ language.py            # словари переводов
 │  ├─ constants.py           # константы и пути config/log
-│  └─ logging_utils.py       # утилиты ротации логов
+│  ├─ ui.py                  # общие GTK-помощники
+│  └─ logging_utils.py       # настройка logging и запись лога метрик
 ├─ notifications/
+│  ├─ base.py                # повторы запросов, формат статуса, фоновая отправка
 │  ├─ telegram.py            # уведомления Telegram + опрос команд
 │  └─ discord.py             # уведомления Discord webhook
 ├─ tests/                    # наборы тестов pytest

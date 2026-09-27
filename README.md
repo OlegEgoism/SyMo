@@ -57,16 +57,22 @@ SyMo is a lightweight GTK Linux tray app for monitoring system metrics, controll
 SyMo/
 ├─ app.py                    # thin launcher
 ├─ app_core/                 # core application logic
-│  ├─ app.py                 # runtime, tray, menu, graphs, updates
+│  ├─ app.py                 # runtime: tray, menu, update loop, shutdown
+│  ├─ graphs.py              # declarative graph specs + single GraphWindow
+│  ├─ graph_math.py          # zoom/pan/decimation logic (no GTK)
+│  ├─ history.py             # thread-safe metrics history for graphs
+│  ├─ settings.py            # settings defaults, sanitizing, atomic JSON writes
 │  ├─ dialogs.py             # settings dialog
-│  ├─ power_control.py       # power commands and timers
-│  ├─ system_usage.py        # system metrics collection
+│  ├─ power_control.py       # power commands and scheduler
+│  ├─ system_usage.py        # system metrics collection + MetricsSnapshot
 │  ├─ click_tracker.py       # keyboard/mouse counters
 │  ├─ localization.py        # i18n helpers
 │  ├─ language.py            # translation dictionaries
 │  ├─ constants.py           # constants and config/log paths
-│  └─ logging_utils.py       # log rotation helpers
+│  ├─ ui.py                  # shared GTK helpers
+│  └─ logging_utils.py       # logging setup and metrics log writer
 ├─ notifications/
+│  ├─ base.py                # retries, status formatting, background dispatcher
 │  ├─ telegram.py            # Telegram notifier + command polling
 │  └─ discord.py             # Discord webhook notifier
 ├─ tests/                    # pytest suites

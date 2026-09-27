@@ -10,22 +10,40 @@ from .constants import SUPPORTED_LANGS
 
 current_lang = 'ru'
 
+# Коды локали, которые отличаются от внутренних кодов словаря.
+_LOCALE_ALIASES = {
+    'zh': 'cn',
+}
+# Язык интерфейса, если системная локаль не поддерживается.
+_SYSTEM_FALLBACK_LANG = 'en'
+
 
 def tr(key: str) -> str:
     lang_map: Dict[str, str] = LANGUAGES.get(current_lang) or LANGUAGES.get('en', {})
     return lang_map.get(key, key)
 
 
+def _normalize_locale_code(raw: str) -> str:
+    code = (raw or '').split('.')[0].split('@')[0].split('_')[0].split('-')[0].strip().lower()
+    return _LOCALE_ALIASES.get(code, code)
+
+
 def detect_system_language() -> str:
+    candidates = [os.environ.get(name, '') for name in ('LC_ALL', 'LC_MESSAGES', 'LANG')]
+    # LANGUAGE — список через двоеточие в порядке предпочтения.
+    candidates = [part for part in os.environ.get('LANGUAGE', '').split(':') if part] + candidates
     try:
-        env = os.environ.get('LANG', '')
-        if env:
-            code = env.split('.')[0].split('_')[0].lower()
-            return code if code in SUPPORTED_LANGS else 'ru'
-        code = (locale.getlocale()[0] or '').split('_')[0].lower()
-        return code if code in SUPPORTED_LANGS else 'ru'
+        candidates.append(locale.getlocale()[0] or '')
     except Exception:
-        return 'ru'
+        pass
+
+    for raw in candidates:
+        if not raw or raw in ('C', 'POSIX'):
+            continue
+        code = _normalize_locale_code(raw)
+        if code in SUPPORTED_LANGS:
+            return code
+    return _SYSTEM_FALLBACK_LANG
 
 
 def set_language(lang_code: str) -> None:

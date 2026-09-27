@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import logging
+import math
 import subprocess
+import time
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING
 
 from gi.repository import GLib, Gtk
 
 from .localization import tr
+from .ui import mapped_or_none, show_message
 
 if TYPE_CHECKING:
-    from app import SystemTrayApp
+    from .app import SystemTrayApp
+
+logger = logging.getLogger(__name__)
 
 
 class Action(Enum):
@@ -26,100 +32,105 @@ def action_label(act: Action) -> str:
     }.get(act, act.value)
 
 
+def run_command(cmd: list[str]) -> bool:
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except Exception as e:
+        logger.warning("Ошибка выполнения команды %s: %s", " ".join(cmd), e)
+        return False
+    if proc.returncode == 0:
+        return True
+    err = (proc.stderr or proc.stdout or "").strip()
+    logger.warning("Команда %s завершилась с кодом %s%s", " ".join(cmd), proc.returncode, f": {err}" if err else "")
+    return False
+
+
 class PowerControl:
     def __init__(self, app: "SystemTrayApp"):
         self.app = app
         self.scheduled_action: Optional[Action] = None
-        self.remaining_seconds = 0
-        self._update_timer_id = None
-        self._notify_timer_id = None
-        self._action_timer_id = None
-        self.current_dialog: Optional[Gtk.MessageDialog] = None
+        self._deadline: Optional[float] = None
+        self._notify_timer_id: Optional[int] = None
+        self._action_timer_id: Optional[int] = None
+        self.current_dialog: Optional[Gtk.Dialog] = None
         self.parent_window: Optional[Gtk.Widget] = None
 
     def set_parent_window(self, parent: Optional[Gtk.Widget]) -> None:
-        self.parent_window = parent if (parent and parent.get_mapped()) else None
+        self.parent_window = mapped_or_none(parent)
 
-    def _open_dialog(self, message: str, title: str = "", info: bool = True) -> Gtk.MessageDialog:
-        if self.current_dialog:
-            try:
-                self.current_dialog.destroy()
-            except Exception:
-                pass
-            self.current_dialog = None
-        dialog = Gtk.MessageDialog(
-            transient_for=self.parent_window,
-            flags=0,
-            message_type=Gtk.MessageType.INFO if info else Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.OK if info else Gtk.ButtonsType.OK_CANCEL,
-            text=message
-        )
-        if title:
-            dialog.set_title(title)
-        self.current_dialog = dialog
-        return dialog
-
-    def _confirm_action(self, _w, action_callback, message: str):
-        dialog = self._open_dialog(message, tr('confirm_title'), info=False)
-
-        def on_response(d, response_id):
-            if response_id == Gtk.ResponseType.OK and action_callback:
-                action_callback()
-            d.destroy()
-            self.current_dialog = None
-
-        dialog.connect("response", on_response)
-        dialog.show()
-
-    def _shutdown(self) -> None:
-        if not self._run_command(["loginctl", "poweroff"]):
-            self._run_command(["systemctl", "poweroff"])
-
-    def _reboot(self) -> None:
-        if not self._run_command(["loginctl", "reboot"]):
-            self._run_command(["systemctl", "reboot"])
+    # ---------- Немедленные действия ----------
 
     @staticmethod
-    def _lock_screen() -> None:
+    def power_off() -> None:
+        if not run_command(["loginctl", "poweroff"]):
+            run_command(["systemctl", "poweroff"])
+
+    @staticmethod
+    def reboot() -> None:
+        if not run_command(["loginctl", "reboot"]):
+            run_command(["systemctl", "reboot"])
+
+    @staticmethod
+    def lock_screen() -> None:
         for cmd in (["loginctl", "lock-session"],
                     ["gnome-screensaver-command", "-l"],
                     ["xdg-screensaver", "lock"],
                     ["dm-tool", "lock"]):
-            if PowerControl._run_command(cmd):
+            if run_command(cmd):
                 return
 
-    @staticmethod
-    def _run_command(cmd: list[str]) -> bool:
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if proc.returncode == 0:
-                return True
-            err = (proc.stderr or proc.stdout or "").strip()
-            if err:
-                print(f"Команда {' '.join(cmd)} завершилась с кодом {proc.returncode}: {err}")
-            else:
-                print(f"Команда {' '.join(cmd)} завершилась с кодом {proc.returncode}")
-            return False
-        except Exception as e:
-            print(f"Ошибка выполнения команды {' '.join(cmd)}: {e}")
-            return False
+    def run_action(self, act: Action) -> None:
+        {
+            Action.POWER_OFF: self.power_off,
+            Action.REBOOT: self.reboot,
+            Action.LOCK: self.lock_screen,
+        }[act]()
 
-    def _open_settings(self, *_):
-        dialog = Gtk.Dialog(
-            title=tr('settings'),
-            transient_for=self.parent_window,
-            flags=0
-        )
+    # ---------- Диалоги ----------
+
+    def _replace_current_dialog(self, dialog: Optional[Gtk.Dialog]) -> None:
+        if self.current_dialog is not None and self.current_dialog is not dialog:
+            try:
+                self.current_dialog.destroy()
+            except Exception:
+                pass
         self.current_dialog = dialog
+
+    def _forget_dialog(self, dialog: Gtk.Dialog) -> None:
+        if self.current_dialog is dialog:
+            self.current_dialog = None
+        dialog.destroy()
+
+    def confirm_action(self, _w, action_callback: Callable[[], None], message: str) -> None:
+        dialog = Gtk.MessageDialog(
+            transient_for=self.parent_window,
+            flags=0,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.OK_CANCEL,
+            text=message,
+        )
+        dialog.set_title(tr('confirm_title'))
+        self._replace_current_dialog(dialog)
+
+        def on_response(d, response_id):
+            self._forget_dialog(d)
+            if response_id == Gtk.ResponseType.OK:
+                action_callback()
+
+        dialog.connect("response", on_response)
+        dialog.show()
+
+    def open_scheduler(self, *_):
+        dialog = Gtk.Dialog(title=tr('settings'), transient_for=self.parent_window, flags=0)
+        self._replace_current_dialog(dialog)
         box = dialog.get_content_area()
         box.set_border_width(10)
 
         time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         time_label = Gtk.Label(label=tr('minutes'))
         time_label.set_xalign(0)
-        adjustment = Gtk.Adjustment(value=1, lower=1, upper=1440, step_increment=1)
         time_spin = Gtk.SpinButton()
-        time_spin.set_adjustment(adjustment)
+        time_spin.set_adjustment(Gtk.Adjustment(value=1, lower=1, upper=1440, step_increment=1))
         time_spin.set_numeric(True)
         time_spin.set_value(1)
         time_spin.set_size_request(150, -1)
@@ -130,107 +141,93 @@ class PowerControl:
         action_label_w = Gtk.Label(label=tr('action'))
         action_label_w.set_xalign(0)
         action_combo = Gtk.ComboBoxText()
-        action_combo.append(Action.POWER_OFF.value, action_label(Action.POWER_OFF))
-        action_combo.append(Action.REBOOT.value, action_label(Action.REBOOT))
-        action_combo.append(Action.LOCK.value, action_label(Action.LOCK))
-        action_combo.set_active(0)
+        for act in Action:
+            action_combo.append(act.value, action_label(act))
+        action_combo.set_active_id((self.scheduled_action or Action.POWER_OFF).value)
         action_combo.set_size_request(150, -1)
         action_box.pack_start(action_label_w, True, True, 0)
         action_box.pack_start(action_combo, False, False, 0)
 
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         btn_box.set_halign(Gtk.Align.END)
-        apply_b = Gtk.Button(label=tr('apply'))
-        cancel_b = Gtk.Button(label=tr('cancel'))
         reset_b = Gtk.Button(label=tr('reset'))
-        apply_b.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.OK))
+        cancel_b = Gtk.Button(label=tr('cancel'))
+        apply_b = Gtk.Button(label=tr('apply'))
+        reset_b.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.REJECT))
         cancel_b.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.CANCEL))
-        reset_b.connect("clicked", self._reset_action_button)
-        btn_box.pack_start(reset_b, False, False, 0)
-        btn_box.pack_start(cancel_b, False, False, 0)
-        btn_box.pack_start(apply_b, False, False, 0)
+        apply_b.connect("clicked", lambda *_: dialog.response(Gtk.ResponseType.OK))
+        for btn in (reset_b, cancel_b, apply_b):
+            btn_box.pack_start(btn, False, False, 0)
 
         box.add(time_box)
         box.add(action_box)
         box.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         box.add(btn_box)
 
-        dialog.show_all()
-        response = dialog.run()
-
-        if response == Gtk.ResponseType.OK:
+        def on_response(d, response_id):
             minutes = time_spin.get_value_as_int()
             action_id = action_combo.get_active_id()
-            if minutes <= 0:
-                self._show_message(tr('error'), tr('error_minutes_positive'))
-                dialog.destroy()
-                self.current_dialog = None
-                return
-            act = Action(action_id)
-            self.scheduled_action = act
-            self.remaining_seconds = minutes * 60
+            self._forget_dialog(d)
+            if response_id == Gtk.ResponseType.OK:
+                if minutes <= 0:
+                    show_message(tr('error'), tr('error_minutes_positive'), self.parent_window)
+                    return
+                act = Action(action_id)
+                self.schedule(act, minutes)
+                show_message(tr('scheduled'), tr('action_in_time').format(action_label(act), minutes), self.parent_window)
+            elif response_id == Gtk.ResponseType.REJECT:
+                self.cancel_schedule()
+                show_message(tr('cancelled'), tr('cancelled_text'), self.parent_window)
 
-            if minutes > 1:
-                self._notify_timer_id = GLib.timeout_add_seconds(
-                    (minutes - 1) * 60, self._notify_before_action, act
-                )
-            self._action_timer_id = GLib.timeout_add_seconds(
-                self.remaining_seconds, self._delayed_action, act
-            )
-            if self._update_timer_id:
-                GLib.source_remove(self._update_timer_id)
-            self._update_timer_id = GLib.timeout_add_seconds(1, self._update_indicator_label)
+        dialog.connect("response", on_response)
+        dialog.show_all()
 
-            self._show_message(tr('scheduled'), tr('action_in_time').format(action_label(act), minutes))
+    # ---------- Планировщик ----------
 
-        dialog.destroy()
-        self.current_dialog = None
+    def schedule(self, act: Action, minutes: int) -> None:
+        """Запланировать действие. Предыдущее расписание полностью снимается."""
+        self.cancel_schedule()
+        seconds = int(minutes) * 60
+        self.scheduled_action = act
+        self._deadline = time.monotonic() + seconds
+        if minutes > 1:
+            self._notify_timer_id = GLib.timeout_add_seconds(seconds - 60, self._notify_before_action, act)
+        self._action_timer_id = GLib.timeout_add_seconds(seconds, self._delayed_action, act)
 
-    def _reset_action_button(self, *_):
-        for tid in ("_update_timer_id", "_notify_timer_id", "_action_timer_id"):
-            _id = getattr(self, tid, None)
-            if _id:
-                GLib.source_remove(_id)
-                setattr(self, tid, None)
+    def cancel_schedule(self) -> None:
+        for attr in ("_notify_timer_id", "_action_timer_id"):
+            source_id = getattr(self, attr)
+            if source_id:
+                GLib.source_remove(source_id)
+                setattr(self, attr, None)
         self.scheduled_action = None
-        self.remaining_seconds = 0
-        self.app.indicator.set_label("", "")
-        self._show_message(tr('cancelled'), tr('cancelled_text'))
+        self._deadline = None
+
+    def remaining_seconds(self) -> int:
+        if self._deadline is None:
+            return 0
+        return max(0, math.ceil(self._deadline - time.monotonic()))
+
+    def countdown_text(self) -> str:
+        """Текст обратного отсчёта для трея; пустая строка, если ничего не запланировано."""
+        if self.scheduled_action is None:
+            return ""
+        remaining = self.remaining_seconds()
+        h, rem = divmod(remaining, 3600)
+        m, s = divmod(rem, 60)
+        return f"{action_label(self.scheduled_action)} — {h:02d}:{m:02d}:{s:02d}"
 
     def _notify_before_action(self, act: Action) -> bool:
         self._notify_timer_id = None
-        self._show_message(tr('notification'), tr('action_in_1_min').format(action_label(act)))
+        show_message(tr('notification'), tr('action_in_1_min').format(action_label(act)), self.parent_window)
         return False
-
-    def _update_indicator_label(self) -> bool:
-        if self.remaining_seconds <= 0:
-            self.app.indicator.set_label("", "")
-            return False
-        h = self.remaining_seconds // 3600
-        m = (self.remaining_seconds % 3600) // 60
-        s = self.remaining_seconds % 60
-        self.app.indicator.set_label(f"  {action_label(self.scheduled_action)} — {h:02d}:{m:02d}:{s:02d}", "")
-        self.remaining_seconds -= 1
-        return True
 
     def _delayed_action(self, act: Action) -> bool:
         self._action_timer_id = None
-        self.app.indicator.set_label("", "")
-        self.scheduled_action = None
-        self.remaining_seconds = 0
-        if self._update_timer_id:
-            GLib.source_remove(self._update_timer_id)
-            self._update_timer_id = None
-        if act == Action.POWER_OFF:
-            self._shutdown()
-        elif act == Action.REBOOT:
-            self._reboot()
-        elif act == Action.LOCK:
-            self._lock_screen()
+        self.cancel_schedule()
+        self.run_action(act)
         return False
 
-    def _show_message(self, title: str, message: str):
-        d = self._open_dialog(message, title, info=True)
-        d.run()
-        d.destroy()
-        self.current_dialog = None
+    def dispose(self) -> None:
+        self.cancel_schedule()
+        self._replace_current_dialog(None)

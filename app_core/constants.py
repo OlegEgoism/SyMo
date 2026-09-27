@@ -33,3 +33,32 @@ MENU_ORDER_DEFAULT = [
     'ping_network',
     'show_system_info',
 ]
+
+POLL_INTERVAL_DEFAULT_SEC = 1
+POLL_INTERVAL_MIN_SEC = 1
+POLL_INTERVAL_MAX_SEC = 60
+POLL_INTERVAL_SETTING_KEYS = (
+    'tray_cpu_interval_sec',
+    'tray_ram_interval_sec',
+    'cpu_interval_sec',
+    'ram_interval_sec',
+    'net_interval_sec',
+    'disk_interval_sec',
+    'swap_interval_sec',
+)
+
+GRAPH_LINE_COLOR_FALLBACK = '#36c7ed'
+GRAPH_COLOR_DEFAULTS = {
+    'graph_line_color_cpu': '#19ccff',
+    'graph_line_color_temp': '#ff6633',
+    'graph_line_color_ram': '#59ff59',
+    'graph_line_color_swap': '#f28cff',
+    'graph_line_color_disk': '#59b8ff',
+    'graph_line_color_net_recv': '#40e65a',
+    'graph_line_color_net_sent': '#ffbf33',
+    'graph_line_color_keyboard': '#ffd93f',
+    'graph_line_color_mouse': '#66e6ff',
+}
+
+LOG_MAX_MB_MIN = 1
+LOG_MAX_MB_MAX = 1024

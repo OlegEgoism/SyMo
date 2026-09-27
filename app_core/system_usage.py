@@ -1,10 +1,31 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Dict, Tuple
 
 import psutil
+
+
+@dataclass(frozen=True)
+class MetricsSnapshot:
+    """Один согласованный срез метрик, общий для меню, графиков, лога и уведомлений."""
+
+    timestamp: float
+    cpu_temp: int
+    cpu_usage: float
+    ram_used: float
+    ram_total: float
+    swap_used: float
+    swap_total: float
+    disk_used: float
+    disk_total: float
+    net_recv: float
+    net_sent: float
+    uptime: str
+    keyboard_clicks: int
+    mouse_clicks: int
 
 
 class SystemUsage:
@@ -106,6 +127,35 @@ class MetricsSampler:
             self._cache[key] = self._collect_metric(key, prev_net_data)
             self._last_update_ts[key] = now
         return dict(self._cache)
+
+    def snapshot(
+            self,
+            prev_net_data: Dict[str, float],
+            intervals: Dict[str, int],
+            keyboard_clicks: int,
+            mouse_clicks: int,
+    ) -> MetricsSnapshot:
+        data = self.collect(prev_net_data, intervals)
+        ram_used, ram_total = data['ram']
+        swap_used, swap_total = data['swap']
+        disk_used, disk_total = data['disk']
+        net_recv, net_sent = data['net']
+        return MetricsSnapshot(
+            timestamp=time.time(),
+            cpu_temp=int(data['cpu_temp']),
+            cpu_usage=float(data['cpu_usage']),
+            ram_used=float(ram_used),
+            ram_total=float(ram_total),
+            swap_used=float(swap_used),
+            swap_total=float(swap_total),
+            disk_used=float(disk_used),
+            disk_total=float(disk_total),
+            net_recv=float(net_recv),
+            net_sent=float(net_sent),
+            uptime=str(data['uptime']),
+            keyboard_clicks=int(keyboard_clicks),
+            mouse_clicks=int(mouse_clicks),
+        )
 
     @staticmethod
     def _collect_metric(key: str, prev_net_data: Dict[str, float]) -> Any:

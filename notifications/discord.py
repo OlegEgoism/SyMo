@@ -1,120 +1,86 @@
 from __future__ import annotations
 
-import json
 import logging
-import time
 from typing import Optional
 
 import requests
 from requests import Response
 
 from app_core.constants import DISCORD_CONFIG_FILE
+from app_core.settings import atomic_write_json, read_json
+from notifications.base import normalize_interval, post_with_retries, truncate_message
 
 logger = logging.getLogger(__name__)
 
 
 class DiscordNotifier:
     MAX_MESSAGE_LENGTH = 2000
-    _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
     _MAX_SEND_RETRIES = 3
+    _MAX_RETRY_AFTER_SEC = 30.0
 
-    def __init__(self):
+    def __init__(self, autoload: bool = True):
         self.webhook_url: Optional[str] = None
         self.enabled: bool = False
         self.notification_interval: int = 3600
-        self.load_config()
+        if autoload:
+            self.load_config()
+
+    def configure(self, webhook_url: str, enabled: bool, interval: int) -> None:
+        """Задать параметры в памяти, не трогая файл конфигурации."""
+        self.webhook_url = (webhook_url or '').strip() or None
+        self.enabled = bool(enabled)
+        self.notification_interval = normalize_interval(interval)
 
     def load_config(self) -> None:
-        try:
-            if DISCORD_CONFIG_FILE.exists():
-                config = json.loads(DISCORD_CONFIG_FILE.read_text(encoding="utf-8"))
-                self.webhook_url = (config.get('DISCORD_WEBHOOK_URL') or '').strip() or None
-                self.enabled = bool(config.get('enabled', False))
-                self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
-        except Exception as e:
-            logger.exception("Ошибка загрузки конфигурации Discord: %s", e)
+        config = read_json(DISCORD_CONFIG_FILE)
+        if config:
+            self.configure(
+                config.get('DISCORD_WEBHOOK_URL') or '',
+                config.get('enabled', False),
+                config.get('notification_interval', 3600),
+            )
 
     def save_config(self, webhook_url: str, enabled: bool, interval: int) -> bool:
+        self.configure(webhook_url, enabled, interval)
         try:
-            self.webhook_url = (webhook_url or '').strip() or None
-            self.enabled = bool(enabled)
-            self.notification_interval = self._normalize_interval(interval)
-            DISCORD_CONFIG_FILE.write_text(json.dumps({
+            atomic_write_json(DISCORD_CONFIG_FILE, {
                 'DISCORD_WEBHOOK_URL': self.webhook_url,
                 'enabled': self.enabled,
-                'notification_interval': self.notification_interval
-            }, indent=2), encoding="utf-8")
-            try:
-                import os
-                os.chmod(DISCORD_CONFIG_FILE, 0o600)
-            except Exception as e:
-                logger.warning("Ошибка установки прав на файл Discord-конфига: %s", e)
+                'notification_interval': self.notification_interval,
+            }, mode=0o600)
             return True
         except Exception as e:
             logger.exception("Ошибка сохранения конфигурации Discord: %s", e)
             return False
 
-    @staticmethod
-    def _normalize_interval(interval: object) -> int:
-        try:
-            value = int(interval)
-        except (TypeError, ValueError):
-            value = 3600
-        return max(10, min(86400, value))
-
     def send_message(self, message: str, force: bool = False) -> bool:
         if (not force and not self.enabled) or not self.webhook_url:
             return False
+        payload = {
+            "content": truncate_message(message, self.MAX_MESSAGE_LENGTH),
+            "username": "System Monitor",
+        }
         try:
-            payload = {
-                "content": self._truncate_message(message, self.MAX_MESSAGE_LENGTH),
-                "username": "System Monitor",
-            }
-            response = self._post_with_retries(payload)
-            if response is None:
-                return False
-            if response.status_code not in (200, 204):
-                logger.error("Ошибка отправки в Discord: HTTP %s", response.status_code)
-                return False
-            return True
+            response = post_with_retries(
+                lambda: requests.post(self.webhook_url, json=payload, timeout=(3, 7)),
+                channel="Discord",
+                max_attempts=self._MAX_SEND_RETRIES,
+                retry_after=self._extract_retry_after,
+            )
         except Exception as e:
             logger.exception("Ошибка отправки сообщения в Discord: %s", e)
             return False
+        if response is None:
+            return False
+        if response.status_code not in (200, 204):
+            logger.error("Ошибка отправки в Discord: HTTP %s", response.status_code)
+            return False
+        return True
 
-    @staticmethod
-    def _truncate_message(message: str, max_length: int) -> str:
-        text = str(message or "")
-        if len(text) <= max_length:
-            return text
-        return text[: max_length - 1] + "…"
-
-    def _post_with_retries(self, payload: dict[str, str]) -> Optional[Response]:
-        backoff_seconds = 1.0
-        last_response: Optional[Response] = None
-        for _attempt in range(self._MAX_SEND_RETRIES):
-            try:
-                response = requests.post(self.webhook_url, json=payload, timeout=(3, 7))
-                last_response = response
-                if response.status_code == 429:
-                    retry_after = self._extract_retry_after(response)
-                    time.sleep(max(0.1, retry_after))
-                    continue
-                if response.status_code in self._RETRYABLE_STATUS_CODES:
-                    time.sleep(backoff_seconds)
-                    backoff_seconds = min(backoff_seconds * 2, 8.0)
-                    continue
-                return response
-            except requests.exceptions.RequestException as e:
-                logger.warning("Ошибка связи с Discord API: %s", e)
-                time.sleep(backoff_seconds)
-                backoff_seconds = min(backoff_seconds * 2, 8.0)
-        return last_response
-
-    @staticmethod
-    def _extract_retry_after(response: Response) -> float:
+    @classmethod
+    def _extract_retry_after(cls, response: Response) -> float:
         try:
-            data = response.json()
-            retry_after = float(data.get("retry_after", 1.0))
-            return max(0.1, retry_after)
+            retry_after = float(response.json().get("retry_after", 1.0))
         except (TypeError, ValueError, AttributeError):
             return 1.0
+        return max(0.1, min(cls._MAX_RETRY_AFTER_SEC, retry_after))

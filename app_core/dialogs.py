@@ -1,27 +1,32 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Dict, Optional
+import logging
+import shutil
+import threading
+from typing import Callable, Dict, Optional
 
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GLib
 
-from .click_tracker import get_counts
 from .constants import (
     LOG_FILE,
     TELEGRAM_CONFIG_FILE,
     DISCORD_CONFIG_FILE,
-    MENU_ORDER_DEFAULT,
     GRAPH_HISTORY_MINUTES_DEFAULT,
     GRAPH_HISTORY_MINUTES_MIN,
     GRAPH_HISTORY_MINUTES_MAX,
+    GRAPH_LINE_COLOR_FALLBACK,
+    LOG_MAX_MB_MAX,
+    LOG_MAX_MB_MIN,
+    POLL_INTERVAL_DEFAULT_SEC,
+    POLL_INTERVAL_MAX_SEC,
+    POLL_INTERVAL_MIN_SEC,
 )
 from .localization import tr
+from .settings import normalize_menu_order, read_json, sanitize_poll_interval
+from .ui import show_message
 from notifications import TelegramNotifier, DiscordNotifier
 
-POLL_INTERVAL_MIN_SEC = 1
-POLL_INTERVAL_MAX_SEC = 60
-POLL_INTERVAL_DEFAULT_SEC = 1
+logger = logging.getLogger(__name__)
 
 MENU_ORDER_ENABLED_COLUMN = 0
 MENU_ORDER_LABEL_COLUMN = 1
@@ -29,6 +34,8 @@ MENU_ORDER_KEY_COLUMN = 2
 
 
 class SettingsDialog(Gtk.Dialog):
+    _css_installed = False
+
     def __init__(self, parent: Optional[Gtk.Widget], visibility: Dict):
         super().__init__(title=tr('settings_label'),
                          transient_for=parent if (parent and parent.get_mapped()) else None,
@@ -106,9 +113,7 @@ class SettingsDialog(Gtk.Dialog):
             row_label.set_width_chars(26)
             spin = Gtk.SpinButton.new_with_range(POLL_INTERVAL_MIN_SEC, POLL_INTERVAL_MAX_SEC, 1)
             spin.set_width_chars(8)
-            value = int(self.visibility_settings.get(setting_key, POLL_INTERVAL_DEFAULT_SEC))
-            value = max(POLL_INTERVAL_MIN_SEC, min(POLL_INTERVAL_MAX_SEC, value))
-            spin.set_value(value)
+            spin.set_value(sanitize_poll_interval(self.visibility_settings.get(setting_key, POLL_INTERVAL_DEFAULT_SEC)))
             row.pack_start(row_label, False, False, 0)
             row.pack_start(spin, False, False, 0)
             intervals_content.add(row)
@@ -145,7 +150,7 @@ class SettingsDialog(Gtk.Dialog):
         ]
 
         display_map = {key: label_key for label_key, key in order_labels}
-        current_order = self._normalize_menu_order(self.visibility_settings.get('menu_order'))
+        current_order = normalize_menu_order(self.visibility_settings.get('menu_order'))
         for key in current_order:
             label_key = display_map.get(key, key)
             self.menu_order_store.append([bool(self.visibility_settings.get(key, True)), tr(label_key), key])
@@ -207,7 +212,7 @@ class SettingsDialog(Gtk.Dialog):
         logsize_label = Gtk.Label(label=tr('max_log_size_mb'))
         logsize_label.set_xalign(0)
         logsize_label.set_width_chars(28)
-        self.logsize_spin = Gtk.SpinButton.new_with_range(1, 1024, 1)
+        self.logsize_spin = Gtk.SpinButton.new_with_range(LOG_MAX_MB_MIN, LOG_MAX_MB_MAX, 1)
         self.logsize_spin.set_value(int(self.visibility_settings.get('max_log_mb', 5)))
         self.logsize_spin.set_width_chars(8)
         logsize_box.pack_start(logsize_label, False, False, 0)
@@ -270,7 +275,7 @@ class SettingsDialog(Gtk.Dialog):
             graph_color_label.set_width_chars(28)
             color_button = Gtk.ColorButton()
             color_button.set_use_alpha(False)
-            color_button.set_rgba(self._hex_to_rgba(self.visibility_settings.get(color_key, '#36c7ed')))
+            color_button.set_rgba(self._hex_to_rgba(self.visibility_settings.get(color_key, GRAPH_LINE_COLOR_FALLBACK)))
             self.graph_line_color_buttons[color_key] = color_button
             graph_color_box.pack_start(graph_color_label, False, False, 0)
             graph_color_box.pack_start(color_button, False, False, 0)
@@ -283,10 +288,10 @@ class SettingsDialog(Gtk.Dialog):
         telegram_box.set_margin_bottom(2)
         self.telegram_enable_check = Gtk.CheckButton(label=tr('telegram_notification'))
         telegram_box.pack_start(self.telegram_enable_check, False, False, 0)
-        test_button = Gtk.Button(label=tr('check_telegram'))
-        test_button.set_halign(Gtk.Align.END)
-        test_button.connect("clicked", self.test_telegram)
-        telegram_box.pack_end(test_button, False, False, 0)
+        self.telegram_test_button = Gtk.Button(label=tr('check_telegram'))
+        self.telegram_test_button.set_halign(Gtk.Align.END)
+        self.telegram_test_button.connect("clicked", self.test_telegram)
+        telegram_box.pack_end(self.telegram_test_button, False, False, 0)
         telegram_content.add(telegram_box)
 
         token_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -357,10 +362,10 @@ class SettingsDialog(Gtk.Dialog):
         discord_box.set_margin_bottom(2)
         self.discord_enable_check = Gtk.CheckButton(label=tr('discord_notification'))
         discord_box.pack_start(self.discord_enable_check, False, False, 0)
-        discord_test_button = Gtk.Button(label=tr('check_discord'))
-        discord_test_button.set_halign(Gtk.Align.END)
-        discord_test_button.connect("clicked", self.test_discord)
-        discord_box.pack_end(discord_test_button, False, False, 0)
+        self.discord_test_button = Gtk.Button(label=tr('check_discord'))
+        self.discord_test_button.set_halign(Gtk.Align.END)
+        self.discord_test_button.connect("clicked", self.test_discord)
+        discord_box.pack_end(self.discord_test_button, False, False, 0)
         discord_content.add(discord_box)
 
         webhook_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -397,6 +402,9 @@ class SettingsDialog(Gtk.Dialog):
         self.show_all()
 
     def _apply_styles(self) -> None:
+        # Провайдер ставится на весь экран, поэтому достаточно одного раза за процесс.
+        if SettingsDialog._css_installed:
+            return
         css = b"""
         .settings-card {
             border-radius: 10px;
@@ -413,16 +421,7 @@ class SettingsDialog(Gtk.Dialog):
                 provider,
                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
             )
-
-    def _normalize_menu_order(self, order) -> list[str]:
-        unique = []
-        for key in order or []:
-            if key in MENU_ORDER_DEFAULT and key not in unique:
-                unique.append(key)
-        for key in MENU_ORDER_DEFAULT:
-            if key not in unique:
-                unique.append(key)
-        return unique
+            SettingsDialog._css_installed = True
 
     def _on_menu_item_toggled(self, _renderer, path: str):
         tree_iter = self.menu_order_store.get_iter(path)
@@ -430,78 +429,85 @@ class SettingsDialog(Gtk.Dialog):
         self.menu_order_store.set_value(tree_iter, MENU_ORDER_ENABLED_COLUMN, not current)
 
     def get_menu_order(self) -> list[str]:
-        keys = []
-        for row in self.menu_order_store:
-            keys.append(row[MENU_ORDER_KEY_COLUMN])
-        return self._normalize_menu_order(keys)
+        return normalize_menu_order(row[MENU_ORDER_KEY_COLUMN] for row in self.menu_order_store)
+
+    def poll_interval_spins(self) -> Dict[str, Gtk.SpinButton]:
+        return {
+            'tray_cpu_interval_sec': self.tray_cpu_interval_spin,
+            'tray_ram_interval_sec': self.tray_ram_interval_spin,
+            'cpu_interval_sec': self.cpu_interval_spin,
+            'ram_interval_sec': self.ram_interval_spin,
+            'net_interval_sec': self.net_interval_spin,
+            'disk_interval_sec': self.disk_interval_spin,
+            'swap_interval_sec': self.swap_interval_spin,
+        }
 
     def get_menu_visibility(self) -> Dict[str, bool]:
-        values: Dict[str, bool] = {}
-        for row in self.menu_order_store:
-            values[row[MENU_ORDER_KEY_COLUMN]] = bool(row[MENU_ORDER_ENABLED_COLUMN])
-        return values
+        return {row[MENU_ORDER_KEY_COLUMN]: bool(row[MENU_ORDER_ENABLED_COLUMN]) for row in self.menu_order_store}
 
     def _prefill_configs(self):
-        try:
-            if TELEGRAM_CONFIG_FILE.exists():
-                config = json.loads(TELEGRAM_CONFIG_FILE.read_text(encoding="utf-8"))
-                self.token_entry.set_text(config.get('TELEGRAM_BOT_TOKEN', '') or '')
-                self.chat_id_entry.set_text(str(config.get('TELEGRAM_CHAT_ID', '') or ''))
-                self.telegram_enable_check.set_active(bool(config.get('enabled', False)))
-                self.interval_spin.set_value(int(config.get('notification_interval', 3600)))
-                self.screenshot_quality_combo.set_active_id(str(config.get('screenshot_quality', 'medium')))
-        except Exception as e:
-            print(f"Ошибка загрузки конфигурации Telegram: {e}")
+        telegram = TelegramNotifier(autoload=False)
+        if read_json(TELEGRAM_CONFIG_FILE):
+            telegram.load_config()
+            self.token_entry.set_text(telegram.token or '')
+            self.chat_id_entry.set_text(telegram.chat_id or '')
+            self.telegram_enable_check.set_active(telegram.enabled)
+            self.interval_spin.set_value(telegram.notification_interval)
+            self.screenshot_quality_combo.set_active_id(telegram.screenshot_quality)
 
-        try:
-            if DISCORD_CONFIG_FILE.exists():
-                config = json.loads(DISCORD_CONFIG_FILE.read_text(encoding="utf-8"))
-                self.webhook_entry.set_text(config.get('DISCORD_WEBHOOK_URL', '') or '')
-                self.discord_enable_check.set_active(bool(config.get('enabled', False)))
-                self.discord_interval_spin.set_value(int(config.get('notification_interval', 3600)))
-        except Exception as e:
-            print(f"Ошибка загрузки конфигурации Discord: {e}")
+        discord = DiscordNotifier(autoload=False)
+        if read_json(DISCORD_CONFIG_FILE):
+            discord.load_config()
+            self.webhook_entry.set_text(discord.webhook_url or '')
+            self.discord_enable_check.set_active(discord.enabled)
+            self.discord_interval_spin.set_value(discord.notification_interval)
 
     def _message(self, title: str, message: str):
-        d = Gtk.MessageDialog(transient_for=self, flags=0,
-                              message_type=Gtk.MessageType.INFO,
-                              buttons=Gtk.ButtonsType.OK,
-                              text=message)
-        d.set_title(title)
-        d.run()
-        d.destroy()
+        show_message(title, message, self)
 
-    def test_telegram(self, _w):
+    def _run_connection_test(self, button: Gtk.Button, send: Callable[[], bool]) -> None:
+        """Отправить тестовое сообщение в фоне: сеть не блокирует интерфейс."""
+        button.set_sensitive(False)
+
+        def worker():
+            try:
+                ok = bool(send())
+            except Exception as e:
+                logger.exception("Ошибка тестовой отправки: %s", e)
+                ok = False
+
+            def finish():
+                button.set_sensitive(True)
+                self._message(tr('ok') if ok else tr('error'),
+                              tr('test_message_ok') if ok else tr('test_message_error'))
+                return False
+
+            GLib.idle_add(finish)
+
+        threading.Thread(target=worker, name="settings-test-send", daemon=True).start()
+
+    def test_telegram(self, button):
         token = self.token_entry.get_text().strip()
         chat_id = self.chat_id_entry.get_text().strip()
-        enabled = self.telegram_enable_check.get_active()
-        interval = int(self.interval_spin.get_value())
-        screenshot_quality = self.screenshot_quality_combo.get_active_id() or "medium"
         if not token or not chat_id:
             self._message(tr('error'), tr('bot_message'))
             return
-        notifier = TelegramNotifier()
-        if notifier.save_config(token, chat_id, enabled, interval, screenshot_quality):
-            ok = notifier.send_message(tr('test_message'), force=True)
-            self._message(tr('ok') if ok else tr('error'),
-                          tr('test_message_ok') if ok else tr('test_message_error'))
-        else:
-            self._message(tr('error'), tr('setting_telegram_error'))
+        # Проверка не сохраняет конфиг: он пишется только по кнопке «Применить».
+        notifier = TelegramNotifier(autoload=False)
+        notifier.configure(token, chat_id, self.telegram_enable_check.get_active(),
+                           int(self.interval_spin.get_value()),
+                           self.screenshot_quality_combo.get_active_id() or "medium")
+        self._run_connection_test(button, lambda: notifier.send_message(tr('test_message'), force=True))
 
-    def test_discord(self, _w):
+    def test_discord(self, button):
         webhook_url = self.webhook_entry.get_text().strip()
-        enabled = self.discord_enable_check.get_active()
-        interval = int(self.discord_interval_spin.get_value())
         if not webhook_url:
             self._message(tr('error'), tr('webhook_required'))
             return
-        notifier = DiscordNotifier()
-        if notifier.save_config(webhook_url, enabled, interval):
-            ok = notifier.send_message(tr('test_message'), force=True)
-            self._message(tr('ok') if ok else tr('error'),
-                          tr('test_message_ok') if ok else tr('test_message_error'))
-        else:
-            self._message(tr('error'), tr('setting_discord_error'))
+        notifier = DiscordNotifier(autoload=False)
+        notifier.configure(webhook_url, self.discord_enable_check.get_active(),
+                           int(self.discord_interval_spin.get_value()))
+        self._run_connection_test(button, lambda: notifier.send_message(tr('test_message'), force=True))
 
     def download_log_file(self, _w):
         dialog = Gtk.FileChooserDialog(
@@ -512,27 +518,27 @@ class SettingsDialog(Gtk.Dialog):
         dialog.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
                            tr('apply_label'), Gtk.ResponseType.OK)
         dialog.set_current_name("info_log.txt")
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            dest = Path(dialog.get_filename())
-            try:
-                if not LOG_FILE.exists():
-                    raise FileNotFoundError(LOG_FILE)
-                dest.write_text(LOG_FILE.read_text(encoding="utf-8"), encoding="utf-8")
-            except Exception as e:
-                print("Ошибка сохранения лога:", e)
-        dialog.destroy()
+        dialog.set_do_overwrite_confirmation(True)
 
-    def refresh_clicks(self) -> None:
-        kbd, ms = get_counts()
-        self.keyboard_check.set_label(f"{tr('keyboard_clicks')}: {kbd}")
-        self.mouse_check.set_label(f"{tr('mouse_clicks')}: {ms}")
+        def on_response(d, response):
+            filename = d.get_filename() if response == Gtk.ResponseType.OK else None
+            d.destroy()
+            if not filename:
+                return
+            try:
+                shutil.copyfile(LOG_FILE, filename)
+            except Exception as e:
+                logger.error("Ошибка сохранения лога: %s", e)
+                self._message(tr('error'), str(e))
+
+        dialog.connect("response", on_response)
+        dialog.show()
 
     @staticmethod
     def _hex_to_rgba(value: object) -> Gdk.RGBA:
         rgba = Gdk.RGBA()
-        if not rgba.parse(str(value or "#36c7ed")):
-            rgba.parse("#36c7ed")
+        if not rgba.parse(str(value or GRAPH_LINE_COLOR_FALLBACK)):
+            rgba.parse(GRAPH_LINE_COLOR_FALLBACK)
         rgba.alpha = 1.0
         return rgba
 

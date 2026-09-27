@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import json
+import html
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
 import time
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, NamedTuple, Optional, TYPE_CHECKING
 
 import requests
 from requests import Response
@@ -16,8 +17,10 @@ from gi.repository import GLib
 
 from app_core.constants import TELEGRAM_CONFIG_FILE
 from app_core.localization import tr
-from app_core.system_usage import SystemUsage
+from app_core.settings import atomic_write_json, graph_line_color_rgb, read_json
+from app_core.system_usage import MetricsSnapshot, SystemUsage
 from app_core.click_tracker import get_counts
+from notifications.base import format_status_message, normalize_interval, post_with_retries, truncate_message
 
 if TYPE_CHECKING:
     from app_core.power_control import PowerControl
@@ -25,15 +28,61 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+class _GraphMetric(NamedTuple):
+    history_key: str
+    title: Callable[[], str]
+    value: Callable[[tuple], float]
+    unit: Callable[[], str]
+    color_key: str
+
+
+def _percent(sample: tuple) -> float:
+    return float(sample[3])
+
+
+_GRAPH_METRICS: dict[str, _GraphMetric] = {
+    "cpu": _GraphMetric("cpu", lambda: tr("cpu"), lambda s: float(s[1]), lambda: "%", "graph_line_color_cpu"),
+    "temp": _GraphMetric("cpu", lambda: f"{tr('cpu')} {tr('temperature')}", lambda s: float(s[2]),
+                         lambda: tr("temperature"), "graph_line_color_temp"),
+    "ram": _GraphMetric("ram", lambda: tr("ram"), _percent, lambda: "%", "graph_line_color_ram"),
+    "swap": _GraphMetric("swap", lambda: tr("swap"), _percent, lambda: "%", "graph_line_color_swap"),
+    "disk": _GraphMetric("disk", lambda: tr("disk"), _percent, lambda: "%", "graph_line_color_disk"),
+    "net": _GraphMetric("net", lambda: tr("network"), lambda s: float(s[1]) + float(s[2]),
+                        lambda: tr("mbps"), "graph_line_color_net_recv"),
+    "keyboard": _GraphMetric("keyboard", lambda: tr("keyboard_clicks"), lambda s: float(s[1]),
+                             lambda: tr("clicks"), "graph_line_color_keyboard"),
+    "mouse": _GraphMetric("mouse", lambda: tr("mouse_clicks"), lambda s: float(s[1]),
+                          lambda: tr("clicks"), "graph_line_color_mouse"),
+}
+_GRAPH_METRIC_ALIASES = {"top": "cpu", "temperature": "temp"}
+
+GRAPH_COMMANDS = {
+    '/cpu_graph': 'cpu',
+    '/temp_graph': 'temp',
+    '/ram_graph': 'ram',
+    '/net_graph': 'net',
+    '/disk_graph': 'disk',
+    '/swap_graph': 'swap',
+    '/keyboard_graph': 'keyboard',
+    '/mouse_graph': 'mouse',
+}
+
 
 class TelegramNotifier:
     MAX_MESSAGE_LENGTH = 4096
-    _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
     _MAX_SEND_RETRIES = 3
     _MAX_PHOTO_SEND_RETRIES = 3
     _PHOTO_OPTIMIZE_THRESHOLD_BYTES = 2 * 1024 * 1024
+    _POLL_TIMEOUT_SEC = 30
+    _MAIN_THREAD_CAPTURE_TIMEOUT_SEC = 10.0
+    # Сообщения старше запуска бота не выполняются: иначе, например, /poweroff,
+    # отправленный пока компьютер был выключен, сработал бы сразу после загрузки.
+    _STALE_MESSAGE_GRACE_SEC = 2
 
-    def __init__(self):
+    def __init__(self, autoload: bool = True):
         self.token: Optional[str] = None
         self.chat_id: Optional[str] = None
         self.enabled: bool = False
@@ -41,279 +90,251 @@ class TelegramNotifier:
         self.screenshot_quality: str = "medium"
         self.last_update_id: int = 0
         self.bot_thread: Optional[threading.Thread] = None
-        self.bot_running: bool = False
+        self._bot_stop_event: Optional[threading.Event] = None
         self.power_control_ref: Optional["PowerControl"] = None
         self.app_ref: Optional["SystemTrayApp"] = None
-        self.load_config()
+        if autoload:
+            self.load_config()
+
+    # ---------- Конфигурация ----------
+
+    def configure(self, token: str, chat_id: str, enabled: bool, interval: int,
+                  screenshot_quality: str = "medium") -> None:
+        """Задать параметры в памяти, не трогая файл конфигурации."""
+        self.token = (token or '').strip() or None
+        self.chat_id = str(chat_id or '').strip() or None
+        self.enabled = bool(enabled)
+        self.notification_interval = normalize_interval(interval)
+        self.screenshot_quality = self._normalize_screenshot_quality(screenshot_quality)
 
     def load_config(self) -> None:
-        try:
-            if TELEGRAM_CONFIG_FILE.exists():
-                config = json.loads(TELEGRAM_CONFIG_FILE.read_text(encoding="utf-8"))
-                self.token = (config.get('TELEGRAM_BOT_TOKEN') or '').strip() or None
-                self.chat_id = (str(config.get('TELEGRAM_CHAT_ID') or '').strip() or None)
-                self.enabled = bool(config.get('enabled', False))
-                self.notification_interval = self._normalize_interval(config.get('notification_interval', 3600))
-                self.screenshot_quality = self._normalize_screenshot_quality(config.get('screenshot_quality', "medium"))
-        except Exception as e:
-            logger.exception("Ошибка загрузки конфигурации Telegram: %s", e)
+        config = read_json(TELEGRAM_CONFIG_FILE)
+        if config:
+            self.configure(
+                config.get('TELEGRAM_BOT_TOKEN') or '',
+                config.get('TELEGRAM_CHAT_ID') or '',
+                config.get('enabled', False),
+                config.get('notification_interval', 3600),
+                config.get('screenshot_quality', "medium"),
+            )
 
-    def save_config(
-            self,
-            token: str,
-            chat_id: str,
-            enabled: bool,
-            interval: int,
-            screenshot_quality: str = "medium",
-    ) -> bool:
+    def save_config(self, token: str, chat_id: str, enabled: bool, interval: int,
+                    screenshot_quality: str = "medium") -> bool:
+        self.configure(token, chat_id, enabled, interval, screenshot_quality)
         try:
-            self.token = token.strip() if token else None
-            self.chat_id = chat_id.strip() if chat_id else None
-            self.enabled = bool(enabled)
-            self.notification_interval = self._normalize_interval(interval)
-            self.screenshot_quality = self._normalize_screenshot_quality(screenshot_quality)
-            TELEGRAM_CONFIG_FILE.write_text(json.dumps({
+            atomic_write_json(TELEGRAM_CONFIG_FILE, {
                 'TELEGRAM_BOT_TOKEN': self.token,
                 'TELEGRAM_CHAT_ID': self.chat_id,
                 'enabled': self.enabled,
                 'notification_interval': self.notification_interval,
                 'screenshot_quality': self.screenshot_quality,
-            }, indent=2), encoding="utf-8")
-            try:
-                import os
-                os.chmod(TELEGRAM_CONFIG_FILE, 0o600)
-            except Exception:
-                pass
+            }, mode=0o600)
             return True
         except Exception as e:
             logger.exception("Ошибка сохранения конфигурации Telegram: %s", e)
             return False
 
     @staticmethod
-    def _normalize_interval(interval: object) -> int:
-        try:
-            value = int(interval)
-        except (TypeError, ValueError):
-            value = 3600
-        return max(10, min(86400, value))
-
-    @staticmethod
     def _normalize_screenshot_quality(value: object) -> str:
         normalized = str(value or "").strip().lower()
-        if normalized in {"low", "medium", "max"}:
-            return normalized
-        return "medium"
+        return normalized if normalized in {"low", "medium", "max"} else "medium"
+
+    def _api_url(self, method: str) -> str:
+        return f"https://api.telegram.org/bot{self.token}/{method}"
+
+    # ---------- Отправка ----------
+
+    @classmethod
+    def _prepare_text(cls, message: str) -> tuple[str, Optional[str]]:
+        """Вернуть (текст, parse_mode). Слишком длинный HTML отправляется простым текстом,
+        чтобы обрезка не разрезала тег."""
+        text = str(message or "")
+        if len(text) <= cls.MAX_MESSAGE_LENGTH:
+            return text, 'HTML'
+        plain = html.unescape(_HTML_TAG_RE.sub("", text))
+        return truncate_message(plain, cls.MAX_MESSAGE_LENGTH), None
 
     def send_message(self, message: str, force: bool = False) -> bool:
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
 
-        text = self._truncate_message(message, self.MAX_MESSAGE_LENGTH)
-        payload = {'chat_id': self.chat_id, 'text': text, 'parse_mode': 'HTML'}
-        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        text, parse_mode = self._prepare_text(message)
+        payload = {'chat_id': self.chat_id, 'text': text}
+        if parse_mode:
+            payload['parse_mode'] = parse_mode
+        url = self._api_url("sendMessage")
 
         try:
-            response = self._post_with_retries(url, payload)
-            if response is None:
-                return False
-            if response.status_code != 200:
-                logger.error("Ошибка отправки в Telegram: HTTP %s", response.status_code)
-                return False
-            data = response.json()
-            if not data.get('ok', False):
-                logger.error("Ошибка Telegram API: %s", data.get('description', 'unknown error'))
-                return False
-            return True
-        except ValueError:
-            logger.error("Ошибка отправки в Telegram: некорректный JSON в ответе API")
-            return False
+            response = post_with_retries(
+                lambda: requests.post(url, data=payload, timeout=(3, 7)),
+                channel="Telegram",
+                max_attempts=self._MAX_SEND_RETRIES,
+            )
+            return self._check_response(response, "сообщения")
         except Exception as e:
             logger.exception("Ошибка отправки сообщения в Telegram: %s", e)
             return False
 
     @staticmethod
-    def _truncate_message(message: str, max_length: int) -> str:
-        text = str(message or "")
-        if len(text) <= max_length:
-            return text
-        return text[: max_length - 1] + "…"
-
-    def _post_with_retries(self, url: str, payload: dict[str, str]) -> Optional[Response]:
-        backoff_seconds = 1.0
-        last_response: Optional[Response] = None
-        for _attempt in range(self._MAX_SEND_RETRIES):
-            try:
-                response = requests.post(url, data=payload, timeout=(3, 7))
-                last_response = response
-                if response.status_code in self._RETRYABLE_STATUS_CODES:
-                    time.sleep(backoff_seconds)
-                    backoff_seconds = min(backoff_seconds * 2, 8.0)
-                    continue
-                return response
-            except requests.exceptions.RequestException as e:
-                logger.warning("Ошибка связи с Telegram API: %s", e)
-                time.sleep(backoff_seconds)
-                backoff_seconds = min(backoff_seconds * 2, 8.0)
-        return last_response
+    def _check_response(response: Optional[Response], what: str) -> bool:
+        if response is None:
+            return False
+        if response.status_code != 200:
+            logger.error("Ошибка отправки %s в Telegram: HTTP %s", what, response.status_code)
+            return False
+        try:
+            data = response.json()
+        except ValueError:
+            logger.error("Ошибка отправки %s в Telegram: некорректный JSON в ответе API", what)
+            return False
+        if not data.get('ok', False):
+            logger.error("Ошибка Telegram API при отправке %s: %s", what, data.get('description', 'unknown error'))
+            return False
+        return True
 
     def send_photo(self, photo_path: str, caption: str = "", force: bool = False) -> bool:
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
 
-        url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
-        data = {'chat_id': self.chat_id, 'caption': self._truncate_message(caption, 1024)}
+        url = self._api_url("sendPhoto")
+        data = {'chat_id': self.chat_id, 'caption': truncate_message(caption, 1024)}
         upload_path, temp_optimized = self._optimize_photo_for_upload(photo_path)
 
+        def send() -> Response:
+            with open(upload_path, 'rb') as photo_file:
+                return requests.post(url, data=data, files={'photo': photo_file}, timeout=(5, 60))
+
         try:
-            response = self._post_photo_with_retries(url, data, upload_path)
-            if response is None:
-                return False
-            if response.status_code != 200:
-                logger.error("Ошибка отправки фото в Telegram: HTTP %s", response.status_code)
-                return False
-            payload = response.json()
-            if not payload.get('ok', False):
-                logger.error("Ошибка Telegram API при отправке фото: %s", payload.get('description', 'unknown error'))
-                return False
-            return True
+            response = post_with_retries(send, channel="Telegram", max_attempts=self._MAX_PHOTO_SEND_RETRIES)
+            return self._check_response(response, "фото")
         except FileNotFoundError:
             logger.error("Файл скриншота не найден: %s", photo_path)
-            return False
-        except ValueError:
-            logger.error("Ошибка отправки фото в Telegram: некорректный JSON в ответе API")
             return False
         except Exception as e:
             logger.exception("Ошибка отправки фото в Telegram: %s", e)
             return False
         finally:
-            if temp_optimized and os.path.exists(temp_optimized):
-                try:
-                    os.remove(temp_optimized)
-                except Exception:
-                    pass
-
-    def _post_photo_with_retries(self, url: str, data: dict[str, str], photo_path: str) -> Optional[Response]:
-        backoff_seconds = 1.0
-        last_response: Optional[Response] = None
-        for _attempt in range(self._MAX_PHOTO_SEND_RETRIES):
-            try:
-                with open(photo_path, 'rb') as photo_file:
-                    files = {'photo': photo_file}
-                    response = requests.post(url, data=data, files=files, timeout=(5, 60))
-                last_response = response
-                if response.status_code in self._RETRYABLE_STATUS_CODES:
-                    time.sleep(backoff_seconds)
-                    backoff_seconds = min(backoff_seconds * 2, 8.0)
-                    continue
-                return response
-            except requests.exceptions.RequestException as e:
-                logger.warning("Ошибка связи с Telegram API при отправке фото: %s", e)
-                time.sleep(backoff_seconds)
-                backoff_seconds = min(backoff_seconds * 2, 8.0)
-        return last_response
+            if temp_optimized:
+                _remove_quietly(temp_optimized)
 
     def _optimize_photo_for_upload(self, photo_path: str) -> tuple[str, Optional[str]]:
         profile = self._screenshot_quality_profile()
-        optimize_threshold = int(profile["threshold"])
-        max_side_limit = int(profile["max_side"])
-        jpeg_quality = int(profile["jpeg_quality"])
-
         try:
-            if os.path.getsize(photo_path) <= optimize_threshold:
+            if os.path.getsize(photo_path) <= profile["threshold"]:
                 return photo_path, None
         except OSError:
             return photo_path, None
 
+        optimized_path: Optional[str] = None
         try:
             from gi.repository import GdkPixbuf  # type: ignore
 
             pixbuf = GdkPixbuf.Pixbuf.new_from_file(photo_path)
-            width = pixbuf.get_width()
-            height = pixbuf.get_height()
+            width, height = pixbuf.get_width(), pixbuf.get_height()
             max_side = max(width, height)
-
-            if max_side > max_side_limit:
-                scale = max_side_limit / float(max_side)
-                new_width = max(1, int(width * scale))
-                new_height = max(1, int(height * scale))
-                pixbuf = pixbuf.scale_simple(new_width, new_height, GdkPixbuf.InterpType.BILINEAR)
+            if max_side > profile["max_side"]:
+                scale = profile["max_side"] / float(max_side)
+                pixbuf = pixbuf.scale_simple(max(1, int(width * scale)), max(1, int(height * scale)),
+                                             GdkPixbuf.InterpType.BILINEAR)
 
             fd, optimized_path = tempfile.mkstemp(prefix="symo-screen-optimized-", suffix=".jpg")
             os.close(fd)
-            pixbuf.savev(optimized_path, "jpeg", ["quality"], [str(jpeg_quality)])
-            if os.path.exists(optimized_path) and os.path.getsize(optimized_path) > 0:
+            pixbuf.savev(optimized_path, "jpeg", ["quality"], [str(profile["jpeg_quality"])])
+            if os.path.getsize(optimized_path) > 0:
                 return optimized_path, optimized_path
-            return photo_path, None
         except Exception as e:
             logger.warning("Не удалось оптимизировать скриншот перед отправкой: %s", e)
-            return photo_path, None
+        if optimized_path:
+            _remove_quietly(optimized_path)
+        return photo_path, None
 
     def _screenshot_quality_profile(self) -> dict[str, int]:
-        quality = self._normalize_screenshot_quality(self.screenshot_quality)
         profiles = {
             "low": {"threshold": 0, "max_side": 1280, "jpeg_quality": 60},
             "medium": {"threshold": self._PHOTO_OPTIMIZE_THRESHOLD_BYTES, "max_side": 1920, "jpeg_quality": 82},
             "max": {"threshold": 8 * 1024 * 1024, "max_side": 2560, "jpeg_quality": 92},
         }
-        return profiles[quality]
+        return profiles[self._normalize_screenshot_quality(self.screenshot_quality)]
+
+    # ---------- Скриншоты ----------
 
     def _capture_screenshot_to_temp(self) -> Optional[str]:
         fd, temp_path = tempfile.mkstemp(prefix="symo-screen-", suffix=".png")
         os.close(fd)
-
+        captured = False
         try:
             if self._capture_screenshot_with_gdk(temp_path):
+                captured = True
                 return temp_path
 
             screenshot_tools = [
                 ["gnome-screenshot", "-f"],
-                ["scrot"],
+                ["scrot", "-o"],
                 ["grim"],
                 ["import", "-window", "root"],
             ]
             for tool in screenshot_tools:
                 if not shutil.which(tool[0]):
                     continue
+                command = [*tool, temp_path]
                 try:
-                    command = [*tool, temp_path]
                     result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=15)
-                    if result.returncode == 0 and os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
-                        return temp_path
-                    logger.warning("Команда скриншота завершилась с кодом %s: %s", result.returncode, " ".join(command))
                 except Exception as e:
                     logger.warning("Не удалось выполнить команду скриншота %s: %s", tool[0], e)
+                    continue
+                if result.returncode == 0 and os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
+                    captured = True
+                    return temp_path
+                logger.warning("Команда скриншота завершилась с кодом %s: %s", result.returncode, " ".join(command))
             return None
         except Exception as e:
             logger.exception("Ошибка получения скриншота: %s", e)
             return None
         finally:
-            if not os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
+            if not captured:
+                _remove_quietly(temp_path)
+
+    def _capture_screenshot_with_gdk(self, target_path: str) -> bool:
+        """Снять экран через GDK. GTK не потокобезопасен, поэтому из фонового
+        потока съёмка передаётся в главный цикл, а результат ожидается."""
+        if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+            # Под Wayland корневое окно X11 недоступно — используем внешние утилиты.
+            return False
+        if threading.current_thread() is threading.main_thread():
+            return self._capture_gdk_now(target_path)
+
+        done = threading.Event()
+        result = {"ok": False}
+
+        def run_in_main_loop() -> bool:
+            try:
+                result["ok"] = self._capture_gdk_now(target_path)
+            finally:
+                done.set()
+            return False
+
+        GLib.idle_add(run_in_main_loop)
+        if not done.wait(self._MAIN_THREAD_CAPTURE_TIMEOUT_SEC):
+            logger.warning("Главный цикл не ответил вовремя на запрос скриншота")
+            return False
+        return result["ok"]
 
     @staticmethod
-    def _capture_screenshot_with_gdk(target_path: str) -> bool:
+    def _capture_gdk_now(target_path: str) -> bool:
         try:
             from gi.repository import Gdk  # type: ignore
         except Exception:
             return False
-
         try:
             root_window = Gdk.get_default_root_window()
             if root_window is None:
                 return False
-
-            width = root_window.get_width()
-            height = root_window.get_height()
+            width, height = root_window.get_width(), root_window.get_height()
             if width <= 0 or height <= 0:
                 return False
-
             pixbuf = Gdk.pixbuf_get_from_window(root_window, 0, 0, width, height)
             if pixbuf is None:
                 return False
-
             pixbuf.savev(target_path, "png", [], [])
             return os.path.exists(target_path) and os.path.getsize(target_path) > 0
         except Exception as e:
@@ -332,10 +353,9 @@ class TelegramNotifier:
             else:
                 self.send_message(f"❌ {tr('bot_screenshot_send_error')}")
         finally:
-            try:
-                os.remove(screenshot_path)
-            except Exception:
-                pass
+            _remove_quietly(screenshot_path)
+
+    # ---------- Графики ----------
 
     def set_power_control(self, power_control: "PowerControl") -> None:
         self.power_control_ref = power_control
@@ -343,41 +363,34 @@ class TelegramNotifier:
     def set_app_context(self, app: "SystemTrayApp") -> None:
         self.app_ref = app
 
-    def _metric_samples_for_graph(self, metric: str) -> tuple[str, list[tuple[float, float]], str]:
-        app = self.app_ref
-        if app is None:
-            return "metric", [], ""
+    @staticmethod
+    def _resolve_graph_metric(metric: str) -> Optional[_GraphMetric]:
+        key = (metric or "").strip().lower()
+        return _GRAPH_METRICS.get(_GRAPH_METRIC_ALIASES.get(key, key))
 
-        metric_key = (metric or "").strip().lower()
-        mapping = {
-            "cpu": (tr("cpu"), list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
-            "top": (tr("cpu"), list(getattr(app, "cpu_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, "%"),
-            "temp": (f"{tr('cpu')} {tr('temperature')}", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, tr("temperature")),
-            "temperature": (f"{tr('cpu')} {tr('temperature')}", list(getattr(app, "cpu_history", [])), lambda s: float(s[2]) if len(s) > 2 else 0.0, tr("temperature")),
-            "ram": (tr("ram"), list(getattr(app, "ram_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
-            "swap": (tr("swap"), list(getattr(app, "swap_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
-            "disk": (tr("disk"), list(getattr(app, "disk_history", [])), lambda s: float(s[3]) if len(s) > 3 else 0.0, "%"),
-            "net": (tr("network"), list(getattr(app, "net_history", [])), lambda s: float(s[1]) + float(s[2]), tr("mbps")),
-            "keyboard": (tr("keyboard_clicks"), list(getattr(app, "keyboard_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, tr("clicks")),
-            "mouse": (tr("mouse_clicks"), list(getattr(app, "mouse_history", [])), lambda s: float(s[1]) if len(s) > 1 else 0.0, tr("clicks")),
-        }
-        title, samples, extractor, unit = mapping.get(metric_key, ("", [], lambda _s: 0.0, ""))
+    def _metric_samples_for_graph(self, metric: str) -> tuple[str, list[tuple[float, float]], str]:
+        spec = self._resolve_graph_metric(metric)
+        app = self.app_ref
+        if spec is None or app is None:
+            return "", [], ""
         points: list[tuple[float, float]] = []
-        for sample in samples:
+        for sample in app.metrics_history.samples(spec.history_key):
             try:
-                ts = float(sample[0])
-                value = max(0.0, float(extractor(sample)))
-                points.append((ts, value))
-            except Exception:
+                points.append((float(sample[0]), max(0.0, spec.value(sample))))
+            except (TypeError, ValueError, IndexError):
                 continue
-        return title, points, unit
+        return spec.title(), points, spec.unit()
+
+    def _graph_line_color_rgb(self, metric: str) -> tuple[float, float, float]:
+        spec = self._resolve_graph_metric(metric) or _GRAPH_METRICS["cpu"]
+        settings = getattr(self.app_ref, "visibility_settings", None) or {}
+        return graph_line_color_rgb(settings, spec.color_key)
 
     def _render_metric_graph_to_temp(self, metric: str) -> Optional[tuple[str, str]]:
         title, points, unit = self._metric_samples_for_graph(metric)
         if not points or not title:
             return None
-        if len(points) > 180:
-            points = points[-180:]
+        points = points[-180:]
 
         try:
             import cairo  # type: ignore
@@ -392,14 +405,12 @@ class TelegramNotifier:
         plot_h = max(10, height - margin_top - margin_bottom)
 
         values = [p[1] for p in points]
-        v_min = min(values)
-        v_max = max(values)
+        v_min, v_max = min(values), max(values)
         if abs(v_max - v_min) < 1e-6:
             v_min = max(0.0, v_min - 1.0)
             v_max = v_max + 1.0
+        caption = tr('graph_caption').format(title)
 
-        fd, path = tempfile.mkstemp(prefix=f"symo-graph-{metric}-", suffix=".png")
-        os.close(fd)
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
         cr = cairo.Context(surface)
 
@@ -413,13 +424,13 @@ class TelegramNotifier:
         cr.set_font_size(16)
         cr.set_source_rgb(0.92, 0.92, 0.92)
         cr.move_to(margin_left, 24)
-        cr.show_text(f"{title} graph")
+        cr.show_text(caption)
 
         cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         cr.set_font_size(12)
         cr.set_source_rgb(0.65, 0.65, 0.65)
         cr.move_to(margin_left, height - 16)
-        cr.show_text(f"Samples: {len(points)}")
+        cr.show_text(f"{tr('samples_label')}: {len(points)}")
 
         time_start_label = self._format_graph_time(points[0][0])
         time_end_label = self._format_graph_time(points[-1][0])
@@ -430,16 +441,17 @@ class TelegramNotifier:
         cr.move_to(margin_left + plot_w - extents[2], margin_top + plot_h + 16)
         cr.show_text(time_end_label)
 
-        for i in range(1, len(points)):
-            x1 = margin_left + (i - 1) * (plot_w / max(1, len(points) - 1))
-            x2 = margin_left + i * (plot_w / max(1, len(points) - 1))
-            y1 = margin_top + plot_h - ((points[i - 1][1] - v_min) / (v_max - v_min)) * plot_h
-            y2 = margin_top + plot_h - ((points[i][1] - v_min) / (v_max - v_min)) * plot_h
-            cr.set_source_rgb(*self._graph_line_color_rgb(metric))
-            cr.set_line_width(2.0)
-            cr.move_to(x1, y1)
-            cr.line_to(x2, y2)
-            cr.stroke()
+        step_x = plot_w / max(1, len(points) - 1)
+        cr.set_source_rgb(*self._graph_line_color_rgb(metric))
+        cr.set_line_width(2.0)
+        for i, (_ts, value) in enumerate(points):
+            x = margin_left + i * step_x
+            y = margin_top + plot_h - ((value - v_min) / (v_max - v_min)) * plot_h
+            if i == 0:
+                cr.move_to(x, y)
+            else:
+                cr.line_to(x, y)
+        cr.stroke()
 
         cr.set_source_rgb(0.82, 0.82, 0.82)
         cr.move_to(8, margin_top + 6)
@@ -447,8 +459,14 @@ class TelegramNotifier:
         cr.move_to(8, margin_top + plot_h)
         cr.show_text(f"{v_min:.1f}{unit}")
 
-        surface.write_to_png(path)
-        return path, title
+        fd, path = tempfile.mkstemp(prefix=f"symo-graph-{metric}-", suffix=".png")
+        os.close(fd)
+        try:
+            surface.write_to_png(path)
+        except Exception:
+            _remove_quietly(path)
+            raise
+        return path, caption
 
     @staticmethod
     def _format_graph_time(timestamp: float) -> str:
@@ -457,198 +475,186 @@ class TelegramNotifier:
         except Exception:
             return "--:--:--"
 
-    def _graph_line_color_rgb(self, metric: str) -> tuple[float, float, float]:
-        metric_key = (metric or "").strip().lower()
-        color_key_by_metric = {
-            "cpu": "graph_line_color_cpu",
-            "top": "graph_line_color_cpu",
-            "temp": "graph_line_color_temp",
-            "temperature": "graph_line_color_temp",
-            "ram": "graph_line_color_ram",
-            "swap": "graph_line_color_swap",
-            "disk": "graph_line_color_disk",
-            "net": "graph_line_color_net_recv",
-            "keyboard": "graph_line_color_keyboard",
-            "mouse": "graph_line_color_mouse",
-        }
-        default_hex = "#36c7ed"
-        selected_key = color_key_by_metric.get(metric_key, "graph_line_color_cpu")
-        app = self.app_ref
-        hex_color = default_hex
-        if app is not None:
-            raw = str(getattr(app, "visibility_settings", {}).get(selected_key, default_hex)).strip()
-            if len(raw) == 7 and raw.startswith('#') and all(ch in "0123456789abcdefABCDEF" for ch in raw[1:]):
-                hex_color = raw
-        return (
-            int(hex_color[1:3], 16) / 255.0,
-            int(hex_color[3:5], 16) / 255.0,
-            int(hex_color[5:7], 16) / 255.0,
-        )
-
     def _send_metric_graph(self, metric: str) -> None:
         render_result = self._render_metric_graph_to_temp(metric)
         if render_result is None:
-            self.send_message(
-                f"❌ {tr('graph_unavailable')}. "
-                "/cpu_graph|/temp_graph|/ram_graph|/net_graph|/disk_graph|/swap_graph|/keyboard_graph|/mouse_graph"
-            )
+            self.send_message(f"❌ {tr('graph_unavailable')}. " + "|".join(GRAPH_COMMANDS))
             return
-        path, title = render_result
+        path, caption = render_result
         try:
-            caption = f"{title} graph"
             if not self.send_photo(path, caption):
                 self.send_message(f"❌ {tr('graph_send_failed')}")
         finally:
-            try:
-                os.remove(path)
-            except Exception:
-                pass
+            _remove_quietly(path)
+
+    # ---------- Бот ----------
+
+    @property
+    def bot_running(self) -> bool:
+        return self._bot_stop_event is not None and not self._bot_stop_event.is_set()
 
     def start_bot(self) -> None:
         if not self.enabled or not self.token or self.bot_running:
             return
-
-        self.bot_running = True
-        self.bot_thread = threading.Thread(target=self._bot_worker, daemon=True)
+        # У каждого потока своё событие остановки: старый поток, ещё висящий в
+        # long-poll, после возврата увидит своё событие и завершится, а не
+        # продолжит работу параллельно новому.
+        stop_event = threading.Event()
+        self._bot_stop_event = stop_event
+        self.bot_thread = threading.Thread(target=self._bot_worker, args=(stop_event,),
+                                           name="telegram-bot", daemon=True)
         self.bot_thread.start()
         logger.info("Telegram бот запущен")
 
-    def stop_bot(self) -> None:
-        self.bot_running = False
-        if self.bot_thread and self.bot_thread.is_alive():
-            self.bot_thread.join(timeout=2.0)
+    def stop_bot(self, timeout: float = 0.0) -> None:
+        """Остановить бота. Ждать поток не обязательно: он висит в long-poll до
+        30 секунд и сам завершится, увидев своё событие остановки."""
+        if self._bot_stop_event is not None:
+            self._bot_stop_event.set()
+        if timeout > 0 and self.bot_thread and self.bot_thread.is_alive():
+            self.bot_thread.join(timeout=timeout)
         logger.info("Telegram бот остановлен")
 
-    def _bot_worker(self) -> None:
+    def _skip_pending_updates(self) -> bool:
+        """Подтвердить все накопившиеся обновления, не выполняя их."""
+        try:
+            response = requests.get(self._api_url("getUpdates"), params={'offset': -1, 'timeout': 0}, timeout=10)
+            if response.status_code != 200:
+                return False
+            data = response.json()
+            if not data.get('ok'):
+                return False
+            result = data.get('result') or []
+            if result:
+                self.last_update_id = max(self.last_update_id, int(result[-1]['update_id']))
+            return True
+        except Exception as e:
+            logger.warning("Не удалось пропустить старые обновления Telegram: %s", e.__class__.__name__)
+            return False
+
+    def _bot_worker(self, stop_event: threading.Event) -> None:
+        started_at = time.time()
+        self._skip_pending_updates()
         backoff_seconds = 1.0
-        while self.bot_running and self.enabled and self.token:
+
+        def pause() -> None:
+            nonlocal backoff_seconds
+            stop_event.wait(min(backoff_seconds, 30.0))
+            backoff_seconds = min(backoff_seconds * 2, 30.0)
+
+        while not stop_event.is_set() and self.enabled and self.token:
             try:
-                url = f"https://api.telegram.org/bot{self.token}/getUpdates"
-                params = {'timeout': 30, 'offset': self.last_update_id + 1}
-                response = requests.get(url, params=params, timeout=35)
+                params = {'timeout': self._POLL_TIMEOUT_SEC, 'offset': self.last_update_id + 1}
+                response = requests.get(self._api_url("getUpdates"), params=params,
+                                        timeout=self._POLL_TIMEOUT_SEC + 5)
+                if stop_event.is_set():
+                    break
 
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('ok'):
                         for update in data.get('result', []):
-                            self.last_update_id = update['update_id']
-
-                            message = update.get('message', {})
-                            chat_id = str(message.get('chat', {}).get('id', ''))
-
-                            if chat_id != self.chat_id:
-                                continue
-
-                            text = message.get('text', '').strip()
-                            if not text:
-                                continue
-
-                            parts = text.split(maxsplit=1)
-                            raw_command = parts[0].strip().lower()
-                            command = raw_command.split('@', 1)[0]
-
-                            if command == '/poweroff' and self.power_control_ref:
-                                self.send_message(tr('bot_shutdown_message'))
-                                GLib.idle_add(self.power_control_ref._shutdown)
-
-                            elif command == '/reboot' and self.power_control_ref:
-                                self.send_message(tr('bot_reboot_message'))
-                                GLib.idle_add(self.power_control_ref._reboot)
-
-                            elif command == '/lock' and self.power_control_ref:
-                                self.send_message(tr('bot_lock_message'))
-                                GLib.idle_add(self.power_control_ref._lock_screen)
-
-                            elif command == '/status':
-                                self._send_system_status()
-
-                            elif command == '/screenshot':
-                                self.send_message(tr('bot_screenshot_processing'))
-                                self._send_screenshot()
-
-                            elif command == '/help':
-                                help_text = tr('bot_help_message')
-                                help_text += (
-                                    f"\n\n📊 {tr('graph_commands_title')}:"
-                                    f"\n/cpu_graph - {tr('cpu')}"
-                                    f"\n/temp_graph - {tr('cpu')} {tr('temperature')}"
-                                    f"\n/ram_graph - {tr('ram')}"
-                                    f"\n/net_graph - {tr('network')}"
-                                    f"\n/disk_graph - {tr('disk')}"
-                                    f"\n/swap_graph - {tr('swap')}"
-                                    f"\n/keyboard_graph - {tr('keyboard_clicks')}"
-                                    f"\n/mouse_graph - {tr('mouse_clicks')}"
-                                )
-                                self.send_message(help_text)
-
-                            elif command in {
-                                '/cpu_graph',
-                                '/temp_graph',
-                                '/ram_graph',
-                                '/net_graph',
-                                '/disk_graph',
-                                '/swap_graph',
-                                '/keyboard_graph',
-                                '/mouse_graph',
-                            }:
-                                metric_alias_map = {
-                                    '/cpu_graph': 'cpu',
-                                    '/temp_graph': 'temp',
-                                    '/ram_graph': 'ram',
-                                    '/net_graph': 'net',
-                                    '/disk_graph': 'disk',
-                                    '/swap_graph': 'swap',
-                                    '/keyboard_graph': 'keyboard',
-                                    '/mouse_graph': 'mouse',
-                                }
-                                self._send_metric_graph(metric_alias_map.get(command, 'cpu'))
-
-                            else:
-                                self.send_message(f"{tr('unknown_command')}. {tr('unknown_command_help')}")
+                            self.last_update_id = max(self.last_update_id, int(update['update_id']))
+                            self._process_update(update, started_at)
                     backoff_seconds = 1.0
-
                 elif response.status_code == 409:
-                    logger.warning("Предупреждение: Другой экземпляр бота уже получает обновления")
-                    time.sleep(min(backoff_seconds, 30.0))
-                    backoff_seconds = min(backoff_seconds * 2, 30.0)
+                    logger.warning("Другой экземпляр бота уже получает обновления")
+                    pause()
                 else:
                     logger.warning("Ошибка Telegram getUpdates: HTTP %s", response.status_code)
-                    time.sleep(min(backoff_seconds, 30.0))
-                    backoff_seconds = min(backoff_seconds * 2, 30.0)
-
+                    pause()
             except requests.exceptions.Timeout:
                 continue
             except requests.exceptions.RequestException as e:
-                logger.warning("Ошибка связи с Telegram API: %s", e)
-                time.sleep(min(backoff_seconds, 30.0))
-                backoff_seconds = min(backoff_seconds * 2, 30.0)
+                logger.warning("Ошибка связи с Telegram API: %s", e.__class__.__name__)
+                pause()
             except Exception as e:
                 logger.exception("Неожиданная ошибка в боте: %s", e)
-                time.sleep(min(backoff_seconds, 30.0))
-                backoff_seconds = min(backoff_seconds * 2, 30.0)
+                pause()
+
+    def _process_update(self, update: dict, started_at: float) -> None:
+        message = update.get('message') or {}
+        if str((message.get('chat') or {}).get('id', '')) != self.chat_id:
+            return
+        try:
+            sent_at = float(message.get('date', 0))
+        except (TypeError, ValueError):
+            sent_at = 0.0
+        if sent_at < started_at - self._STALE_MESSAGE_GRACE_SEC:
+            logger.info("Пропущена устаревшая команда Telegram")
+            return
+        text = (message.get('text') or '').strip()
+        if not text:
+            return
+        raw_command = text.split(maxsplit=1)[0].strip().lower()
+        command = raw_command.split('@', 1)[0]
+        self._handle_command(command)
+
+    def _handle_command(self, command: str) -> None:
+        power = self.power_control_ref
+        power_commands = {
+            '/poweroff': (lambda: tr('bot_shutdown_message'), 'power_off'),
+            '/reboot': (lambda: tr('bot_reboot_message'), 'reboot'),
+            '/lock': (lambda: tr('bot_lock_message'), 'lock_screen'),
+        }
+        if command in power_commands and power is not None:
+            message, method_name = power_commands[command]
+            self.send_message(message())
+            # Команды питания выполняются в главном потоке GTK.
+            GLib.idle_add(getattr(power, method_name))
+        elif command == '/status':
+            self._send_system_status()
+        elif command == '/screenshot':
+            self.send_message(tr('bot_screenshot_processing'))
+            self._send_screenshot()
+        elif command == '/help':
+            self.send_message(self._help_text())
+        elif command in GRAPH_COMMANDS:
+            self._send_metric_graph(GRAPH_COMMANDS[command])
+        else:
+            self.send_message(f"{tr('unknown_command')}. {tr('unknown_command_help')}")
+
+    @staticmethod
+    def _help_text() -> str:
+        return (
+            tr('bot_help_message')
+            + f"\n\n📊 {tr('graph_commands_title')}:"
+            + f"\n/cpu_graph - {tr('cpu')}"
+            + f"\n/temp_graph - {tr('cpu')} {tr('temperature')}"
+            + f"\n/ram_graph - {tr('ram')}"
+            + f"\n/net_graph - {tr('network')}"
+            + f"\n/disk_graph - {tr('disk')}"
+            + f"\n/swap_graph - {tr('swap')}"
+            + f"\n/keyboard_graph - {tr('keyboard_clicks')}"
+            + f"\n/mouse_graph - {tr('mouse_clicks')}"
+        )
+
+    def _current_snapshot(self) -> MetricsSnapshot:
+        """Последний срез из основного цикла. Прямой вызов psutil.cpu_percent()
+        из этого потока сбил бы замер загрузки CPU в основном цикле."""
+        snapshot = getattr(self.app_ref, "latest_snapshot", None)
+        if snapshot is not None:
+            return snapshot
+        ram_used, ram_total = SystemUsage.get_ram_usage()
+        swap_used, swap_total = SystemUsage.get_swap_usage()
+        disk_used, disk_total = SystemUsage.get_disk_usage()
+        kbd, ms = get_counts()
+        return MetricsSnapshot(
+            timestamp=time.time(), cpu_temp=SystemUsage.get_cpu_temp(), cpu_usage=SystemUsage.get_cpu_usage(),
+            ram_used=ram_used, ram_total=ram_total, swap_used=swap_used, swap_total=swap_total,
+            disk_used=disk_used, disk_total=disk_total, net_recv=0.0, net_sent=0.0,
+            uptime=SystemUsage.get_uptime(), keyboard_clicks=kbd, mouse_clicks=ms,
+        )
 
     def _send_system_status(self) -> None:
         try:
-            cpu_temp = SystemUsage.get_cpu_temp()
-            cpu_usage = SystemUsage.get_cpu_usage()
-            ram_used, ram_total = SystemUsage.get_ram_usage()
-            disk_used, disk_total = SystemUsage.get_disk_usage()
-            swap_used, swap_total = SystemUsage.get_swap_usage()
-            uptime = SystemUsage.get_uptime()
-
-            kbd, ms = get_counts()
-
-            status_msg = (
-                f"🖥 <b>{tr('system_status')}</b>\n"
-                f"🔹 <b>{tr('cpu')}:</b> {cpu_usage:.0f}% ({cpu_temp}{tr('temperature')})\n"
-                f"🔹 <b>{tr('ram')}:</b> {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
-                f"🔹 <b>{tr('swap')}:</b> {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
-                f"🔹 <b>{tr('disk')}:</b> {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
-                f"🔹 <b>{tr('uptime')}:</b> {uptime}\n"
-                f"🔹 <b>{tr('keyboard')}:</b> {kbd} {tr('presses')}\n"
-                f"🔹 <b>{tr('mouse')}:</b> {ms} {tr('clicks')}"
-            )
-
-            self.send_message(status_msg)
+            self.send_message(format_status_message(self._current_snapshot(), "html"))
         except Exception as e:
-            self.send_message(f"❌ {tr('error')}: {e}")
+            self.send_message(f"❌ {html.escape(tr('error'))}: {html.escape(str(e))}")
+
+
+def _remove_quietly(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass

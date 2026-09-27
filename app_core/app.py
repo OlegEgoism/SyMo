@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import json
+import dataclasses
 import logging
+import os
 import platform
-from collections import deque
-from datetime import datetime
-from queue import Empty, Full, Queue
 import signal
 import subprocess
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 import gi
 
@@ -25,7 +24,7 @@ except (ValueError, ImportError):
 gi.require_version("Gtk", "3.0")
 
 import psutil
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Gtk, GLib
 from pynput import keyboard, mouse
 
 from .constants import (
@@ -35,59 +34,33 @@ from .constants import (
     LOG_FILE,
     SETTINGS_FILE,
     TIME_UPDATE_SEC,
-    GRAPH_HISTORY_MINUTES_DEFAULT,
-    GRAPH_HISTORY_MINUTES_MIN,
-    GRAPH_HISTORY_MINUTES_MAX,
     SUPPORTED_LANGS,
-    MENU_ORDER_DEFAULT,
+    POLL_INTERVAL_DEFAULT_SEC,
 )
-from .dialogs import SettingsDialog
-from .localization import tr, detect_system_language, set_language, get_language
-from .logging_utils import rotate_log_if_needed
-from notifications import TelegramNotifier, DiscordNotifier
-from .power_control import PowerControl
-from .system_usage import MetricsSampler
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
+from .dialogs import SettingsDialog
+from .graphs import GraphWindow, build_graph_specs
+from .history import MetricsHistory
+from .language import LANGUAGES
+from .localization import tr, detect_system_language, set_language, get_language
+from .logging_utils import MetricsLogWriter, setup_logging
+from .power_control import PowerControl
+from .settings import (
+    graph_line_color_rgb,
+    load_settings,
+    normalize_menu_order,
+    sanitize_graph_history_minutes,
+    sanitize_hex_color,
+    sanitize_log_size_mb,
+    sanitize_poll_interval,
+    save_settings,
+)
+from .system_usage import MetricsSampler, MetricsSnapshot
+from .ui import mapped_or_none, show_message
+from notifications import TelegramNotifier, DiscordNotifier
+from notifications.base import NotificationDispatcher, format_status_message
 
 logger = logging.getLogger(__name__)
-
-POLL_INTERVAL_DEFAULT_SEC = 1
-POLL_INTERVAL_MIN_SEC = 1
-POLL_INTERVAL_MAX_SEC = 60
-POLL_INTERVAL_SETTING_KEYS = (
-    'tray_cpu_interval_sec',
-    'tray_ram_interval_sec',
-    'cpu_interval_sec',
-    'ram_interval_sec',
-    'net_interval_sec',
-    'disk_interval_sec',
-    'swap_interval_sec',
-)
-
-GRAPH_COLOR_DEFAULTS = {
-    'graph_line_color_cpu': '#19ccff',
-    'graph_line_color_temp': '#ff6633',
-    'graph_line_color_ram': '#59ff59',
-    'graph_line_color_swap': '#f28cff',
-    'graph_line_color_disk': '#59b8ff',
-    'graph_line_color_net_recv': '#40e65a',
-    'graph_line_color_net_sent': '#ffbf33',
-    'graph_line_color_keyboard': '#ffd93f',
-    'graph_line_color_mouse': '#66e6ff',
-}
-
-
-
-def _text_width(text_extents) -> float:
-    """Return cairo text extents width for both object- and tuple-based APIs."""
-    width = getattr(text_extents, "width", None)
-    if width is not None:
-        return float(width)
-    try:
-        # tuple API: (x_bearing, y_bearing, width, height, x_advance, y_advance)
-        return float(text_extents[2])
-    except Exception:
-        return 0.0
 
 LANGUAGE_FLAGS = {
     'ru': '🇷🇺',
@@ -100,10 +73,13 @@ LANGUAGE_FLAGS = {
     'fr': '🇫🇷',
 }
 
+POWER_MENU_KEYS = ('show_power_off', 'show_reboot', 'show_lock', 'show_timer')
+
+
 class SystemTrayApp:
     def __init__(self):
         self.settings_file = SETTINGS_FILE
-        self.visibility_settings = self.load_settings()
+        self.visibility_settings: Dict[str, Any] = load_settings(self.settings_file)
 
         if not self.visibility_settings.get('language'):
             self.visibility_settings['language'] = detect_system_language()
@@ -111,6 +87,60 @@ class SystemTrayApp:
         set_language(self.visibility_settings['language'])
 
         self.indicator = AppInd.Indicator.new(APP_ID, ICON_FALLBACK, AppInd.IndicatorCategory.SYSTEM_SERVICES)
+        self._set_indicator_icon()
+        self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
+
+        self._quitting = False
+        self.power_control = PowerControl(self)
+        self.settings_dialog: Optional[SettingsDialog] = None
+        self._progress_dialog: Optional[Gtk.MessageDialog] = None
+
+        self.graph_specs = build_graph_specs()
+        self.graph_windows: Dict[str, GraphWindow] = {}
+        self.metrics_history = MetricsHistory(self._graph_history_points(self.visibility_settings['graph_history_minutes']))
+        self.latest_snapshot: Optional[MetricsSnapshot] = None
+
+        # Кэши, чтобы не отправлять одинаковые подписи в AppIndicator (D-Bus) каждую секунду.
+        self._label_cache: Dict[Gtk.MenuItem, str] = {}
+        self._indicator_label: Optional[str] = None
+        self._item_display_cache: Dict[str, str] = {}
+        self._last_item_update_ts: Dict[str, float] = {}
+
+        self.create_menu()
+
+        net = psutil.net_io_counters()
+        self.prev_net_data = {'recv': net.bytes_recv, 'sent': net.bytes_sent, 'time': time.time()}
+        self.metrics_sampler = MetricsSampler()
+
+        self.keyboard_listener = None
+        self.mouse_listener = None
+        self.init_listeners()
+
+        self.telegram_notifier = TelegramNotifier()
+        self.discord_notifier = DiscordNotifier()
+        self.last_telegram_notification_time = 0.0
+        self.last_discord_notification_time = 0.0
+        self.telegram_dispatcher = NotificationDispatcher(self.telegram_notifier.send_message, "Telegram")
+        self.discord_dispatcher = NotificationDispatcher(self.discord_notifier.send_message, "Discord")
+
+        self.telegram_notifier.set_power_control(self.power_control)
+        self.telegram_notifier.set_app_context(self)
+        self.telegram_notifier.start_bot()
+
+        self._profiling_cycle_count = 0
+        self._profiling_total_ms = 0.0
+        self._profiling_max_ms = 0.0
+
+        self.metrics_log = MetricsLogWriter(LOG_FILE)
+        if self.visibility_settings.get('logging_enabled', True):
+            try:
+                self.metrics_log.ensure_exists()
+            except OSError as e:
+                logger.warning("Не удалось создать файл лога: %s", e)
+
+    # ---------- Инициализация ----------
+
+    def _set_indicator_icon(self) -> None:
         icon_candidates = [
             Path(__file__).resolve().parent / "logo.png",
             Path(__file__).resolve().parent.parent / "logo.png",
@@ -118,167 +148,236 @@ class SystemTrayApp:
         ]
         icon_path = next((path for path in icon_candidates if path.exists()), None)
         try:
-            if icon_path:
-                if hasattr(self.indicator, "set_icon_full"):
-                    self.indicator.set_icon_full(str(icon_path), APP_NAME)
-                else:
-                    self.indicator.set_icon(str(icon_path))
+            if icon_path and hasattr(self.indicator, "set_icon_full"):
+                self.indicator.set_icon_full(str(icon_path), APP_NAME)
+            elif icon_path:
+                self.indicator.set_icon(str(icon_path))
             else:
                 self.indicator.set_icon(ICON_FALLBACK)
         except Exception as e:
-            print(f"Не удалось установить иконку: {e}")
+            logger.warning("Не удалось установить иконку: %s", e)
             self.indicator.set_icon(ICON_FALLBACK)
-        self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
-
-        signal.signal(signal.SIGTERM, self.quit)
-        signal.signal(signal.SIGINT, self.quit)
-
-        self.power_control = PowerControl(self)
-        self.power_control.set_parent_window(None)
-
-        self.create_menu()
-
-        net = psutil.net_io_counters()
-        self.prev_net_data = {'recv': net.bytes_recv, 'sent': net.bytes_sent, 'time': time.time()}
-
-        self.keyboard_listener = None
-        self.mouse_listener = None
-        self._notify_no_global_hooks = False
-        self.init_listeners()
-
-        self.telegram_notifier = TelegramNotifier()
-        self.discord_notifier = DiscordNotifier()
-        self.last_telegram_notification_time = 0.0
-        self.last_discord_notification_time = 0.0
-        self._notification_stop_event = threading.Event()
-        self._telegram_queue: Queue[Optional[str]] = Queue(maxsize=1)
-        self._discord_queue: Queue[Optional[str]] = Queue(maxsize=1)
-        self._telegram_worker = threading.Thread(
-            target=self._notification_worker,
-            args=(self._telegram_queue, self.telegram_notifier.send_message, "Telegram"),
-            daemon=True,
-        )
-        self._discord_worker = threading.Thread(
-            target=self._notification_worker,
-            args=(self._discord_queue, self.discord_notifier.send_message, "Discord"),
-            daemon=True,
-        )
-        self._telegram_worker.start()
-        self._discord_worker.start()
-
-        self.telegram_notifier.set_power_control(self.power_control)
-        self.telegram_notifier.set_app_context(self)
-        if self.telegram_notifier.enabled:
-            self.telegram_notifier.start_bot()
-
-        self.settings_dialog: Optional[SettingsDialog] = None
-        self._progress_dialog: Optional[Gtk.MessageDialog] = None
-        self.metrics_sampler = MetricsSampler()
-        self._profiling_cycle_count = 0
-        self._profiling_total_ms = 0.0
-        self._profiling_max_ms = 0.0
-
-        self.cpu_graph_window: Optional[Gtk.Window] = None
-        self.cpu_graph_area: Optional[Gtk.DrawingArea] = None
-        self.cpu_graph_hint_label: Optional[Gtk.Label] = None
-        graph_points = self._graph_history_points(self.visibility_settings['graph_history_minutes'])
-        self.cpu_history = deque(maxlen=graph_points)
-
-        self.ram_graph_window: Optional[Gtk.Window] = None
-        self.ram_graph_area: Optional[Gtk.DrawingArea] = None
-        self.ram_graph_hint_label: Optional[Gtk.Label] = None
-        self.ram_history = deque(maxlen=graph_points)
-
-        self.swap_graph_window: Optional[Gtk.Window] = None
-        self.swap_graph_area: Optional[Gtk.DrawingArea] = None
-        self.swap_graph_hint_label: Optional[Gtk.Label] = None
-        self.swap_history = deque(maxlen=graph_points)
-
-        self.disk_graph_window: Optional[Gtk.Window] = None
-        self.disk_graph_area: Optional[Gtk.DrawingArea] = None
-        self.disk_graph_hint_label: Optional[Gtk.Label] = None
-        self.disk_history = deque(maxlen=graph_points)
-
-        self.net_graph_window: Optional[Gtk.Window] = None
-        self.net_graph_area: Optional[Gtk.DrawingArea] = None
-        self.net_graph_hint_label: Optional[Gtk.Label] = None
-        self.net_history = deque(maxlen=graph_points)
-
-        self.keyboard_graph_window: Optional[Gtk.Window] = None
-        self.keyboard_graph_area: Optional[Gtk.DrawingArea] = None
-        self.keyboard_graph_hint_label: Optional[Gtk.Label] = None
-        self.keyboard_history = deque(maxlen=graph_points)
-
-        self.mouse_graph_window: Optional[Gtk.Window] = None
-        self.mouse_graph_area: Optional[Gtk.DrawingArea] = None
-        self.mouse_graph_hint_label: Optional[Gtk.Label] = None
-        self.mouse_history = deque(maxlen=graph_points)
-
-        self.graph_zoom_state: Dict[str, Dict[str, float]] = {
-            'cpu': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
-            'ram': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
-            'swap': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
-            'disk': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
-            'net': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
-            'keyboard': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
-            'mouse': {'scale': 1.0, 'center': 1.0, 'dragging': 0.0, 'last_x': 0.0, 'hovering': 0.0, 'hover_x': 0.0, 'hover_y': 0.0},
-        }
-
-        if self.visibility_settings.get('logging_enabled', True) and not LOG_FILE.exists():
-            try:
-                LOG_FILE.write_text("", encoding="utf-8")
-            except Exception as e:
-                print("Не удалось создать файл лога:", e)
-
-    @staticmethod
-    def _thread(target, *args, **kwargs):
-        t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
-        t.start()
-
-    def _enqueue_latest_notification(self, queue: Queue[Optional[str]], message: Optional[str]) -> None:
-        payload = None if message is None else str(message)
-        while True:
-            try:
-                queue.put_nowait(payload)
-                return
-            except Full:
-                try:
-                    queue.get_nowait()
-                    queue.task_done()
-                except Empty:
-                    return
-
-    def _notification_worker(self, queue: Queue[Optional[str]], sender, channel_name: str) -> None:
-        while not self._notification_stop_event.is_set():
-            try:
-                message = queue.get(timeout=0.5)
-            except Empty:
-                continue
-
-            try:
-                if message is None:
-                    return
-                sender(message)
-            except Exception as e:
-                logger.exception("Ошибка отправки уведомления (%s): %s", channel_name, e)
-            finally:
-                queue.task_done()
 
     def init_listeners(self):
+        hooks_ok = True
         try:
             self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
             self.keyboard_listener.start()
         except Exception as e:
-            print("Не удалось запустить keyboard listener:", e)
+            logger.warning("Не удалось запустить keyboard listener: %s", e)
             self.keyboard_listener = None
-            self._notify_no_global_hooks = True
+            hooks_ok = False
         try:
             self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
             self.mouse_listener.start()
         except Exception as e:
-            print("Не удалось запустить mouse listener:", e)
+            logger.warning("Не удалось запустить mouse listener: %s", e)
             self.mouse_listener = None
-            self._notify_no_global_hooks = True
+            hooks_ok = False
+        if hooks_ok and os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+            logger.warning("Сессия Wayland: счётчики клавиш и кликов видят только события XWayland-приложений")
+
+    def on_key_press(self, _key):
+        increment_keyboard()
+
+    def on_mouse_click(self, _x, _y, _button, pressed):
+        if pressed:
+            increment_mouse()
+
+    # ---------- Настройки ----------
+
+    @staticmethod
+    def _graph_history_points(minutes: int) -> int:
+        return max(1, minutes * 60 // TIME_UPDATE_SEC)
+
+    def _set_graph_history_window(self, minutes) -> None:
+        sanitized_minutes = sanitize_graph_history_minutes(minutes)
+        self.visibility_settings['graph_history_minutes'] = sanitized_minutes
+        self.metrics_history.resize(self._graph_history_points(sanitized_minutes))
+
+    def save_settings(self) -> None:
+        save_settings(self.settings_file, self.visibility_settings)
+
+    def graph_line_color(self, key: str) -> tuple[float, float, float]:
+        return graph_line_color_rgb(self.visibility_settings, key)
+
+    # ---------- Меню ----------
+
+    def _new_item(self, key: str, label: str, callback) -> Gtk.MenuItem:
+        item = Gtk.MenuItem(label=label)
+        if callback is not None:
+            item.connect("activate", callback)
+        self.menu_items[key] = item
+        return item
+
+    def create_menu(self):
+        self._label_cache.clear()
+        self._item_display_cache.clear()
+        self._last_item_update_ts.clear()
+        self.menu_items: Dict[str, Gtk.MenuItem] = {}
+        pc = self.power_control
+
+        def open_graph(graph_key: str):
+            return lambda *_: self.show_graph(graph_key)
+
+        self._new_item('cpu', f"{tr('cpu_info')}: N/A", open_graph('cpu'))
+        self._new_item('ram', f"{tr('ram_loading')}: N/A", open_graph('ram'))
+        self._new_item('swap', f"{tr('swap_loading')}: N/A", open_graph('swap'))
+        self._new_item('disk', f"{tr('disk_loading')}: N/A", open_graph('disk'))
+        self._new_item('net', f"{tr('lan_speed')}: N/A", open_graph('net'))
+        self._new_item('keyboard_clicks', f"{tr('keyboard_clicks')}: 0", open_graph('keyboard'))
+        self._new_item('mouse_clicks', f"{tr('mouse_clicks')}: 0", open_graph('mouse'))
+        self._new_item('uptime', f"{tr('uptime_label')}: N/A", None)
+        self._new_item('show_power_off', tr('power_off'),
+                       lambda w: pc.confirm_action(w, pc.power_off, tr('confirm_text_power_off')))
+        self._new_item('show_reboot', tr('reboot'),
+                       lambda w: pc.confirm_action(w, pc.reboot, tr('confirm_text_reboot')))
+        self._new_item('show_lock', tr('lock'),
+                       lambda w: pc.confirm_action(w, pc.lock_screen, tr('confirm_text_lock')))
+        self._new_item('show_timer', tr('settings'), pc.open_scheduler)
+        self._new_item('ping_network', tr('ping_network'), self.on_ping_click)
+        self._new_item('show_system_info', tr('system_info'), self.on_system_info_click)
+
+        menu = Gtk.Menu()
+        order = normalize_menu_order(self.visibility_settings.get('menu_order'))
+        self.visibility_settings['menu_order'] = order
+        visible = [key for key in order if self.visibility_settings.get(key, True)]
+
+        if any(key in visible for key in POWER_MENU_KEYS):
+            menu.append(Gtk.SeparatorMenuItem())
+        for key in visible:
+            if key == 'ping_network':
+                menu.append(Gtk.SeparatorMenuItem())
+                menu.append(self.menu_items[key])
+                menu.append(Gtk.SeparatorMenuItem())
+            else:
+                menu.append(self.menu_items[key])
+
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(self._build_language_menu_item())
+        settings_item = Gtk.MenuItem(label=tr('settings_label'))
+        settings_item.connect("activate", self.show_settings)
+        menu.append(settings_item)
+        menu.append(Gtk.SeparatorMenuItem())
+        quit_item = Gtk.MenuItem(label=tr('exit_app'))
+        quit_item.connect("activate", self.quit)
+        menu.append(quit_item)
+
+        menu.show_all()
+        self.menu = menu
+        self.indicator.set_menu(menu)
+
+    def _build_language_menu_item(self) -> Gtk.MenuItem:
+        language_menu = Gtk.Menu()
+        group_root = None
+        for code in SUPPORTED_LANGS:
+            language_name = (LANGUAGES.get(code) or LANGUAGES.get('en', {})).get('language_name', code)
+            flag = LANGUAGE_FLAGS.get(code, '🏳️')
+            item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, f"{flag} {language_name}")
+            group_root = group_root or item
+            item.set_active(code == get_language())
+            item.connect("activate", self._on_language_selected, code)
+            language_menu.append(item)
+        language_item = Gtk.MenuItem(label=tr('language'))
+        language_item.set_submenu(language_menu)
+        return language_item
+
+    def _on_language_selected(self, widget, lang_code: str):
+        if widget.get_active() and get_language() != lang_code:
+            set_language(lang_code)
+            self.visibility_settings['language'] = lang_code
+            self.save_settings()
+            self.create_menu()
+            for window in self.graph_windows.values():
+                window.refresh_texts()
+
+    def _set_label(self, item: Gtk.MenuItem, text: str) -> None:
+        if self._label_cache.get(item) != text:
+            item.set_label(text)
+            self._label_cache[item] = text
+
+    def _set_indicator_label(self, text: str) -> None:
+        if self._indicator_label != text:
+            self.indicator.set_label(text, "")
+            self._indicator_label = text
+
+    # ---------- Диалоги ----------
+
+    def show_settings(self, _w=None):
+        if self.settings_dialog and self.settings_dialog.get_mapped():
+            self.settings_dialog.present()
+            return
+        dialog = SettingsDialog(None, self.visibility_settings)
+        self.settings_dialog = dialog
+        self.power_control.set_parent_window(dialog)
+        dialog.connect("response", self._on_settings_response)
+        dialog.show()
+
+    def _on_settings_response(self, dialog: SettingsDialog, response: int) -> None:
+        try:
+            if response == Gtk.ResponseType.OK:
+                self._apply_settings(dialog)
+        except Exception as e:
+            logger.exception("Ошибка применения настроек: %s", e)
+        finally:
+            self.power_control.set_parent_window(None)
+            dialog.destroy()
+            if self.settings_dialog is dialog:
+                self.settings_dialog = None
+
+    def _apply_settings(self, dialog: SettingsDialog) -> None:
+        vs = self.visibility_settings
+        vs.update(dialog.get_menu_visibility())
+        vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
+        vs['tray_ram'] = dialog.tray_ram_check.get_active()
+        vs['logging_enabled'] = dialog.logging_check.get_active()
+        vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
+        for color_key, color_value in dialog.get_graph_line_colors().items():
+            vs[color_key] = sanitize_hex_color(color_value)
+        vs['menu_order'] = dialog.get_menu_order()
+        vs['max_log_mb'] = sanitize_log_size_mb(dialog.logsize_spin.get_value_as_int())
+        self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
+        for key, spin in dialog.poll_interval_spins().items():
+            vs[key] = sanitize_poll_interval(spin.get_value_as_int())
+        if not vs['logging_enabled']:
+            self.metrics_log.close()
+
+        tel = self.telegram_notifier
+        tel_before = (tel.token, tel.chat_id, tel.enabled)
+        if tel.save_config(
+                dialog.token_entry.get_text().strip(),
+                dialog.chat_id_entry.get_text().strip(),
+                dialog.telegram_enable_check.get_active(),
+                int(dialog.interval_spin.get_value()),
+                dialog.screenshot_quality_combo.get_active_id() or "medium",
+        ):
+            tel_after = (tel.token, tel.chat_id, tel.enabled)
+            if tel.enabled and not tel_before[2]:
+                self.last_telegram_notification_time = 0.0
+            if tel_after != tel_before:
+                # Не ждём завершения старого потока: он сам выйдет после long-poll.
+                tel.stop_bot()
+            tel.start_bot()
+        else:
+            self._show_message(tr('error'), tr('setting_telegram_error'))
+
+        disc = self.discord_notifier
+        disc_enabled_before = disc.enabled
+        if disc.save_config(
+                dialog.webhook_entry.get_text().strip(),
+                dialog.discord_enable_check.get_active(),
+                int(dialog.discord_interval_spin.get_value()),
+        ):
+            if disc.enabled and not disc_enabled_before:
+                self.last_discord_notification_time = 0.0
+        else:
+            self._show_message(tr('error'), tr('setting_discord_error'))
+
+        self.save_settings()
+        self.create_menu()
+
+    def _show_message(self, title: str, message: str) -> None:
+        show_message(title, message, self.settings_dialog)
 
     def _close_progress_dialog(self):
         if self._progress_dialog:
@@ -288,36 +387,23 @@ class SystemTrayApp:
                 pass
             self._progress_dialog = None
 
-    def on_key_press(self, _key):
-        increment_keyboard()
-
-    def on_mouse_click(self, _x, _y, _button, pressed):
-        if pressed:
-            increment_mouse()
-
     def on_ping_click(self, *_):
         host = "8.8.8.8"
         count = 4
         timeout = 5
 
-        def show_progress():
-            if self._progress_dialog and self._progress_dialog.get_mapped():
-                return False
-            parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
+        if not (self._progress_dialog and self._progress_dialog.get_mapped()):
             d = Gtk.MessageDialog(
-                transient_for=parent,
+                transient_for=mapped_or_none(self.settings_dialog),
                 flags=0,
                 message_type=Gtk.MessageType.INFO,
                 buttons=Gtk.ButtonsType.NONE,
-                text=tr('ping_running')
+                text=tr('ping_running'),
             )
             d.set_title(tr('ping_network'))
             d.set_modal(True)
             d.show()
             self._progress_dialog = d
-            return False
-
-        GLib.idle_add(show_progress)
 
         def worker():
             cmd = ["ping", "-c", str(count), "-w", str(timeout), host]
@@ -338,8 +424,7 @@ class SystemTrayApp:
 
             GLib.idle_add(finish)
 
-        self._thread(worker)
-
+        threading.Thread(target=worker, name="ping", daemon=True).start()
 
     def _detect_cpu_model(self) -> str:
         try:
@@ -350,7 +435,6 @@ class SystemTrayApp:
                         return line.split(":", 1)[1].strip()
         except Exception:
             pass
-
         return platform.processor() or tr('unknown_value')
 
     def _build_system_info_text(self) -> str:
@@ -362,6 +446,7 @@ class SystemTrayApp:
         swap = psutil.swap_memory()
         disk = psutil.disk_usage("/")
         boot_dt = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M:%S")
+        gb = 1024 ** 3
 
         freq_text = tr('unknown_value')
         if cpu_freq and cpu_freq.max:
@@ -379,11 +464,11 @@ class SystemTrayApp:
             f"{tr('threads_label')}: {cpu_threads}",
             f"{tr('cpu_frequency_label')}: {freq_text}",
             "",
-            f"{tr('ram_total_label')}: {ram.total / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('ram_available_label')}: {ram.available / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('swap_total_label')}: {swap.total / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('disk_total_label')}: {disk.total / (1024 ** 3):.2f} {tr('gb')}",
-            f"{tr('disk_free_label')}: {disk.free / (1024 ** 3):.2f} {tr('gb')}",
+            f"{tr('ram_total_label')}: {ram.total / gb:.2f} {tr('gb')}",
+            f"{tr('ram_available_label')}: {ram.available / gb:.2f} {tr('gb')}",
+            f"{tr('swap_total_label')}: {swap.total / gb:.2f} {tr('gb')}",
+            f"{tr('disk_total_label')}: {disk.total / gb:.2f} {tr('gb')}",
+            f"{tr('disk_free_label')}: {disk.free / gb:.2f} {tr('gb')}",
             f"{tr('boot_time_label')}: {boot_dt}",
             f"{tr('python_version_label')}: {platform.python_version()}",
         ])
@@ -394,341 +479,28 @@ class SystemTrayApp:
         except Exception as e:
             self._show_message(tr('error'), f"{tr('system_info_error')}: {e}")
             return
-
         self._show_message(tr('system_info_title'), info_text)
 
-    def create_menu(self):
-        self.menu = Gtk.Menu()
+    # ---------- Графики ----------
 
-        self.cpu_temp_item = Gtk.MenuItem(label=f"{tr('cpu_info')}: N/A")
-        self.cpu_temp_item.connect("activate", self.show_cpu_graph)
-        self.ram_item = Gtk.MenuItem(label=f"{tr('ram_loading')}: N/A")
-        self.ram_item.connect("activate", self.show_ram_graph)
-        self.swap_item = Gtk.MenuItem(label=f"{tr('swap_loading')}: N/A")
-        self.swap_item.connect("activate", self.show_swap_graph)
-        self.disk_item = Gtk.MenuItem(label=f"{tr('disk_loading')}: N/A")
-        self.disk_item.connect("activate", self.show_disk_graph)
-        self.net_item = Gtk.MenuItem(label=f"{tr('lan_speed')}: N/A")
-        self.net_item.connect("activate", self.show_net_graph)
-        self.uptime_item = Gtk.MenuItem(label=f"{tr('uptime_label')}: N/A")
-        self.keyboard_item = Gtk.MenuItem(label=f"{tr('keyboard_clicks')}: 0")
-        self.keyboard_item.connect("activate", self.show_keyboard_graph)
-        self.mouse_item = Gtk.MenuItem(label=f"{tr('mouse_clicks')}: 0")
-        self.mouse_item.connect("activate", self.show_mouse_graph)
-
-        self.ping_item = Gtk.MenuItem(label=tr('ping_network'))
-        self.ping_item.connect("activate", self.on_ping_click)
-        self.system_info_item = Gtk.MenuItem(label=tr('system_info'))
-        self.system_info_item.connect("activate", self.on_system_info_click)
-        self.ping_top_sep = Gtk.SeparatorMenuItem()
-        self.ping_bottom_sep = Gtk.SeparatorMenuItem()
-
-        self.power_separator = Gtk.SeparatorMenuItem()
-        self.power_off_item = Gtk.MenuItem(label=tr('power_off'))
-        self.power_off_item.connect("activate", self.power_control._confirm_action,
-                                    self.power_control._shutdown, tr('confirm_text_power_off'))
-        self.reboot_item = Gtk.MenuItem(label=tr('reboot'))
-        self.reboot_item.connect("activate", self.power_control._confirm_action,
-                                 self.power_control._reboot, tr('confirm_text_reboot'))
-        self.lock_item = Gtk.MenuItem(label=tr('lock'))
-        self.lock_item.connect("activate", self.power_control._confirm_action,
-                               self.power_control._lock_screen, tr('confirm_text_lock'))
-        self.timer_item = Gtk.MenuItem(label=tr('settings'))
-        self.timer_item.connect("activate", self.power_control._open_settings)
-
-        self.main_separator = Gtk.SeparatorMenuItem()
-        self.exit_separator = Gtk.SeparatorMenuItem()
-
-        self.settings_item = Gtk.MenuItem(label=tr('settings_label'))
-        self.settings_item.connect("activate", self.show_settings)
-
-        from .language import LANGUAGES
-
-        self.language_menu = Gtk.Menu()
-        group_root = None
-        for code in SUPPORTED_LANGS:
-            language_name = (LANGUAGES.get(code) or LANGUAGES.get('en', {})).get('language_name', code)
-            flag = LANGUAGE_FLAGS.get(code, '🏳️')
-            item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, f"{flag} {language_name}")
-            if group_root is None:
-                group_root = item
-            item.set_active(code == get_language())
-            item.connect("activate", self._on_language_selected, code)
-            self.language_menu.append(item)
-        self.language_menu_item = Gtk.MenuItem(label=tr('language'))
-        self.language_menu_item.set_submenu(self.language_menu)
-
-        self.quit_item = Gtk.MenuItem(label=tr('exit_app'))
-        self.quit_item.connect("activate", self.quit)
-
-        self.update_menu_visibility()
-
-        self.menu.append(self.main_separator)
-        self.menu.append(self.language_menu_item)
-        self.menu.append(self.settings_item)
-        self.menu.append(self.exit_separator)
-        self.menu.append(self.quit_item)
-
-        self.menu.show_all()
-        self.indicator.set_menu(self.menu)
-
-    def _on_language_selected(self, widget, lang_code: str):
-        if widget.get_active() and get_language() != lang_code:
-            set_language(lang_code)
-            self.visibility_settings['language'] = lang_code
-            self.save_settings()
-            self.create_menu()
-            self._refresh_cpu_graph_texts()
-            self._refresh_ram_graph_texts()
-            self._refresh_swap_graph_texts()
-            self._refresh_disk_graph_texts()
-            self._refresh_net_graph_texts()
-            self._refresh_keyboard_graph_texts()
-            self._refresh_mouse_graph_texts()
-
-    def load_settings(self) -> Dict:
-        default = {
-            'cpu': True, 'ram': True, 'swap': True, 'disk': True, 'net': True, 'uptime': True,
-            'tray_cpu': True, 'tray_ram': True, 'keyboard_clicks': True, 'mouse_clicks': True,
-            'language': None, 'logging_enabled': True, 'show_graph_zoom_controls': True,
-            'show_power_off': True, 'show_reboot': True, 'show_lock': True, 'show_timer': True,
-            'max_log_mb': 5, 'ping_network': True, 'show_system_info': True,
-            'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
-            'menu_order': MENU_ORDER_DEFAULT.copy(),
-            'tray_cpu_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
-            'tray_ram_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
-            'cpu_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
-            'ram_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
-            'net_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
-            'disk_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
-            'swap_interval_sec': POLL_INTERVAL_DEFAULT_SEC,
-            'profiling_enabled': False,
-        }
-        default.update(GRAPH_COLOR_DEFAULTS)
-        try:
-            if self.settings_file.exists():
-                saved = json.loads(self.settings_file.read_text(encoding="utf-8"))
-                default.update(saved)
-        except Exception as e:
-            print(f"Ошибка загрузки настроек из {self.settings_file}: {e}")
-        default['graph_history_minutes'] = self._sanitize_graph_history_minutes(default.get('graph_history_minutes'))
-        legacy_color = self._sanitize_graph_line_color(default.get('graph_line_color'))
-        for key, fallback in GRAPH_COLOR_DEFAULTS.items():
-            source = default.get(key, legacy_color if 'graph_line_color' in default else fallback)
-            default[key] = self._sanitize_graph_line_color(source)
-        default['menu_order'] = self._normalize_menu_order(default.get('menu_order'))
-        for key in POLL_INTERVAL_SETTING_KEYS:
-            default[key] = self._sanitize_poll_interval(default.get(key))
-        return default
-
-    @staticmethod
-    def _sanitize_graph_history_minutes(value) -> int:
-        try:
-            minutes = int(value)
-        except (TypeError, ValueError):
-            minutes = GRAPH_HISTORY_MINUTES_DEFAULT
-        return max(GRAPH_HISTORY_MINUTES_MIN, min(GRAPH_HISTORY_MINUTES_MAX, minutes))
-
-    @staticmethod
-    def _graph_history_points(minutes: int) -> int:
-        return max(1, minutes * 60 // TIME_UPDATE_SEC)
-
-    @staticmethod
-    def _sanitize_graph_line_color(value: object) -> str:
-        raw = str(value or "").strip()
-        if len(raw) == 7 and raw.startswith('#'):
-            hex_part = raw[1:]
-            if all(ch in "0123456789abcdefABCDEF" for ch in hex_part):
-                return f"#{hex_part.lower()}"
-        return '#36c7ed'
-
-    def _graph_line_color_rgb(self, key: str) -> tuple[float, float, float]:
-        hex_color = self._sanitize_graph_line_color(
-            self.visibility_settings.get(key, GRAPH_COLOR_DEFAULTS.get(key, '#36c7ed'))
-        )
-        r = int(hex_color[1:3], 16) / 255.0
-        g = int(hex_color[3:5], 16) / 255.0
-        b = int(hex_color[5:7], 16) / 255.0
-        return r, g, b
-
-    @staticmethod
-    def _sanitize_poll_interval(value) -> int:
-        try:
-            sec = int(value)
-        except (TypeError, ValueError):
-            sec = POLL_INTERVAL_DEFAULT_SEC
-        return max(POLL_INTERVAL_MIN_SEC, min(POLL_INTERVAL_MAX_SEC, sec))
-
-    def _set_graph_history_window(self, minutes) -> None:
-        sanitized_minutes = self._sanitize_graph_history_minutes(minutes)
-        self.visibility_settings['graph_history_minutes'] = sanitized_minutes
-        maxlen = self._graph_history_points(sanitized_minutes)
-
-        self.cpu_history = deque(self.cpu_history, maxlen=maxlen)
-        self.ram_history = deque(self.ram_history, maxlen=maxlen)
-        self.swap_history = deque(self.swap_history, maxlen=maxlen)
-        self.disk_history = deque(self.disk_history, maxlen=maxlen)
-        self.net_history = deque(self.net_history, maxlen=maxlen)
-        self.keyboard_history = deque(self.keyboard_history, maxlen=maxlen)
-        self.mouse_history = deque(self.mouse_history, maxlen=maxlen)
-
-    def save_settings(self) -> None:
-        try:
-            self.settings_file.write_text(json.dumps(self.visibility_settings, indent=2), encoding="utf-8")
-        except Exception as e:
-            print("Ошибка сохранения настроек:", e)
-
-    def _normalize_menu_order(self, order) -> list[str]:
-        unique = []
-        for key in order or []:
-            if key in MENU_ORDER_DEFAULT and key not in unique:
-                unique.append(key)
-        for key in MENU_ORDER_DEFAULT:
-            if key not in unique:
-                unique.append(key)
-        return unique
-
-    def update_menu_visibility(self) -> None:
-        children = list(self.menu.get_children()) if hasattr(self, 'menu') else []
-        keep = [
-            getattr(self, 'main_separator', None),
-            getattr(self, 'power_separator', None),
-            getattr(self, 'exit_separator', None),
-            getattr(self, 'language_menu_item', None),
-            getattr(self, 'settings_item', None),
-            getattr(self, 'quit_item', None),
-            getattr(self, 'ping_top_sep', None),
-            getattr(self, 'ping_bottom_sep', None),
-        ]
-        keep = [x for x in keep if x is not None]
-
-        for ch in children:
-            if ch not in keep:
-                try:
-                    self.menu.remove(ch)
-                except Exception:
-                    pass
-
-        ordered_items = {
-            'cpu': self.cpu_temp_item,
-            'ram': self.ram_item,
-            'swap': self.swap_item,
-            'disk': self.disk_item,
-            'net': self.net_item,
-            'keyboard_clicks': self.keyboard_item,
-            'mouse_clicks': self.mouse_item,
-            'uptime': self.uptime_item,
-            'show_power_off': self.power_off_item,
-            'show_reboot': self.reboot_item,
-            'show_lock': self.lock_item,
-            'show_timer': self.timer_item,
-            'ping_network': self.ping_item,
-            'show_system_info': self.system_info_item,
-        }
-
-        menu_order = self._normalize_menu_order(self.visibility_settings.get('menu_order'))
-        self.visibility_settings['menu_order'] = menu_order
-
-        visible_order = [key for key in menu_order if self.visibility_settings.get(key, True)]
-
-        power_shown = any(key in visible_order for key in ('show_power_off', 'show_reboot', 'show_lock', 'show_timer'))
-        if power_shown and getattr(self, 'power_separator', None) is not None:
-            self.menu.append(self.power_separator)
-
-        inserted_ping_sep = False
-        for key in visible_order:
-            if key == 'ping_network':
-                if not inserted_ping_sep and getattr(self, 'ping_top_sep', None) is not None:
-                    self.menu.append(self.ping_top_sep)
-                self.menu.append(self.ping_item)
-                if getattr(self, 'ping_bottom_sep', None) is not None:
-                    self.menu.append(self.ping_bottom_sep)
-                inserted_ping_sep = True
-                continue
-            self.menu.append(ordered_items[key])
-
-        self.menu.show_all()
-
-    def show_settings(self, _w):
-        if self.settings_dialog and self.settings_dialog.get_mapped():
-            self.settings_dialog.present()
+    def show_graph(self, graph_key: str) -> None:
+        window = self.graph_windows.get(graph_key)
+        if window is not None and window.is_visible():
+            window.present()
             return
+        self.graph_windows[graph_key] = GraphWindow(
+            self.graph_specs[graph_key],
+            get_samples=lambda: self.metrics_history.samples(graph_key),
+            get_color=self.graph_line_color,
+            show_zoom_controls=bool(self.visibility_settings.get('show_graph_zoom_controls', True)),
+            on_destroy=self._on_graph_destroyed,
+        )
 
-        dialog = SettingsDialog(None, self.visibility_settings)
-        self.power_control.set_parent_window(dialog)
-        self.settings_dialog = dialog
+    def _on_graph_destroyed(self, window: GraphWindow) -> None:
+        if self.graph_windows.get(window.spec.key) is window:
+            del self.graph_windows[window.spec.key]
 
-        try:
-            response = dialog.run()
-
-            if response == Gtk.ResponseType.OK:
-                vs = self.visibility_settings
-                menu_visibility = dialog.get_menu_visibility()
-                vs.update(menu_visibility)
-                vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
-                vs['tray_ram'] = dialog.tray_ram_check.get_active()
-                vs['logging_enabled'] = dialog.logging_check.get_active()
-                vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
-                for color_key, color_value in dialog.get_graph_line_colors().items():
-                    vs[color_key] = self._sanitize_graph_line_color(color_value)
-                vs['menu_order'] = dialog.get_menu_order()
-                vs['max_log_mb'] = int(dialog.logsize_spin.get_value())
-                self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
-                vs['tray_cpu_interval_sec'] = self._sanitize_poll_interval(dialog.tray_cpu_interval_spin.get_value_as_int())
-                vs['tray_ram_interval_sec'] = self._sanitize_poll_interval(dialog.tray_ram_interval_spin.get_value_as_int())
-                vs['cpu_interval_sec'] = self._sanitize_poll_interval(dialog.cpu_interval_spin.get_value_as_int())
-                vs['ram_interval_sec'] = self._sanitize_poll_interval(dialog.ram_interval_spin.get_value_as_int())
-                vs['net_interval_sec'] = self._sanitize_poll_interval(dialog.net_interval_spin.get_value_as_int())
-                vs['disk_interval_sec'] = self._sanitize_poll_interval(dialog.disk_interval_spin.get_value_as_int())
-                vs['swap_interval_sec'] = self._sanitize_poll_interval(dialog.swap_interval_spin.get_value_as_int())
-
-                tel_enabled_before = getattr(self, 'telegram_notifier', TelegramNotifier()).enabled
-                if self.telegram_notifier.save_config(
-                        dialog.token_entry.get_text().strip(),
-                        dialog.chat_id_entry.get_text().strip(),
-                        dialog.telegram_enable_check.get_active(),
-                        int(dialog.interval_spin.get_value()),
-                        dialog.screenshot_quality_combo.get_active_id() or "medium"
-                ):
-                    self.telegram_notifier.load_config()
-                    if self.telegram_notifier.enabled and not tel_enabled_before:
-                        self.last_telegram_notification_time = 0.0
-                        self.telegram_notifier.start_bot()
-                    elif not self.telegram_notifier.enabled and tel_enabled_before:
-                        self.telegram_notifier.stop_bot()
-                    elif self.telegram_notifier.enabled and tel_enabled_before:
-                        self.telegram_notifier.stop_bot()
-                        self.telegram_notifier.start_bot()
-
-                disc_enabled_before = getattr(self, 'discord_notifier', DiscordNotifier()).enabled
-                if self.discord_notifier.save_config(
-                        dialog.webhook_entry.get_text().strip(),
-                        dialog.discord_enable_check.get_active(),
-                        int(dialog.discord_interval_spin.get_value())
-                ):
-                    self.discord_notifier.load_config()
-                    if self.discord_notifier.enabled and not disc_enabled_before:
-                        self.last_discord_notification_time = 0.0
-
-                self.save_settings()
-                self.create_menu()
-
-        finally:
-            self.power_control.set_parent_window(None)
-            if self.settings_dialog:
-                try:
-                    self.settings_dialog.destroy()
-                except Exception:
-                    pass
-            self.settings_dialog = None
-
-
-    @staticmethod
-    def _safe_call(func, default):
-        try:
-            return func()
-        except Exception:
-            return default
+    # ---------- Основной цикл ----------
 
     @staticmethod
     def _plural_ru(value: int) -> str:
@@ -743,1716 +515,177 @@ class SystemTrayApp:
         parts = (raw_uptime or "").split(", ", 1)
         if len(parts) != 2:
             return raw_uptime
-
         day_part, time_part = parts
         day_tokens = day_part.split()
         if len(day_tokens) != 2 or not day_tokens[0].isdigit():
             return raw_uptime
-
         days = int(day_tokens[0])
-        lang = get_language()
-        plural_key = self._plural_ru(days) if lang == 'ru' else ('one' if days == 1 else 'many')
+        plural_key = self._plural_ru(days) if get_language() == 'ru' else ('one' if days == 1 else 'many')
         day_label = tr(f'uptime_day_{plural_key}')
         if day_label == f'uptime_day_{plural_key}':
             day_label = 'day' if days == 1 else 'days'
         return f"{days} {day_label}, {time_part}"
 
+    def _metric_intervals(self) -> Dict[str, int]:
+        vs = self.visibility_settings
+        cpu = int(vs.get('cpu_interval_sec', POLL_INTERVAL_DEFAULT_SEC))
+        return {
+            'cpu_temp': max(2, cpu),
+            'cpu_usage': cpu,
+            'ram': int(vs.get('ram_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+            'disk': int(vs.get('disk_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+            'swap': int(vs.get('swap_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+            'net': int(vs.get('net_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
+            'uptime': POLL_INTERVAL_DEFAULT_SEC,
+        }
+
     def update_info(self) -> bool:
         cycle_start = time.perf_counter()
         try:
-            kbd, ms = self._safe_call(get_counts, (0, 0))
+            kbd, ms = get_counts()
+            raw = self.metrics_sampler.snapshot(self.prev_net_data, self._metric_intervals(), kbd, ms)
+            snapshot = dataclasses.replace(raw, uptime=self._format_uptime_localized(raw.uptime))
+            self.latest_snapshot = snapshot
+            self.metrics_history.append_snapshot(snapshot)
 
-            metric_intervals = {
-                'cpu_temp': max(2, int(self.visibility_settings.get('cpu_interval_sec', POLL_INTERVAL_DEFAULT_SEC))),
-                'cpu_usage': int(self.visibility_settings.get('cpu_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
-                'ram': int(self.visibility_settings.get('ram_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
-                'disk': int(self.visibility_settings.get('disk_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
-                'swap': int(self.visibility_settings.get('swap_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
-                'net': int(self.visibility_settings.get('net_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
-                'uptime': POLL_INTERVAL_DEFAULT_SEC,
-            }
-            sample = self._safe_call(
-                lambda: self.metrics_sampler.collect(self.prev_net_data, metric_intervals),
-                {
-                    'cpu_temp': 0,
-                    'cpu_usage': 0.0,
-                    'ram': (0.0, 0.0),
-                    'disk': (0.0, 0.0),
-                    'swap': (0.0, 0.0),
-                    'net': (0.0, 0.0),
-                    'uptime': "00:00:00",
-                },
-            )
-            cpu_temp = int(sample.get('cpu_temp', 0))
-            cpu_usage = float(sample.get('cpu_usage', 0.0))
-            ram_used, ram_total = sample.get('ram', (0.0, 0.0))
-            disk_used, disk_total = sample.get('disk', (0.0, 0.0))
-            swap_used, swap_total = sample.get('swap', (0.0, 0.0))
-            net_recv_speed, net_sent_speed = sample.get('net', (0.0, 0.0))
-            uptime = str(sample.get('uptime', "00:00:00"))
-            uptime_display = self._format_uptime_localized(uptime)
-
-            self._update_ui(cpu_temp, cpu_usage,
-                            ram_used, ram_total,
-                            disk_used, disk_total,
-                            swap_used, swap_total,
-                            net_recv_speed, net_sent_speed,
-                            uptime_display, kbd, ms)
-
-            now = time.time()
-            if (self.telegram_notifier.enabled and
-                    now - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
-                self._thread(self.send_telegram_notification,
-                             cpu_temp, cpu_usage, ram_used, ram_total,
-                             disk_used, disk_total, swap_used, swap_total,
-                             net_recv_speed, net_sent_speed, uptime_display, kbd, ms)
-                self.last_telegram_notification_time = now
-
-            if (self.discord_notifier.enabled and
-                    now - self.last_discord_notification_time >= self.discord_notifier.notification_interval):
-                self._thread(self.send_discord_notification,
-                             cpu_temp, cpu_usage, ram_used, ram_total,
-                             disk_used, disk_total, swap_used, swap_total,
-                             net_recv_speed, net_sent_speed, uptime_display, kbd, ms)
-                self.last_discord_notification_time = now
-
-            if self.visibility_settings.get('logging_enabled', True):
-                max_mb = int(self.visibility_settings.get('max_log_mb', 5))
-                max_mb = max(1, min(max_mb, 1024))
-                rotate_log_if_needed(max_mb * 1024 * 1024)
-
-                try:
-                    line = (f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
-                            f"CPU: {cpu_usage:.0f}% {cpu_temp}°C | "
-                            f"RAM: {ram_used:.1f}/{ram_total:.1f} GB | "
-                            f"SWAP: {swap_used:.1f}/{swap_total:.1f} GB | "
-                            f"Disk: {disk_used:.1f}/{disk_total:.1f} GB | "
-                            f"Net: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')} | "
-                            f"Uptime: {uptime_display} | "
-                            f"Keys: {kbd} | "
-                            f"Clicks: {ms}\n")
-
-                    with LOG_FILE.open("a", encoding="utf-8", buffering=1024 * 64) as f:
-                        f.write(line)
-
-                except Exception as e:
-                    print("Ошибка записи в лог:", e)
-
-            if self.visibility_settings.get('profiling_enabled', False):
-                cycle_ms = (time.perf_counter() - cycle_start) * 1000.0
-                self._profiling_cycle_count += 1
-                self._profiling_total_ms += cycle_ms
-                self._profiling_max_ms = max(self._profiling_max_ms, cycle_ms)
-                if self._profiling_cycle_count >= 60:
-                    avg_ms = self._profiling_total_ms / float(self._profiling_cycle_count)
-                    logger.info(
-                        "Profiling update_info: avg=%.2fms max=%.2fms samples=%d",
-                        avg_ms,
-                        self._profiling_max_ms,
-                        self._profiling_cycle_count,
-                    )
-                    self._profiling_cycle_count = 0
-                    self._profiling_total_ms = 0.0
-                    self._profiling_max_ms = 0.0
-
-            return True
+            self._update_ui(snapshot)
+            self._send_periodic_notifications(snapshot)
+            self._write_metrics_log(snapshot)
+            self._record_profiling(cycle_start)
         except Exception as e:
-            print(f"Ошибка в update_info: {e}")
+            logger.exception("Ошибка в update_info: %s", e)
+        return True
+
+    def _send_periodic_notifications(self, snapshot: MetricsSnapshot) -> None:
+        now = time.time()
+        if (self.telegram_notifier.enabled and
+                now - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
+            self.telegram_dispatcher.submit(format_status_message(snapshot, "html"))
+            self.last_telegram_notification_time = now
+
+        if (self.discord_notifier.enabled and
+                now - self.last_discord_notification_time >= self.discord_notifier.notification_interval):
+            self.discord_dispatcher.submit(format_status_message(snapshot, "markdown"))
+            self.last_discord_notification_time = now
+
+    def _write_metrics_log(self, s: MetricsSnapshot) -> None:
+        if not self.visibility_settings.get('logging_enabled', True):
+            return
+        line = (f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
+                f"CPU: {s.cpu_usage:.0f}% {s.cpu_temp}°C | "
+                f"RAM: {s.ram_used:.1f}/{s.ram_total:.1f} GB | "
+                f"SWAP: {s.swap_used:.1f}/{s.swap_total:.1f} GB | "
+                f"Disk: {s.disk_used:.1f}/{s.disk_total:.1f} GB | "
+                f"Net: ↓{s.net_recv:.1f}/↑{s.net_sent:.1f} {tr('mbps')} | "
+                f"Uptime: {s.uptime} | "
+                f"Keys: {s.keyboard_clicks} | "
+                f"Clicks: {s.mouse_clicks}\n")
+        max_bytes = sanitize_log_size_mb(self.visibility_settings.get('max_log_mb', 5)) * 1024 * 1024
+        try:
+            self.metrics_log.write(line, max_bytes)
+        except OSError as e:
+            logger.warning("Ошибка записи в лог: %s", e)
+
+    def _record_profiling(self, cycle_start: float) -> None:
+        if not self.visibility_settings.get('profiling_enabled', False):
+            return
+        cycle_ms = (time.perf_counter() - cycle_start) * 1000.0
+        self._profiling_cycle_count += 1
+        self._profiling_total_ms += cycle_ms
+        self._profiling_max_ms = max(self._profiling_max_ms, cycle_ms)
+        if self._profiling_cycle_count >= 60:
+            avg_ms = self._profiling_total_ms / float(self._profiling_cycle_count)
+            logger.info(
+                "Profiling update_info: avg=%.2fms max=%.2fms samples=%d",
+                avg_ms,
+                self._profiling_max_ms,
+                self._profiling_cycle_count,
+            )
+            self._profiling_cycle_count = 0
+            self._profiling_total_ms = 0.0
+            self._profiling_max_ms = 0.0
+
+    def _due(self, item_key: str, interval_key: str, now: float) -> bool:
+        interval = sanitize_poll_interval(self.visibility_settings.get(interval_key, POLL_INTERVAL_DEFAULT_SEC))
+        if now - self._last_item_update_ts.get(item_key, 0.0) >= interval:
+            self._last_item_update_ts[item_key] = now
             return True
-
-    def send_telegram_notification(self, cpu_temp, cpu_usage, ram_used, ram_total,
-                                   disk_used, disk_total, swap_used, swap_total,
-                                   net_recv_speed, net_sent_speed, uptime,
-                                   keyboard_clicks_val, mouse_clicks_val):
-        msg = (
-            f"<b>{tr('system_status')}</b>\n"
-            f"<b>{tr('cpu')}:</b> {cpu_usage:.0f}% ({cpu_temp}{tr('temperature')})\n"
-            f"<b>{tr('ram')}:</b> {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
-            f"<b>{tr('swap')}:</b> {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
-            f"<b>{tr('disk')}:</b> {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
-            f"<b>{tr('network')}:</b> ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
-            f"<b>{tr('uptime')}:</b> {uptime}\n"
-            f"<b>{tr('keyboard')}:</b> {keyboard_clicks_val} {tr('presses')}\n"
-            f"<b>{tr('mouse')}:</b> {mouse_clicks_val} {tr('clicks')}"
-        )
-        self._enqueue_latest_notification(self._telegram_queue, msg)
-
-    def send_discord_notification(self, cpu_temp, cpu_usage, ram_used, ram_total,
-                                  disk_used, disk_total, swap_used, swap_total,
-                                  net_recv_speed, net_sent_speed, uptime,
-                                  keyboard_clicks_val, mouse_clicks_val):
-        msg = (
-            f"**{tr('system_status')}**\n"
-            f"**{tr('cpu')}**: {cpu_usage:.0f}% ({cpu_temp}{tr('temperature')})\n"
-            f"**{tr('ram')}**: {ram_used:.1f}/{ram_total:.1f} {tr('gb')}\n"
-            f"**{tr('swap')}**: {swap_used:.1f}/{swap_total:.1f} {tr('gb')}\n"
-            f"**{tr('disk')}**: {disk_used:.1f}/{disk_total:.1f} {tr('gb')}\n"
-            f"**{tr('network')}**: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}\n"
-            f"**{tr('uptime')}**: {uptime}\n"
-            f"**{tr('keyboard')}**: {keyboard_clicks_val} {tr('presses')}\n"
-            f"**{tr('mouse')}**: {mouse_clicks_val} {tr('clicks')}"
-        )
-        self._enqueue_latest_notification(self._discord_queue, msg)
-
-    @staticmethod
-    def _normalize_cpu_sample(cpu_usage: object, cpu_temp: object) -> tuple[float, float]:
-        try:
-            usage = float(cpu_usage)
-        except (TypeError, ValueError):
-            usage = 0.0
-        try:
-            temp = float(cpu_temp)
-        except (TypeError, ValueError):
-            temp = 0.0
-        return max(0.0, min(100.0, usage)), max(0.0, min(150.0, temp))
-
-    def _append_cpu_sample(self, cpu_usage: object, cpu_temp: object) -> None:
-        usage, temp = self._normalize_cpu_sample(cpu_usage, cpu_temp)
-        self.cpu_history.append((time.time(), usage, temp))
-
-    def show_cpu_graph(self, _w=None):
-        if self.cpu_graph_window and self.cpu_graph_window.get_visible():
-            self.cpu_graph_window.present()
-            return
-
-        window = Gtk.Window(title=f"{tr('cpu_info')} — {tr('system_status')}")
-        window.set_default_size(720, 380)
-        window.set_border_width(10)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        area = Gtk.DrawingArea()
-        area.set_size_request(680, 320)
-        area.connect("draw", self._draw_cpu_graph)
-        self._connect_graph_zoom(area, 'cpu')
-        self._maybe_add_graph_zoom_controls(box, 'cpu', area)
-        box.pack_start(area, True, True, 0)
-
-        window.add(box)
-        window.connect("destroy", self._on_cpu_graph_destroy)
-
-        self.cpu_graph_window = window
-        self.cpu_graph_area = area
-        self._refresh_cpu_graph_texts()
-
-        window.show_all()
-
-    def _on_cpu_graph_destroy(self, _w):
-        self.cpu_graph_window = None
-        self.cpu_graph_area = None
-        self.cpu_graph_hint_label = None
-
-    def _refresh_cpu_graph_texts(self) -> None:
-        if self.cpu_graph_window:
-            self.cpu_graph_window.set_title(f"{tr('cpu_info')} — {tr('system_status')}")
-        if self.cpu_graph_area:
-            self.cpu_graph_area.queue_draw()
-
-
-    @staticmethod
-    def _draw_no_data(widget, cr, message: str) -> None:
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(14)
-        cr.set_source_rgb(0.78, 0.78, 0.78)
-        ext = cr.text_extents(message)
-        x = max(8, (width - _text_width(ext)) / 2)
-        y = max(20, height / 2)
-        cr.move_to(x, y)
-        cr.show_text(message)
-
-    @staticmethod
-    def _clamp(value: float, min_value: float, max_value: float) -> float:
-        return max(min_value, min(max_value, value))
-
-    def _visible_samples(self, graph_key: str, samples: list[tuple]) -> list[tuple]:
-        if len(samples) <= 2:
-            return samples
-        state = self.graph_zoom_state.get(graph_key)
-        if not state:
-            return samples
-
-        scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
-        if scale <= 1.0:
-            return samples
-
-        total = len(samples)
-        window_len = max(2, int(round(total / scale)))
-        center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
-        center_idx = int(round(center * (total - 1)))
-
-        start = center_idx - (window_len // 2)
-        max_start = max(0, total - window_len)
-        start = min(max(0, start), max_start)
-        end = start + window_len
-        return samples[start:end]
-
-    @staticmethod
-    def _decimate_samples(samples: list[tuple], max_points: int) -> list[tuple]:
-        """Downsample samples to cap drawing cost on large histories."""
-        if max_points <= 0 or len(samples) <= max_points:
-            return samples
-        if max_points == 1:
-            return [samples[-1]]
-        step = (len(samples) - 1) / float(max_points - 1)
-        result: list[tuple] = []
-        for idx in range(max_points):
-            src_index = int(round(idx * step))
-            if src_index >= len(samples):
-                src_index = len(samples) - 1
-            result.append(samples[src_index])
-        return result
-
-    def _connect_graph_zoom(self, area: Gtk.DrawingArea, graph_key: str) -> None:
-        area.set_events(
-            area.get_events()
-            | Gdk.EventMask.SCROLL_MASK
-            | Gdk.EventMask.BUTTON_PRESS_MASK
-            | Gdk.EventMask.BUTTON_RELEASE_MASK
-            | Gdk.EventMask.POINTER_MOTION_MASK
-            | Gdk.EventMask.BUTTON1_MOTION_MASK
-            | Gdk.EventMask.LEAVE_NOTIFY_MASK
-        )
-        area.connect('scroll-event', self._on_graph_scroll_event, graph_key)
-        area.connect('button-press-event', self._on_graph_button_press_event, graph_key)
-        area.connect('motion-notify-event', self._on_graph_motion_notify_event, graph_key)
-        area.connect('button-release-event', self._on_graph_button_release_event, graph_key)
-        area.connect('leave-notify-event', self._on_graph_leave_notify_event, graph_key)
-
-    def _graph_area_by_key(self, graph_key: str) -> Optional[Gtk.DrawingArea]:
-        return {
-            'cpu': self.cpu_graph_area,
-            'ram': self.ram_graph_area,
-            'swap': self.swap_graph_area,
-            'disk': self.disk_graph_area,
-            'net': self.net_graph_area,
-            'keyboard': self.keyboard_graph_area,
-            'mouse': self.mouse_graph_area,
-        }.get(graph_key)
-
-    def _apply_graph_zoom_step(
-            self,
-            graph_key: str,
-            zoom_factor: float,
-            area: Optional[Gtk.DrawingArea] = None,
-            anchor_ratio: float = 0.5,
-    ) -> None:
-        state = self.graph_zoom_state.get(graph_key)
-        if state is None:
-            return
-
-        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
-        new_scale = self._clamp(old_scale * zoom_factor, 1.0, 40.0)
-        if abs(new_scale - old_scale) < 1e-9:
-            return
-
-        old_span = 1.0 / old_scale
-        new_span = 1.0 / new_scale
-        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
-        old_left = self._clamp(old_center - old_span / 2, 0.0, max(0.0, 1.0 - old_span))
-        anchor = self._clamp(float(anchor_ratio), 0.0, 1.0)
-        anchor_global = old_left + anchor * old_span
-
-        new_left = anchor_global - anchor * new_span
-        new_left = self._clamp(new_left, 0.0, max(0.0, 1.0 - new_span))
-        new_center = new_left + new_span / 2
-
-        state['scale'] = new_scale
-        state['center'] = self._clamp(new_center, 0.0, 1.0)
-
-        target_area = area or self._graph_area_by_key(graph_key)
-        if target_area is not None:
-            target_area.queue_draw()
-
-    def _reset_graph_zoom(self, graph_key: str, area: Optional[Gtk.DrawingArea] = None) -> None:
-        state = self.graph_zoom_state.get(graph_key)
-        if state is None:
-            return
-        state['scale'] = 1.0
-        state['center'] = 1.0
-        state['dragging'] = 0.0
-        target_area = area or self._graph_area_by_key(graph_key)
-        if target_area is not None:
-            target_area.queue_draw()
-
-    def _build_graph_zoom_controls(self, graph_key: str, area: Gtk.DrawingArea) -> Gtk.Box:
-        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        controls.set_halign(Gtk.Align.END)
-
-        zoom_out_button = Gtk.Button(label="-")
-        zoom_out_button.set_tooltip_text(tr('zoom_out'))
-        zoom_out_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1 / 1.2, area))
-
-        zoom_reset_button = Gtk.Button(label="↻")
-        zoom_reset_button.set_tooltip_text(tr('reset_zoom'))
-        zoom_reset_button.connect("clicked", lambda *_: self._reset_graph_zoom(graph_key, area))
-
-        zoom_in_button = Gtk.Button(label="+")
-        zoom_in_button.set_tooltip_text(tr('zoom_in'))
-        zoom_in_button.connect("clicked", lambda *_: self._apply_graph_zoom_step(graph_key, 1.2, area))
-
-        for btn in (zoom_out_button, zoom_reset_button, zoom_in_button):
-            btn.set_size_request(28, 24)
-
-        controls.pack_start(zoom_out_button, False, False, 0)
-        controls.pack_start(zoom_in_button, False, False, 0)
-        controls.pack_start(zoom_reset_button, False, False, 0)
-        return controls
-
-    def _maybe_add_graph_zoom_controls(self, box: Gtk.Box, graph_key: str, area: Gtk.DrawingArea) -> None:
-        if self.visibility_settings.get('show_graph_zoom_controls', True):
-            box.pack_start(self._build_graph_zoom_controls(graph_key, area), False, False, 0)
-
-    def _on_graph_scroll_event(self, widget, event, graph_key: str):
-        state = self.graph_zoom_state.get(graph_key)
-        if state is None:
-            return False
-
-        width = max(1, widget.get_allocated_width())
-        anchor_x = self._clamp(float(getattr(event, 'x', width / 2)), 0.0, float(width))
-        anchor_ratio = anchor_x / width
-
-        zoom_factor = 1.0
-        if event.direction == Gdk.ScrollDirection.UP:
-            zoom_factor = 1.2
-        elif event.direction == Gdk.ScrollDirection.DOWN:
-            zoom_factor = 1 / 1.2
-        elif event.direction == Gdk.ScrollDirection.SMOOTH:
-            delta_y = float(getattr(event, 'delta_y', 0.0))
-            zoom_factor = 1.2 if delta_y < 0 else (1 / 1.2 if delta_y > 0 else 1.0)
-
-        if zoom_factor == 1.0:
-            return False
-
-        self._apply_graph_zoom_step(graph_key, zoom_factor, area=widget, anchor_ratio=anchor_ratio)
-        return True
-
-    def _on_graph_button_press_event(self, _widget, event, graph_key: str):
-        if event.button != Gdk.BUTTON_PRIMARY:
-            return False
-        state = self.graph_zoom_state.get(graph_key)
-        if state is None:
-            return False
-        state['dragging'] = 1.0
-        state['last_x'] = float(getattr(event, 'x', 0.0))
-        return True
-
-    def _on_graph_motion_notify_event(self, widget, event, graph_key: str):
-        state = self.graph_zoom_state.get(graph_key)
-        if state is None:
-            return False
-
-        state['hovering'] = 1.0
-        state['hover_x'] = float(getattr(event, 'x', 0.0))
-        state['hover_y'] = float(getattr(event, 'y', 0.0))
-
-        if state.get('dragging', 0.0) < 0.5:
-            widget.queue_draw()
-            return False
-
-        width = max(1, widget.get_allocated_width())
-        old_scale = self._clamp(float(state.get('scale', 1.0)), 1.0, 40.0)
-        span = 1.0 / old_scale
-        if span >= 1.0:
-            state['last_x'] = float(getattr(event, 'x', 0.0))
-            return False
-
-        current_x = self._clamp(float(getattr(event, 'x', 0.0)), 0.0, float(width))
-        prev_x = self._clamp(float(state.get('last_x', current_x)), 0.0, float(width))
-        delta_x = current_x - prev_x
-        state['last_x'] = current_x
-
-        old_center = self._clamp(float(state.get('center', 1.0)), 0.0, 1.0)
-        new_center = old_center - (delta_x / width) * span
-        state['center'] = self._clamp(new_center, span / 2, 1.0 - span / 2)
-        widget.queue_draw()
-        return True
-
-    def _on_graph_button_release_event(self, _widget, event, graph_key: str):
-        if event.button != Gdk.BUTTON_PRIMARY:
-            return False
-        state = self.graph_zoom_state.get(graph_key)
-        if state is None:
-            return False
-        state['dragging'] = 0.0
-        return True
-
-    def _on_graph_leave_notify_event(self, widget, _event, graph_key: str):
-        state = self.graph_zoom_state.get(graph_key)
-        if state is None:
-            return False
-        state['hovering'] = 0.0
-        widget.queue_draw()
         return False
 
-    def _draw_graph_hover_info(self,
-                              widget,
-                              cr,
-                              graph_key: str,
-                              samples: list[tuple],
-                              margin_left: float,
-                              margin_top: float,
-                              plot_w: float,
-                              plot_h: float,
-                              formatter: Callable[[tuple], list[str]]) -> None:
-        state = self.graph_zoom_state.get(graph_key)
-        if not state or state.get('hovering', 0.0) < 0.5 or not samples:
+    def _throttled_text(self, item_key: str, interval_key: str, now: float, text: str) -> str:
+        """Текст обновляется не чаще заданного для пункта интервала."""
+        if self._due(item_key, interval_key, now) or item_key not in self._item_display_cache:
+            self._item_display_cache[item_key] = text
+        return self._item_display_cache[item_key]
+
+    def _update_ui(self, s: MetricsSnapshot) -> None:
+        now = time.time()
+        vs = self.visibility_settings
+        gb = tr('gb')
+
+        for window in self.graph_windows.values():
+            window.queue_draw()
+
+        throttled = {
+            'cpu': ('cpu_interval_sec', f"{tr('cpu_info')}: {s.cpu_usage:.0f}%  🌡{s.cpu_temp}°C"),
+            'ram': ('ram_interval_sec', f"{tr('ram_loading')}: {s.ram_used:.1f}/{s.ram_total:.1f} {gb}"),
+            'swap': ('swap_interval_sec', f"{tr('swap_loading')}: {s.swap_used:.1f}/{s.swap_total:.1f} {gb}"),
+            'disk': ('disk_interval_sec', f"{tr('disk_loading')}: {s.disk_used:.1f}/{s.disk_total:.1f} {gb}"),
+            'net': ('net_interval_sec', f"{tr('lan_speed')}: ↓{s.net_recv:.1f}/↑{s.net_sent:.1f} {tr('mbps')}"),
+        }
+        for key, (interval_key, text) in throttled.items():
+            if vs.get(key, True):
+                self._set_label(self.menu_items[key], self._throttled_text(key, interval_key, now, text))
+
+        immediate = {
+            'uptime': f"{tr('uptime_label')}: {s.uptime}",
+            'keyboard_clicks': f"{tr('keyboard_clicks')}: {s.keyboard_clicks}",
+            'mouse_clicks': f"{tr('mouse_clicks')}: {s.mouse_clicks}",
+        }
+        for key, text in immediate.items():
+            if vs.get(key, True):
+                self._set_label(self.menu_items[key], text)
+
+        tray_parts = []
+        if vs.get('tray_cpu', True):
+            tray_parts.append(self._throttled_text('tray_cpu', 'tray_cpu_interval_sec', now,
+                                                   f"{tr('cpu_info')}: {s.cpu_usage:.0f}%"))
+        if vs.get('tray_ram', True):
+            tray_parts.append(self._throttled_text('tray_ram', 'tray_ram_interval_sec', now,
+                                                   f"{tr('ram_loading')}: {s.ram_used:.1f}{gb}"))
+        # Обратный отсчёт планировщика — часть той же подписи, чтобы не было двух
+        # источников, перетирающих друг друга.
+        countdown = self.power_control.countdown_text()
+        if countdown:
+            tray_parts.append(f"⏻ {countdown}")
+        tray_text = "  ".join(tray_parts)
+        if self.telegram_notifier.enabled or self.discord_notifier.enabled:
+            tray_text = "⤴  " + tray_text
+        self._set_indicator_label(tray_text)
+
+    # ---------- Завершение ----------
+
+    def _on_unix_signal(self) -> bool:
+        self.quit()
+        return GLib.SOURCE_REMOVE
+
+    def quit(self, *_args):
+        if self._quitting:
             return
-
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-        hover_x = self._clamp(float(state.get('hover_x', 0.0)), 0.0, float(width))
-        hover_y = self._clamp(float(state.get('hover_y', 0.0)), 0.0, float(height))
-
-        left = margin_left
-        right = margin_left + plot_w
-        top = margin_top
-        bottom = margin_top + plot_h
-        if hover_x < left or hover_x > right or hover_y < top or hover_y > bottom:
-            return
-
-        if len(samples) <= 1:
-            idx = 0
-            point_x = left
-        else:
-            ratio = self._clamp((hover_x - left) / max(1.0, plot_w), 0.0, 1.0)
-            idx = int(round(ratio * (len(samples) - 1)))
-            idx = max(0, min(len(samples) - 1, idx))
-            point_x = left + plot_w * idx / (len(samples) - 1)
-
-        sample = samples[idx]
-        lines = formatter(sample)
-        if not lines:
-            return
-
-        cr.set_source_rgba(1.0, 1.0, 1.0, 0.22)
-        cr.set_line_width(1)
-        cr.move_to(point_x, top)
-        cr.line_to(point_x, bottom)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(11)
-        padding = 6
-        line_height = 14
-        max_w = 0.0
-        for line in lines:
-            max_w = max(max_w, _text_width(cr.text_extents(line)))
-
-        box_w = max_w + padding * 2
-        box_h = line_height * len(lines) + padding * 2
-        box_x = self._clamp(hover_x + 12, 4.0, max(4.0, width - box_w - 4))
-        box_y = self._clamp(hover_y + 12, 4.0, max(4.0, height - box_h - 4))
-
-        cr.set_source_rgba(0.05, 0.05, 0.05, 0.88)
-        cr.rectangle(box_x, box_y, box_w, box_h)
-        cr.fill()
-
-        cr.set_source_rgb(0.96, 0.96, 0.96)
-        for i, line in enumerate(lines):
-            cr.move_to(box_x + padding, box_y + padding + line_height * (i + 1) - 3)
-            cr.show_text(line)
-
-    def _draw_cpu_graph(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        margin_left = 48
-        margin_right = 16
-        margin_top = 16
-        margin_bottom = 36
-
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.set_source_rgb(0.2, 0.2, 0.2)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            cr.move_to(margin_left, y)
-            cr.line_to(margin_left + plot_w, y)
-        cr.stroke()
-
-        # Left-side numeric Y axis labels for CPU load (%)
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(10)
-        cr.set_source_rgb(0.72, 0.82, 0.9)
-        for i in range(5):
-            cpu_mark = 100 - (25 * i)
-            y = margin_top + (plot_h * i / 4)
-            label = f"{cpu_mark}%"
-            text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
-            cr.show_text(label)
-
-        samples = self._decimate_samples(self._visible_samples('cpu', list(self.cpu_history)), max(200, width * 2))
-        if not samples:
-            self._draw_no_data(widget, cr, 'No data yet…')
-            return
-        if len(samples) == 1:
-            samples = [samples[0], samples[0]]
-
-        line_color = self._graph_line_color_rgb('graph_line_color_cpu')
-        temp_line_color = self._graph_line_color_rgb('graph_line_color_temp')
-        max_temp = max(100.0, max(temp for _, _, temp in samples) + 5.0)
-
-        def draw_line(selector, color, max_value):
-            cr.set_source_rgb(*color)
-            cr.set_line_width(2)
-            for idx, sample in enumerate(samples):
-                x = margin_left + plot_w * idx / (len(samples) - 1)
-                value = selector(sample)
-                y = margin_top + plot_h * (1.0 - (value / max_value))
-                if idx == 0:
-                    cr.move_to(x, y)
-                else:
-                    cr.line_to(x, y)
-            cr.stroke()
-
-        draw_line(lambda s: s[1], line_color, 100.0)
-        draw_line(lambda s: s[2], temp_line_color, max_temp)
-
-        # Legend/signatures for displayed data
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(12)
-
-        cr.set_source_rgb(*line_color)
-        cr.rectangle(margin_left, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(0.88, 0.92, 1.0)
-        cr.move_to(margin_left + 18, 12)
-        cr.show_text(f"{tr('cpu')} (%)")
-
-        cr.set_source_rgb(*temp_line_color)
-        cr.rectangle(margin_left + 150, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(1.0, 0.88, 0.82)
-        cr.move_to(margin_left + 168, 12)
-        cr.show_text(f"{tr('temperature')}")
-
-        last_usage = samples[-1][1]
-        last_temp = samples[-1][2]
-        values_text = f"{tr('cpu')}: {last_usage:.0f}%   {tr('temperature')}: {last_temp:.1f}°C"
-        cr.set_source_rgb(0.95, 0.95, 0.95)
-        cr.set_font_size(12)
-        ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - _text_width(ext), 12)
-        cr.show_text(values_text)
-
-        self._draw_graph_hover_info(
-            widget,
-            cr,
-            'cpu',
-            samples,
-            margin_left,
-            margin_top,
-            plot_w,
-            plot_h,
-            lambda sample: [
-                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"{tr('cpu')}: {sample[1]:.1f}%",
-                f"{tr('temperature')}: {sample[2]:.1f}°C",
-            ],
-        )
-
-        # Start and end time at the bottom
-        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
-        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
-
-        cr.set_source_rgb(0.75, 0.75, 0.75)
-        cr.set_font_size(11)
-        cr.move_to(margin_left, height - 10)
-        cr.show_text(f"◀ {start_ts}")
-
-        end_text = f"{end_ts} ▶"
-        text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
-        cr.show_text(end_text)
-
-    def _append_ram_sample(self, ram_used: object, ram_total: object) -> None:
-        try:
-            used = float(ram_used)
-            total = float(ram_total)
-            percent = (used / total * 100.0) if total > 0 else 0.0
-        except (TypeError, ValueError, ZeroDivisionError):
-            used, total, percent = 0.0, 0.0, 0.0
-        percent = max(0.0, min(100.0, percent))
-        self.ram_history.append((time.time(), used, total, percent))
-
-    def show_ram_graph(self, _w=None):
-        if self.ram_graph_window and self.ram_graph_window.get_visible():
-            self.ram_graph_window.present()
-            return
-
-        window = Gtk.Window(title=f"{tr('ram_loading')} — {tr('system_status')}")
-        window.set_default_size(720, 380)
-        window.set_border_width(10)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        area = Gtk.DrawingArea()
-        area.set_size_request(680, 320)
-        area.connect("draw", self._draw_ram_graph)
-        self._connect_graph_zoom(area, 'ram')
-        self._maybe_add_graph_zoom_controls(box, 'ram', area)
-        box.pack_start(area, True, True, 0)
-
-        window.add(box)
-        window.connect("destroy", self._on_ram_graph_destroy)
-
-        self.ram_graph_window = window
-        self.ram_graph_area = area
-        self._refresh_ram_graph_texts()
-
-        window.show_all()
-
-    def _on_ram_graph_destroy(self, _w):
-        self.ram_graph_window = None
-        self.ram_graph_area = None
-        self.ram_graph_hint_label = None
-
-    def _refresh_ram_graph_texts(self) -> None:
-        if self.ram_graph_window:
-            self.ram_graph_window.set_title(f"{tr('ram_loading')} — {tr('system_status')}")
-        if self.ram_graph_area:
-            self.ram_graph_area.queue_draw()
-
-    def _draw_ram_graph(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        margin_left = 48
-        margin_right = 16
-        margin_top = 16
-        margin_bottom = 36
-
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.set_source_rgb(0.2, 0.2, 0.2)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            cr.move_to(margin_left, y)
-            cr.line_to(margin_left + plot_w, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(10)
-        cr.set_source_rgb(0.72, 0.9, 0.72)
-        for i in range(5):
-            mark = 100 - (25 * i)
-            y = margin_top + (plot_h * i / 4)
-            label = f"{mark}%"
-            text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
-            cr.show_text(label)
-
-        samples = self._decimate_samples(self._visible_samples('ram', list(self.ram_history)), max(200, width * 2))
-        if not samples:
-            self._draw_no_data(widget, cr, 'No data yet…')
-            return
-        if len(samples) == 1:
-            samples = [samples[0], samples[0]]
-
-        line_color = self._graph_line_color_rgb('graph_line_color_ram')
-        cr.set_source_rgb(*line_color)
-        cr.set_line_width(2)
-        for idx, sample in enumerate(samples):
-            x = margin_left + plot_w * idx / (len(samples) - 1)
-            value = sample[3]
-            y = margin_top + plot_h * (1.0 - (value / 100.0))
-            if idx == 0:
-                cr.move_to(x, y)
-            else:
-                cr.line_to(x, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(12)
-        cr.set_source_rgb(*line_color)
-        cr.rectangle(margin_left, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(0.9, 1.0, 0.9)
-        cr.move_to(margin_left + 18, 12)
-        cr.show_text(f"{tr('ram_loading')} (%)")
-
-        last_used = samples[-1][1]
-        last_total = samples[-1][2]
-        last_percent = samples[-1][3]
-        values_text = f"{tr('ram_loading')}: {last_used:.1f}/{last_total:.1f} GB ({last_percent:.0f}%)"
-        cr.set_source_rgb(0.95, 0.95, 0.95)
-        cr.set_font_size(12)
-        ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - _text_width(ext), 12)
-        cr.show_text(values_text)
-
-        self._draw_graph_hover_info(
-            widget,
-            cr,
-            'ram',
-            samples,
-            margin_left,
-            margin_top,
-            plot_w,
-            plot_h,
-            lambda sample: [
-                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"{tr('ram_loading')}: {sample[3]:.1f}%",
-                f"{sample[1]:.1f}/{sample[2]:.1f} GB",
-            ],
-        )
-
-        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
-        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
-
-        cr.set_source_rgb(0.75, 0.75, 0.75)
-        cr.set_font_size(11)
-        cr.move_to(margin_left, height - 10)
-        cr.show_text(f"◀ {start_ts}")
-
-        end_text = f"{end_ts} ▶"
-        text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
-        cr.show_text(end_text)
-
-    def _append_swap_sample(self, swap_used: object, swap_total: object) -> None:
-        try:
-            used = float(swap_used)
-            total = float(swap_total)
-            percent = (used / total * 100.0) if total > 0 else 0.0
-        except (TypeError, ValueError, ZeroDivisionError):
-            used, total, percent = 0.0, 0.0, 0.0
-        percent = max(0.0, min(100.0, percent))
-        self.swap_history.append((time.time(), used, total, percent))
-
-    def show_swap_graph(self, _w=None):
-        if self.swap_graph_window and self.swap_graph_window.get_visible():
-            self.swap_graph_window.present()
-            return
-
-        window = Gtk.Window(title=f"{tr('swap_loading')} — {tr('system_status')}")
-        window.set_default_size(720, 380)
-        window.set_border_width(10)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        area = Gtk.DrawingArea()
-        area.set_size_request(680, 320)
-        area.connect("draw", self._draw_swap_graph)
-        self._connect_graph_zoom(area, 'swap')
-        self._maybe_add_graph_zoom_controls(box, 'swap', area)
-        box.pack_start(area, True, True, 0)
-
-        window.add(box)
-        window.connect("destroy", self._on_swap_graph_destroy)
-
-        self.swap_graph_window = window
-        self.swap_graph_area = area
-        self._refresh_swap_graph_texts()
-
-        window.show_all()
-
-    def _on_swap_graph_destroy(self, _w):
-        self.swap_graph_window = None
-        self.swap_graph_area = None
-        self.swap_graph_hint_label = None
-
-    def _refresh_swap_graph_texts(self) -> None:
-        if self.swap_graph_window:
-            self.swap_graph_window.set_title(f"{tr('swap_loading')} — {tr('system_status')}")
-        if self.swap_graph_area:
-            self.swap_graph_area.queue_draw()
-
-    def _draw_swap_graph(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        margin_left = 48
-        margin_right = 16
-        margin_top = 16
-        margin_bottom = 36
-
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.set_source_rgb(0.2, 0.2, 0.2)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            cr.move_to(margin_left, y)
-            cr.line_to(margin_left + plot_w, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(10)
-        cr.set_source_rgb(0.9, 0.72, 0.95)
-        for i in range(5):
-            mark = 100 - (25 * i)
-            y = margin_top + (plot_h * i / 4)
-            label = f"{mark}%"
-            text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
-            cr.show_text(label)
-
-        samples = self._decimate_samples(self._visible_samples('swap', list(self.swap_history)), max(200, width * 2))
-        if not samples:
-            self._draw_no_data(widget, cr, 'No data yet…')
-            return
-        if len(samples) == 1:
-            samples = [samples[0], samples[0]]
-
-        line_color = self._graph_line_color_rgb('graph_line_color_swap')
-        cr.set_source_rgb(*line_color)
-        cr.set_line_width(2)
-        for idx, sample in enumerate(samples):
-            x = margin_left + plot_w * idx / (len(samples) - 1)
-            value = sample[3]
-            y = margin_top + plot_h * (1.0 - (value / 100.0))
-            if idx == 0:
-                cr.move_to(x, y)
-            else:
-                cr.line_to(x, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(12)
-        cr.set_source_rgb(*line_color)
-        cr.rectangle(margin_left, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(0.98, 0.88, 1.0)
-        cr.move_to(margin_left + 18, 12)
-        cr.show_text(f"{tr('swap_loading')} (%)")
-
-        last_used = samples[-1][1]
-        last_total = samples[-1][2]
-        last_percent = samples[-1][3]
-        values_text = f"{tr('swap_loading')}: {last_used:.1f}/{last_total:.1f} GB ({last_percent:.0f}%)"
-        cr.set_source_rgb(0.95, 0.95, 0.95)
-        cr.set_font_size(12)
-        ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - _text_width(ext), 12)
-        cr.show_text(values_text)
-
-        self._draw_graph_hover_info(
-            widget,
-            cr,
-            'swap',
-            samples,
-            margin_left,
-            margin_top,
-            plot_w,
-            plot_h,
-            lambda sample: [
-                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"{tr('swap_loading')}: {sample[3]:.1f}%",
-                f"{sample[1]:.1f}/{sample[2]:.1f} GB",
-            ],
-        )
-
-        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
-        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
-
-        cr.set_source_rgb(0.75, 0.75, 0.75)
-        cr.set_font_size(11)
-        cr.move_to(margin_left, height - 10)
-        cr.show_text(f"◀ {start_ts}")
-
-        end_text = f"{end_ts} ▶"
-        text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
-        cr.show_text(end_text)
-
-    def _append_disk_sample(self, disk_used: object, disk_total: object) -> None:
-        try:
-            used = float(disk_used)
-            total = float(disk_total)
-            percent = (used / total * 100.0) if total > 0 else 0.0
-        except (TypeError, ValueError, ZeroDivisionError):
-            used, total, percent = 0.0, 0.0, 0.0
-        percent = max(0.0, min(100.0, percent))
-        self.disk_history.append((time.time(), used, total, percent))
-
-    def show_disk_graph(self, _w=None):
-        if self.disk_graph_window and self.disk_graph_window.get_visible():
-            self.disk_graph_window.present()
-            return
-
-        window = Gtk.Window(title=f"{tr('disk_loading')} — {tr('system_status')}")
-        window.set_default_size(720, 380)
-        window.set_border_width(10)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        area = Gtk.DrawingArea()
-        area.set_size_request(680, 320)
-        area.connect("draw", self._draw_disk_graph)
-        self._connect_graph_zoom(area, 'disk')
-        self._maybe_add_graph_zoom_controls(box, 'disk', area)
-        box.pack_start(area, True, True, 0)
-
-        window.add(box)
-        window.connect("destroy", self._on_disk_graph_destroy)
-
-        self.disk_graph_window = window
-        self.disk_graph_area = area
-        self._refresh_disk_graph_texts()
-
-        window.show_all()
-
-    def _on_disk_graph_destroy(self, _w):
-        self.disk_graph_window = None
-        self.disk_graph_area = None
-        self.disk_graph_hint_label = None
-
-    def _refresh_disk_graph_texts(self) -> None:
-        if self.disk_graph_window:
-            self.disk_graph_window.set_title(f"{tr('disk_loading')} — {tr('system_status')}")
-        if self.disk_graph_area:
-            self.disk_graph_area.queue_draw()
-
-    def _draw_disk_graph(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        margin_left = 48
-        margin_right = 16
-        margin_top = 16
-        margin_bottom = 36
-
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.set_source_rgb(0.2, 0.2, 0.2)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            cr.move_to(margin_left, y)
-            cr.line_to(margin_left + plot_w, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(10)
-        cr.set_source_rgb(0.7, 0.85, 1.0)
-        for i in range(5):
-            mark = 100 - (25 * i)
-            y = margin_top + (plot_h * i / 4)
-            label = f"{mark}%"
-            text_extents = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - _text_width(text_extents) - 6), y + 4)
-            cr.show_text(label)
-
-        samples = self._decimate_samples(self._visible_samples('disk', list(self.disk_history)), max(200, width * 2))
-        if not samples:
-            self._draw_no_data(widget, cr, 'No data yet…')
-            return
-        if len(samples) == 1:
-            samples = [samples[0], samples[0]]
-
-        line_color = self._graph_line_color_rgb('graph_line_color_disk')
-        cr.set_source_rgb(*line_color)
-        cr.set_line_width(2)
-        for idx, sample in enumerate(samples):
-            x = margin_left + plot_w * idx / (len(samples) - 1)
-            value = sample[3]
-            y = margin_top + plot_h * (1.0 - (value / 100.0))
-            if idx == 0:
-                cr.move_to(x, y)
-            else:
-                cr.line_to(x, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(12)
-        cr.set_source_rgb(*line_color)
-        cr.rectangle(margin_left, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(0.88, 0.95, 1.0)
-        cr.move_to(margin_left + 18, 12)
-        cr.show_text(f"{tr('disk_loading')} (%)")
-
-        last_used = samples[-1][1]
-        last_total = samples[-1][2]
-        last_percent = samples[-1][3]
-        values_text = f"{tr('disk_loading')}: {last_used:.1f}/{last_total:.1f} GB ({last_percent:.0f}%)"
-        cr.set_source_rgb(0.95, 0.95, 0.95)
-        cr.set_font_size(12)
-        ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - _text_width(ext), 12)
-        cr.show_text(values_text)
-
-        self._draw_graph_hover_info(
-            widget,
-            cr,
-            'disk',
-            samples,
-            margin_left,
-            margin_top,
-            plot_w,
-            plot_h,
-            lambda sample: [
-                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"{tr('disk_loading')}: {sample[3]:.1f}%",
-                f"{sample[1]:.1f}/{sample[2]:.1f} GB",
-            ],
-        )
-
-        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
-        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
-
-        cr.set_source_rgb(0.75, 0.75, 0.75)
-        cr.set_font_size(11)
-        cr.move_to(margin_left, height - 10)
-        cr.show_text(f"◀ {start_ts}")
-
-        end_text = f"{end_ts} ▶"
-        text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
-        cr.show_text(end_text)
-
-    def _append_net_sample(self, recv_speed: object, sent_speed: object) -> None:
-        try:
-            recv = max(0.0, float(recv_speed))
-        except (TypeError, ValueError):
-            recv = 0.0
-        try:
-            sent = max(0.0, float(sent_speed))
-        except (TypeError, ValueError):
-            sent = 0.0
-        self.net_history.append((time.time(), recv, sent))
-
-    def show_net_graph(self, _w=None):
-        if self.net_graph_window and self.net_graph_window.get_visible():
-            self.net_graph_window.present()
-            return
-
-        window = Gtk.Window(title=f"{tr('lan_speed')} — {tr('system_status')}")
-        window.set_default_size(720, 380)
-        window.set_border_width(10)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        area = Gtk.DrawingArea()
-        area.set_size_request(680, 320)
-        area.connect("draw", self._draw_net_graph)
-        self._connect_graph_zoom(area, 'net')
-        self._maybe_add_graph_zoom_controls(box, 'net', area)
-        box.pack_start(area, True, True, 0)
-
-        window.add(box)
-        window.connect("destroy", self._on_net_graph_destroy)
-
-        self.net_graph_window = window
-        self.net_graph_area = area
-        self._refresh_net_graph_texts()
-
-        window.show_all()
-
-    def _on_net_graph_destroy(self, _w):
-        self.net_graph_window = None
-        self.net_graph_area = None
-        self.net_graph_hint_label = None
-
-    def _refresh_net_graph_texts(self) -> None:
-        if self.net_graph_window:
-            self.net_graph_window.set_title(f"{tr('lan_speed')} — {tr('system_status')}")
-        if self.net_graph_area:
-            self.net_graph_area.queue_draw()
-
-    def _draw_net_graph(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        margin_left = 58
-        margin_right = 16
-        margin_top = 16
-        margin_bottom = 36
-
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.set_source_rgb(0.2, 0.2, 0.2)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            cr.move_to(margin_left, y)
-            cr.line_to(margin_left + plot_w, y)
-        cr.stroke()
-
-        samples = self._decimate_samples(self._visible_samples('net', list(self.net_history)), max(200, width * 2))
-        if not samples:
-            self._draw_no_data(widget, cr, 'No data yet…')
-            return
-        if len(samples) == 1:
-            samples = [samples[0], samples[0]]
-
-        max_speed = max(1.0, max(max(s[1], s[2]) for s in samples) * 1.15)
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(10)
-        cr.set_source_rgb(0.8, 0.8, 0.8)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            mark = max_speed * (1 - i / 4)
-            label = f"{mark:.1f}"
-            ext = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
-            cr.show_text(label)
-
-        def draw_line(selector, color):
-            cr.set_source_rgb(*color)
-            cr.set_line_width(2)
-            for idx, sample in enumerate(samples):
-                x = margin_left + plot_w * idx / (len(samples) - 1)
-                value = selector(sample)
-                y = margin_top + plot_h * (1.0 - (value / max_speed))
-                if idx == 0:
-                    cr.move_to(x, y)
-                else:
-                    cr.line_to(x, y)
-            cr.stroke()
-
-        line_color = self._graph_line_color_rgb('graph_line_color_net_recv')
-        net_sent_color = self._graph_line_color_rgb('graph_line_color_net_sent')
-        draw_line(lambda s: s[1], line_color)
-        draw_line(lambda s: s[2], net_sent_color)
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(12)
-
-        cr.set_source_rgb(*line_color)
-        cr.rectangle(margin_left, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(0.85, 1.0, 0.87)
-        cr.move_to(margin_left + 18, 12)
-        cr.show_text(f"↓ {tr('mbps')}")
-
-        cr.set_source_rgb(*net_sent_color)
-        cr.rectangle(margin_left + 95, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(1.0, 0.94, 0.8)
-        cr.move_to(margin_left + 113, 12)
-        cr.show_text(f"↑ {tr('mbps')}")
-
-        last_recv = samples[-1][1]
-        last_sent = samples[-1][2]
-        values_text = f"{tr('lan_speed')}: ↓{last_recv:.1f} / ↑{last_sent:.1f} {tr('mbps')}"
-        cr.set_source_rgb(0.95, 0.95, 0.95)
-        cr.set_font_size(12)
-        ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - _text_width(ext), 12)
-        cr.show_text(values_text)
-
-        self._draw_graph_hover_info(
-            widget,
-            cr,
-            'net',
-            samples,
-            margin_left,
-            margin_top,
-            plot_w,
-            plot_h,
-            lambda sample: [
-                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"↓ {sample[1]:.2f} {tr('mbps')}",
-                f"↑ {sample[2]:.2f} {tr('mbps')}",
-            ],
-        )
-
-        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
-        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
-
-        cr.set_source_rgb(0.75, 0.75, 0.75)
-        cr.set_font_size(11)
-        cr.move_to(margin_left, height - 10)
-        cr.show_text(f"◀ {start_ts}")
-
-        end_text = f"{end_ts} ▶"
-        text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
-        cr.show_text(end_text)
-
-    def _append_keyboard_sample(self, keyboard_clicks: object) -> None:
-        try:
-            count = max(0, int(keyboard_clicks))
-        except (TypeError, ValueError):
-            count = 0
-        self.keyboard_history.append((time.time(), count))
-
-    def show_keyboard_graph(self, _w=None):
-        if self.keyboard_graph_window and self.keyboard_graph_window.get_visible():
-            self.keyboard_graph_window.present()
-            return
-
-        window = Gtk.Window(title=f"{tr('keyboard_clicks')} — {tr('system_status')}")
-        window.set_default_size(720, 380)
-        window.set_border_width(10)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        area = Gtk.DrawingArea()
-        area.set_size_request(680, 320)
-        area.connect("draw", self._draw_keyboard_graph)
-        self._connect_graph_zoom(area, 'keyboard')
-        self._maybe_add_graph_zoom_controls(box, 'keyboard', area)
-        box.pack_start(area, True, True, 0)
-
-        window.add(box)
-        window.connect("destroy", self._on_keyboard_graph_destroy)
-
-        self.keyboard_graph_window = window
-        self.keyboard_graph_area = area
-        self._refresh_keyboard_graph_texts()
-
-        window.show_all()
-
-    def _on_keyboard_graph_destroy(self, _w):
-        self.keyboard_graph_window = None
-        self.keyboard_graph_area = None
-        self.keyboard_graph_hint_label = None
-
-    def _refresh_keyboard_graph_texts(self) -> None:
-        if self.keyboard_graph_window:
-            self.keyboard_graph_window.set_title(f"{tr('keyboard_clicks')} — {tr('system_status')}")
-        if self.keyboard_graph_area:
-            self.keyboard_graph_area.queue_draw()
-
-    def _draw_keyboard_graph(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        margin_left = 58
-        margin_right = 16
-        margin_top = 16
-        margin_bottom = 36
-
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.set_source_rgb(0.2, 0.2, 0.2)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            cr.move_to(margin_left, y)
-            cr.line_to(margin_left + plot_w, y)
-        cr.stroke()
-
-        samples = self._decimate_samples(self._visible_samples('keyboard', list(self.keyboard_history)), max(200, width * 2))
-        if not samples:
-            self._draw_no_data(widget, cr, 'No data yet…')
-            return
-        if len(samples) == 1:
-            samples = [samples[0], samples[0]]
-
-        max_count = max(1, max(s[1] for s in samples))
-        y_max = max_count * 1.05
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(10)
-        cr.set_source_rgb(0.85, 0.85, 0.85)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            mark = int(y_max * (1 - i / 4))
-            label = f"{mark}"
-            ext = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
-            cr.show_text(label)
-
-        line_color = self._graph_line_color_rgb('graph_line_color_keyboard')
-        cr.set_source_rgb(*line_color)
-        cr.set_line_width(2)
-        for idx, sample in enumerate(samples):
-            x = margin_left + plot_w * idx / (len(samples) - 1)
-            value = sample[1]
-            y = margin_top + plot_h * (1.0 - (value / y_max))
-            if idx == 0:
-                cr.move_to(x, y)
-            else:
-                cr.line_to(x, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(12)
-        cr.set_source_rgb(*line_color)
-        cr.rectangle(margin_left, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(1.0, 0.96, 0.78)
-        cr.move_to(margin_left + 18, 12)
-        cr.show_text(tr('keyboard_clicks'))
-
-        last_count = samples[-1][1]
-        values_text = f"{tr('keyboard_clicks')}: {last_count}"
-        cr.set_source_rgb(0.95, 0.95, 0.95)
-        cr.set_font_size(12)
-        ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - _text_width(ext), 12)
-        cr.show_text(values_text)
-
-        self._draw_graph_hover_info(
-            widget,
-            cr,
-            'keyboard',
-            samples,
-            margin_left,
-            margin_top,
-            plot_w,
-            plot_h,
-            lambda sample: [
-                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"{tr('keyboard_clicks')}: {sample[1]}",
-            ],
-        )
-
-        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
-        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
-
-        cr.set_source_rgb(0.75, 0.75, 0.75)
-        cr.set_font_size(11)
-        cr.move_to(margin_left, height - 10)
-        cr.show_text(f"◀ {start_ts}")
-
-        end_text = f"{end_ts} ▶"
-        text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
-        cr.show_text(end_text)
-
-    def _append_mouse_sample(self, mouse_clicks: object) -> None:
-        try:
-            count = max(0, int(mouse_clicks))
-        except (TypeError, ValueError):
-            count = 0
-        self.mouse_history.append((time.time(), count))
-
-    def show_mouse_graph(self, _w=None):
-        if self.mouse_graph_window and self.mouse_graph_window.get_visible():
-            self.mouse_graph_window.present()
-            return
-
-        window = Gtk.Window(title=f"{tr('mouse_clicks')} — {tr('system_status')}")
-        window.set_default_size(720, 380)
-        window.set_border_width(10)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        area = Gtk.DrawingArea()
-        area.set_size_request(680, 320)
-        area.connect("draw", self._draw_mouse_graph)
-        self._connect_graph_zoom(area, 'mouse')
-        self._maybe_add_graph_zoom_controls(box, 'mouse', area)
-        box.pack_start(area, True, True, 0)
-
-        window.add(box)
-        window.connect("destroy", self._on_mouse_graph_destroy)
-
-        self.mouse_graph_window = window
-        self.mouse_graph_area = area
-        self._refresh_mouse_graph_texts()
-
-        window.show_all()
-
-    def _on_mouse_graph_destroy(self, _w):
-        self.mouse_graph_window = None
-        self.mouse_graph_area = None
-        self.mouse_graph_hint_label = None
-
-    def _refresh_mouse_graph_texts(self) -> None:
-        if self.mouse_graph_window:
-            self.mouse_graph_window.set_title(f"{tr('mouse_clicks')} — {tr('system_status')}")
-        if self.mouse_graph_area:
-            self.mouse_graph_area.queue_draw()
-
-    def _draw_mouse_graph(self, widget, cr):
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-
-        margin_left = 58
-        margin_right = 16
-        margin_top = 16
-        margin_bottom = 36
-
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-
-        cr.set_source_rgb(0.2, 0.2, 0.2)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            cr.move_to(margin_left, y)
-            cr.line_to(margin_left + plot_w, y)
-        cr.stroke()
-
-        samples = self._decimate_samples(self._visible_samples('mouse', list(self.mouse_history)), max(200, width * 2))
-        if not samples:
-            self._draw_no_data(widget, cr, 'No data yet…')
-            return
-        if len(samples) == 1:
-            samples = [samples[0], samples[0]]
-
-        max_count = max(1, max(s[1] for s in samples))
-        y_max = max_count * 1.05
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(10)
-        cr.set_source_rgb(0.85, 0.85, 0.85)
-        for i in range(5):
-            y = margin_top + (plot_h * i / 4)
-            mark = int(y_max * (1 - i / 4))
-            label = f"{mark}"
-            ext = cr.text_extents(label)
-            cr.move_to(max(2, margin_left - _text_width(ext) - 8), y + 4)
-            cr.show_text(label)
-
-        line_color = self._graph_line_color_rgb('graph_line_color_mouse')
-        cr.set_source_rgb(*line_color)
-        cr.set_line_width(2)
-        for idx, sample in enumerate(samples):
-            x = margin_left + plot_w * idx / (len(samples) - 1)
-            value = sample[1]
-            y = margin_top + plot_h * (1.0 - (value / y_max))
-            if idx == 0:
-                cr.move_to(x, y)
-            else:
-                cr.line_to(x, y)
-        cr.stroke()
-
-        cr.select_font_face("Sans", 0, 0)
-        cr.set_font_size(12)
-        cr.set_source_rgb(*line_color)
-        cr.rectangle(margin_left, 4, 12, 8)
-        cr.fill()
-        cr.set_source_rgb(0.85, 0.98, 1.0)
-        cr.move_to(margin_left + 18, 12)
-        cr.show_text(tr('mouse_clicks'))
-
-        last_count = samples[-1][1]
-        values_text = f"{tr('mouse_clicks')}: {last_count}"
-        cr.set_source_rgb(0.95, 0.95, 0.95)
-        cr.set_font_size(12)
-        ext = cr.text_extents(values_text)
-        cr.move_to(width - margin_right - _text_width(ext), 12)
-        cr.show_text(values_text)
-
-        self._draw_graph_hover_info(
-            widget,
-            cr,
-            'mouse',
-            samples,
-            margin_left,
-            margin_top,
-            plot_w,
-            plot_h,
-            lambda sample: [
-                datetime.fromtimestamp(sample[0]).strftime("%H:%M:%S"),
-                f"{tr('mouse_clicks')}: {sample[1]}",
-            ],
-        )
-
-        start_ts = datetime.fromtimestamp(samples[0][0]).strftime("%H:%M:%S")
-        end_ts = datetime.fromtimestamp(samples[-1][0]).strftime("%H:%M:%S")
-
-        cr.set_source_rgb(0.75, 0.75, 0.75)
-        cr.set_font_size(11)
-        cr.move_to(margin_left, height - 10)
-        cr.show_text(f"◀ {start_ts}")
-
-        end_text = f"{end_ts} ▶"
-        text_extents = cr.text_extents(end_text)
-        cr.move_to(width - margin_right - _text_width(text_extents), height - 10)
-        cr.show_text(end_text)
-
-    def _show_message(self, title: str, message: str):
-        parent = self.settings_dialog if (self.settings_dialog and self.settings_dialog.get_mapped()) else None
-        d = Gtk.MessageDialog(transient_for=parent, flags=0,
-                              message_type=Gtk.MessageType.INFO,
-                              buttons=Gtk.ButtonsType.OK, text=message)
-        d.set_title(title)
-        d.run()
-        d.destroy()
-
-    def _update_ui(self, cpu_temp, cpu_usage, ram_used, ram_total,
-                   disk_used, disk_total, swap_used, swap_total,
-                   net_recv_speed, net_sent_speed, uptime,
-                   keyboard_clicks_val, mouse_clicks_val):
-        try:
-            now = time.time()
-            if not hasattr(self, "_last_item_update_ts"):
-                self._last_item_update_ts = {}
-            if not hasattr(self, "_item_display_cache"):
-                self._item_display_cache = {}
-
-            def due(item_key: str, interval_key: str) -> bool:
-                interval = self._sanitize_poll_interval(self.visibility_settings.get(interval_key, POLL_INTERVAL_DEFAULT_SEC))
-                last_ts = float(self._last_item_update_ts.get(item_key, 0.0))
-                if (now - last_ts) >= interval:
-                    self._last_item_update_ts[item_key] = now
-                    return True
-                return False
-
-            self._append_cpu_sample(cpu_usage, cpu_temp)
-            self._append_ram_sample(ram_used, ram_total)
-            self._append_swap_sample(swap_used, swap_total)
-            self._append_disk_sample(disk_used, disk_total)
-            self._append_net_sample(net_recv_speed, net_sent_speed)
-            self._append_keyboard_sample(keyboard_clicks_val)
-            self._append_mouse_sample(mouse_clicks_val)
-            if self.cpu_graph_area:
-                self.cpu_graph_area.queue_draw()
-            if self.ram_graph_area:
-                self.ram_graph_area.queue_draw()
-            if self.swap_graph_area:
-                self.swap_graph_area.queue_draw()
-            if self.disk_graph_area:
-                self.disk_graph_area.queue_draw()
-            if self.net_graph_area:
-                self.net_graph_area.queue_draw()
-            if self.keyboard_graph_area:
-                self.keyboard_graph_area.queue_draw()
-            if self.mouse_graph_area:
-                self.mouse_graph_area.queue_draw()
-
-            if self.visibility_settings.get('cpu', True):
-                if due('cpu', 'cpu_interval_sec'):
-                    self._item_display_cache['cpu'] = f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"
-                self.cpu_temp_item.set_label(self._item_display_cache.get('cpu', f"{tr('cpu_info')}: {cpu_usage:.0f}%  🌡{cpu_temp}°C"))
-            if self.visibility_settings.get('ram', True):
-                if due('ram', 'ram_interval_sec'):
-                    self._item_display_cache['ram'] = f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"
-                self.ram_item.set_label(self._item_display_cache.get('ram', f"{tr('ram_loading')}: {ram_used:.1f}/{ram_total:.1f} GB"))
-            if self.visibility_settings.get('swap', True):
-                if due('swap', 'swap_interval_sec'):
-                    self._item_display_cache['swap'] = f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB"
-                self.swap_item.set_label(self._item_display_cache.get('swap', f"{tr('swap_loading')}: {swap_used:.1f}/{swap_total:.1f} GB"))
-            if self.visibility_settings.get('disk', True):
-                if due('disk', 'disk_interval_sec'):
-                    self._item_display_cache['disk'] = f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"
-                self.disk_item.set_label(self._item_display_cache.get('disk', f"{tr('disk_loading')}: {disk_used:.1f}/{disk_total:.1f} GB"))
-            if self.visibility_settings.get('net', True):
-                if due('net', 'net_interval_sec'):
-                    self._item_display_cache['net'] = f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}"
-                self.net_item.set_label(self._item_display_cache.get('net', f"{tr('lan_speed')}: ↓{net_recv_speed:.1f}/↑{net_sent_speed:.1f} {tr('mbps')}"))
-            if self.visibility_settings.get('uptime', True):
-                self.uptime_item.set_label(f"{tr('uptime_label')}: {uptime}")
-            if self.visibility_settings.get('keyboard_clicks', True):
-                self.keyboard_item.set_label(f"{tr('keyboard_clicks')}: {keyboard_clicks_val}")
-            if self.visibility_settings.get('mouse_clicks', True):
-                self.mouse_item.set_label(f"{tr('mouse_clicks')}: {mouse_clicks_val}")
-
-            tray_parts = []
-            if self.visibility_settings.get('tray_cpu', True):
-                if due('tray_cpu', 'tray_cpu_interval_sec'):
-                    self._item_display_cache['tray_cpu'] = f"{tr('cpu_info')}: {cpu_usage:.0f}%"
-                tray_parts.append(self._item_display_cache.get('tray_cpu', f"{tr('cpu_info')}: {cpu_usage:.0f}%"))
-            if self.visibility_settings.get('tray_ram', True):
-                if due('tray_ram', 'tray_ram_interval_sec'):
-                    self._item_display_cache['tray_ram'] = f"{tr('ram_loading')}: {ram_used:.1f}GB"
-                tray_parts.append(self._item_display_cache.get('tray_ram', f"{tr('ram_loading')}: {ram_used:.1f}GB"))
-            tray_text = "  ".join(tray_parts)
-            if self.telegram_notifier.enabled or self.discord_notifier.enabled:
-                tray_text = "⤴  " + tray_text
-            self.indicator.set_label(tray_text, "")
-        except Exception as e:
-            print(f"Ошибка в _update_ui: {e}")
-
-    def quit(self, *args):
-        self._notification_stop_event.set()
-        self._enqueue_latest_notification(self._telegram_queue, None)
-        self._enqueue_latest_notification(self._discord_queue, None)
-        for worker in (getattr(self, "_telegram_worker", None), getattr(self, "_discord_worker", None)):
-            if worker and worker.is_alive():
-                worker.join(timeout=1.0)
-
-        if self.telegram_notifier:
-            self.telegram_notifier.stop_bot()
-
-        for tid in ("_update_timer_id", "_notify_timer_id", "_action_timer_id"):
-            _id = getattr(self.power_control, tid, None)
-            if _id:
-                GLib.source_remove(_id)
-                setattr(self.power_control, tid, None)
-
-        if self.power_control.current_dialog:
-            try:
-                self.power_control.current_dialog.destroy()
-            except Exception:
-                pass
-            self.power_control.current_dialog = None
-
+        self._quitting = True
+
+        self.telegram_dispatcher.stop()
+        self.discord_dispatcher.stop()
+        self.telegram_notifier.stop_bot()
+        self.power_control.dispose()
         self._close_progress_dialog()
 
-        if self.cpu_graph_window:
+        for window in list(self.graph_windows.values()):
             try:
-                self.cpu_graph_window.destroy()
+                window.destroy()
             except Exception:
                 pass
-            self.cpu_graph_window = None
-            self.cpu_graph_area = None
-            self.cpu_graph_hint_label = None
-
-        if self.ram_graph_window:
-            try:
-                self.ram_graph_window.destroy()
-            except Exception:
-                pass
-            self.ram_graph_window = None
-            self.ram_graph_area = None
-            self.ram_graph_hint_label = None
-
-        if self.swap_graph_window:
-            try:
-                self.swap_graph_window.destroy()
-            except Exception:
-                pass
-            self.swap_graph_window = None
-            self.swap_graph_area = None
-            self.swap_graph_hint_label = None
-
-        if self.disk_graph_window:
-            try:
-                self.disk_graph_window.destroy()
-            except Exception:
-                pass
-            self.disk_graph_window = None
-            self.disk_graph_area = None
-            self.disk_graph_hint_label = None
-
-        if self.net_graph_window:
-            try:
-                self.net_graph_window.destroy()
-            except Exception:
-                pass
-            self.net_graph_window = None
-            self.net_graph_area = None
-            self.net_graph_hint_label = None
-
-        if self.keyboard_graph_window:
-            try:
-                self.keyboard_graph_window.destroy()
-            except Exception:
-                pass
-            self.keyboard_graph_window = None
-            self.keyboard_graph_area = None
-            self.keyboard_graph_hint_label = None
-
-        if self.mouse_graph_window:
-            try:
-                self.mouse_graph_window.destroy()
-            except Exception:
-                pass
-            self.mouse_graph_window = None
-            self.mouse_graph_area = None
-            self.mouse_graph_hint_label = None
+        self.graph_windows.clear()
 
         if self.settings_dialog:
             try:
@@ -2461,28 +694,31 @@ class SystemTrayApp:
                 pass
             self.settings_dialog = None
 
-        try:
-            if self.keyboard_listener:
-                self.keyboard_listener.stop()
-        except Exception:
-            pass
-        try:
-            if self.mouse_listener:
-                self.mouse_listener.stop()
-        except Exception:
-            pass
+        for listener in (self.keyboard_listener, self.mouse_listener):
+            try:
+                if listener:
+                    listener.stop()
+            except Exception:
+                pass
 
+        self.metrics_log.close()
         Gtk.main_quit()
 
     def run(self):
+        # Сигналы через GLib: обработчик срабатывает сразу, а не на следующем тике таймера.
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, self._on_unix_signal)
         # Начальный снимок, чтобы графики не открывались полностью пустыми.
         self.update_info()
         GLib.timeout_add_seconds(TIME_UPDATE_SEC, self.update_info)
         Gtk.main()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    setup_logging()
     Gtk.init([])
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
-    app = SystemTrayApp()
-    app.run()
+    SystemTrayApp().run()
+
+
+if __name__ == "__main__":
+    main()
