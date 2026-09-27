@@ -27,6 +27,22 @@ if [[ ! -x "$SRC_DIR/app/SyMo" ]]; then
     exit 1
 fi
 
+typelib_installed() {
+    compgen -G "/usr/lib/*/girepository-1.0/$1" >/dev/null ||
+        compgen -G "/usr/lib/girepository-1.0/$1" >/dev/null ||
+        compgen -G "/usr/lib64/girepository-1.0/$1" >/dev/null
+}
+
+missing=()
+typelib_installed Gtk-3.0.typelib || missing+=(gir1.2-gtk-3.0)
+typelib_installed AyatanaAppIndicator3-0.1.typelib || typelib_installed AppIndicator3-0.1.typelib ||
+    missing+=(gir1.2-ayatanaappindicator3-0.1)
+if ((${#missing[@]})); then
+    echo "❌ Не хватает системных пакетов: ${missing[*]}" >&2
+    echo "   Установите: sudo apt install ${missing[*]}" >&2
+    exit 1
+fi
+
 if [[ "$SRC_DIR" != "$PREFIX" ]]; then
     if [[ -e "$PREFIX" && ! -x "$PREFIX/app/SyMo" ]]; then
         echo "❌ $PREFIX существует и не похож на установку SyMo. Укажите другой PREFIX." >&2

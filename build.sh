@@ -65,6 +65,17 @@ mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
 mkdir -p "$STAGE"
 mv "$BUILD_DIR/app.dist" "$STAGE/app"
+# Nuitka копирует все typelib-файлы машины сборки, но не их библиотеки.
+# Используем системные typelib: они всегда соответствуют системным .so.
+rm -rf "$STAGE/app/girepository"
+# PyGObject связан с libgirepository-1.0, которой нет в Ubuntu 26.04+ (там только
+# girepository-2.0; формат typelib тот же). Кладём библиотеку рядом с gi/_gi.so.
+girepository_lib="$(ldd "$STAGE"/app/gi/_gi*.so | awk '/libgirepository-1\.0/ {print $3}')"
+if [[ -z "$girepository_lib" ]]; then
+    echo "❌ Не найдена libgirepository-1.0 для gi/_gi.so" >&2
+    exit 1
+fi
+cp -L "$girepository_lib" "$STAGE/app/"
 
 cat > "$STAGE/symo" <<'EOF_LAUNCHER'
 #!/usr/bin/env bash
@@ -76,6 +87,13 @@ fi
 export GDK_GL="${GDK_GL:-disable}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export LIBGL_DRI3_DISABLE="${LIBGL_DRI3_DISABLE:-1}"
+# Встроенная libgirepository знает только пути Debian/Ubuntu; передаём все
+# стандартные каталоги typelib, которые есть в системе.
+typelib_dirs="${GI_TYPELIB_PATH:-}"
+for dir in "/usr/lib/$(uname -m)-linux-gnu/girepository-1.0" /usr/lib64/girepository-1.0 /usr/lib/girepository-1.0; do
+    [[ -d "$dir" ]] && typelib_dirs="${typelib_dirs:+$typelib_dirs:}$dir"
+done
+export GI_TYPELIB_PATH="$typelib_dirs"
 exec "$DIR/app/SyMo" "$@"
 EOF_LAUNCHER
 chmod +x "$STAGE/symo"

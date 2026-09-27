@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ctypes
 import dataclasses
 import fcntl
+import importlib
 import logging
 import os
 import platform
@@ -16,18 +18,10 @@ from typing import IO, Any, Dict, Optional
 
 import gi
 
-try:
-    gi.require_version("AppIndicator3", "0.1")
-    from gi.repository import AppIndicator3 as AppInd
-except (ValueError, ImportError):
-    gi.require_version("AyatanaAppIndicator3", "0.1")
-    from gi.repository import AyatanaAppIndicator3 as AppInd
-
 gi.require_version("Gtk", "3.0")
 
 import psutil
 from gi.repository import Gtk, GLib
-from pynput import keyboard, mouse
 
 from .constants import (
     APP_ID,
@@ -63,6 +57,47 @@ from notifications import TelegramNotifier, DiscordNotifier
 from notifications.base import NotificationDispatcher, format_status_message
 
 logger = logging.getLogger(__name__)
+
+# Пространство имён GI → библиотека, которую оно загружает. Ayatana первой:
+# старый AppIndicator3 в Ubuntu 24.04 и новее уже не поставляется.
+_APP_INDICATOR_LIBS = (
+    ("AyatanaAppIndicator3", "libayatana-appindicator3.so.1"),
+    ("AppIndicator3", "libappindicator3.so.1"),
+)
+APP_INDICATOR_PACKAGE = "gir1.2-ayatanaappindicator3-0.1"
+
+
+def _load_app_indicator():
+    """Модуль AppIndicator, чья библиотека действительно загружается.
+
+    typelib может быть установлен без самой библиотеки: тогда импорт проходит,
+    а падение случается только при создании значка.
+    """
+    for namespace, library in _APP_INDICATOR_LIBS:
+        try:
+            gi.require_version(namespace, "0.1")
+            module = importlib.import_module(f"gi.repository.{namespace}")
+            ctypes.CDLL(library)
+            return module
+        except (ValueError, ImportError, OSError) as e:
+            logger.debug("%s недоступен: %s", namespace, e)
+    return None
+
+
+AppInd = _load_app_indicator()
+
+
+def _add_unix_signal_handler(signum: int, handler) -> None:
+    """GLib 2.80+ перенёс unix_signal_add в GLibUnix.signal_add, а старые версии
+    PyGObject не дают доступа к прежнему имени."""
+    try:
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import GLibUnix
+        GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signum, handler)
+        return
+    except (ValueError, ImportError, AttributeError):
+        pass
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signum, handler)
 
 LANGUAGE_FLAGS = {
     'ru': '🇷🇺',
@@ -159,6 +194,13 @@ class SystemTrayApp:
             self.indicator.set_icon(ICON_FALLBACK)
 
     def init_listeners(self):
+        # pynput падает уже при импорте, если нет X-дисплея (Wayland без Xwayland):
+        # тогда отключаются только счётчики, а не всё приложение.
+        try:
+            from pynput import keyboard, mouse
+        except Exception as e:
+            logger.warning("Счётчики клавиш и кликов недоступны: %s", e)
+            return
         hooks_ok = True
         try:
             self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
@@ -693,7 +735,7 @@ class SystemTrayApp:
 
     def run(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
-            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, self._on_unix_signal)
+            _add_unix_signal_handler(sig, self._on_unix_signal)
         # Начальный снимок, чтобы графики не открывались полностью пустыми.
         self.update_info()
         GLib.timeout_add_seconds(TIME_UPDATE_SEC, self.update_info)
@@ -712,6 +754,17 @@ def _acquire_single_instance_lock() -> Optional[IO[str]]:
     return lock_file
 
 
+def _report_missing_app_indicator() -> None:
+    set_language(load_settings(SETTINGS_FILE).get('language') or detect_system_language())
+    command = f"sudo apt install {APP_INDICATOR_PACKAGE}"
+    logger.error("Не найдена библиотека AppIndicator. Установите: %s", command)
+    dialog = Gtk.MessageDialog(message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK,
+                               text=tr('appindicator_missing').format(command))
+    dialog.set_title(APP_NAME)
+    dialog.run()
+    dialog.destroy()
+
+
 def main() -> None:
     setup_logging()
     lock = _acquire_single_instance_lock()
@@ -719,6 +772,9 @@ def main() -> None:
         logger.info("%s уже запущен", APP_NAME)
         return
     Gtk.init([])
+    if AppInd is None:
+        _report_missing_app_indicator()
+        raise SystemExit(1)
     SystemTrayApp().run()
     lock.close()
 

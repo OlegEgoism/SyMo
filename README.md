@@ -107,6 +107,7 @@ The tray icon needs AppIndicator support. Ubuntu ships it by default
 Download `SyMo-<version>-linux-x86_64.tar.gz` from GitHub Releases, then:
 
 ```bash
+sudo apt install gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
 tar xzf SyMo-*-linux-x86_64.tar.gz
 ./SyMo-*-linux-x86_64/install.sh
 ```
