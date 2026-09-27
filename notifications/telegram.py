@@ -51,9 +51,9 @@ _GRAPH_METRICS: dict[str, _GraphMetric] = {
     "net": _GraphMetric("net", lambda: tr("network"), lambda s: float(s[1]) + float(s[2]),
                         lambda: tr("mbps"), "graph_line_color_net_recv"),
     "keyboard": _GraphMetric("keyboard", lambda: tr("keyboard_clicks"), lambda s: float(s[1]),
-                             lambda: tr("clicks"), "graph_line_color_keyboard"),
+                             lambda: "", "graph_line_color_keyboard"),
     "mouse": _GraphMetric("mouse", lambda: tr("mouse_clicks"), lambda s: float(s[1]),
-                          lambda: tr("clicks"), "graph_line_color_mouse"),
+                          lambda: "", "graph_line_color_mouse"),
 }
 
 GRAPH_COMMANDS = {

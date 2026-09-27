@@ -95,8 +95,8 @@ def format_status_message(snapshot: MetricsSnapshot, markup: str = "html") -> st
         (tr('disk'), f"{s.disk_used:.1f}/{s.disk_total:.1f} {tr('gb')}"),
         (tr('network'), f"↓{s.net_recv:.1f}/↑{s.net_sent:.1f} {tr('mbps')}"),
         (tr('uptime'), s.uptime),
-        (tr('keyboard'), f"{s.keyboard_clicks} {tr('presses')}"),
-        (tr('mouse'), f"{s.mouse_clicks} {tr('clicks')}"),
+        (tr('keyboard_clicks'), str(s.keyboard_clicks)),
+        (tr('mouse_clicks'), str(s.mouse_clicks)),
     ]
     lines = [f"🖥 {bold(tr('system_status'))}"]
     lines.extend(f"🔹 {bold(label + ':')} {value(text)}" for label, text in rows)
