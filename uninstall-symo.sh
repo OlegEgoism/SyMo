@@ -70,5 +70,6 @@ done
 
 echo "SyMo удалён."
 if ((PURGE == 0)); then
-  echo "Настройки и токены (~/.symo_*.json) сохранены. Удалить их: $0 --purge"
+  # Сам скрипт мог быть удалён вместе с ~/.local/opt/SyMo, поэтому подсказываем rm.
+  echo "Настройки, токены и лог сохранены. Удалить их: rm -f ~/.symo_*.json ~/.symo_log.txt ~/.symo_log.txt.1"
 fi
