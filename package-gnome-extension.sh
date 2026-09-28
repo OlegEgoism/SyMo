@@ -22,7 +22,7 @@ PY
 
 for variant in "${VARIANTS[@]}"; do
   dir="$SRC_DIR/$variant"
-  for required in metadata.json extension.js symo.png; do
+  for required in metadata.json extension.js; do
     if [[ ! -f "$dir/$required" ]]; then
       echo "Error: $dir/$required not found." >&2
       exit 1
@@ -36,11 +36,11 @@ for variant in "${VARIANTS[@]}"; do
 
   if command -v gnome-extensions >/dev/null 2>&1; then
     tmp="$(mktemp -d)"
-    gnome-extensions pack "$dir" --force --out-dir="$tmp" --extra-source=symo.png >/dev/null
+    gnome-extensions pack "$dir" --force --out-dir="$tmp" >/dev/null
     mv "$tmp/$uuid.shell-extension.zip" "$out"
     rmdir "$tmp"
   else
-    (cd "$dir" && zip -qr -X "$out" metadata.json extension.js symo.png)
+    (cd "$dir" && zip -qr -X "$out" metadata.json extension.js)
   fi
 
   echo "✔ $variant (GNOME $shells): $out"
