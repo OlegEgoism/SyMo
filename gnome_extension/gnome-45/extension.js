@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // SyMo Launcher for GNOME Shell 45 and newer (ES modules).
 
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
@@ -14,9 +15,53 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const DESKTOP_ID = 'SyMo.desktop';
 const COMMANDS = ['symo', 'SyMo'];
-// SyMo owns this name on the session bus while it runs; its own tray icon is
-// shown then, so the launcher button hides to avoid a second icon.
+// SyMo owns this name on the session bus while it runs; it then shows its own
+// tray icon, so this indicator hides to avoid a second icon.
 const BUS_NAME = 'io.github.olegegoism.SyMo';
+const UPDATE_INTERVAL_SEC = 2;
+
+// Same short labels as the SyMo tray icon; other languages use the English ones.
+const LABELS = {
+    ru: {cpu: 'ЦПУ', ram: 'ОЗУ', gb: 'ГБ'},
+    cn: {cpu: '处理器', ram: '内存', gb: 'GB'},
+    fr: {cpu: 'CPU', ram: 'RAM', gb: 'Go'},
+    en: {cpu: 'CPU', ram: 'RAM', gb: 'GB'},
+};
+
+function panelLabels() {
+    for (const name of GLib.get_language_names()) {
+        const code = name.split(/[_.@]/)[0].toLowerCase();
+        const key = code === 'zh' ? 'cn' : code;
+        if (LABELS[key])
+            return LABELS[key];
+    }
+    return LABELS.en;
+}
+
+Gio._promisify(Gio.File.prototype, 'load_contents_async');
+
+async function readText(path) {
+    const [bytes] = await Gio.File.new_for_path(path).load_contents_async(null);
+    return new TextDecoder().decode(bytes);
+}
+
+// Busy and total jiffies from the aggregate "cpu" line of /proc/stat.
+async function readCpuTimes() {
+    const fields = (await readText('/proc/stat')).split('\n')[0].trim().split(/\s+/).slice(1).map(Number);
+    const idle = fields[3] + (fields[4] || 0);
+    const total = fields.reduce((sum, value) => sum + value, 0);
+    return {busy: total - idle, total};
+}
+
+async function readUsedMemoryGb() {
+    const info = {};
+    for (const line of (await readText('/proc/meminfo')).split('\n')) {
+        const [key, value] = line.split(':');
+        if (value)
+            info[key] = parseInt(value, 10);
+    }
+    return (info.MemTotal - info.MemAvailable) / (1024 * 1024);
+}
 
 function findCommand() {
     for (const command of COMMANDS) {
@@ -45,21 +90,30 @@ function launchSyMo(name) {
     } catch (error) {
         console.error(`${name}: failed to start SyMo: ${error}`);
     }
-    Main.notify(name, 'SyMo is not installed. Download it from https://github.com/OlegEgoism/SyMo');
+    Main.notify(name, 'The SyMo app adds graphs, power actions and notifications. Download it from https://github.com/OlegEgoism/SyMo');
 }
 
 const SyMoIndicator = GObject.registerClass(
 class SyMoIndicator extends PanelMenu.Button {
-    _init(metadata) {
-        super._init(0.0, metadata.name);
+    _init(extension) {
+        super._init(0.0, extension.metadata.name);
+        this._labels = panelLabels();
+        this._prevCpu = null;
+        this._timerId = 0;
+        this._updating = false;
+        this._destroyed = false;
 
-        this.add_child(new St.Icon({
-            icon_name: 'utilities-system-monitor-symbolic',
+        const box = new St.BoxLayout({style_class: 'panel-status-menu-box'});
+        box.add_child(new St.Icon({
+            gicon: Gio.icon_new_for_string(GLib.build_filenamev([extension.path, 'symo.png'])),
             style_class: 'system-status-icon',
         }));
+        this._label = new St.Label({text: '…', y_align: Clutter.ActorAlign.CENTER});
+        box.add_child(this._label);
+        this.add_child(box);
 
         const openItem = new PopupMenu.PopupMenuItem('Open SyMo');
-        openItem.connect('activate', () => launchSyMo(metadata.name));
+        openItem.connect('activate', () => launchSyMo(extension.metadata.name));
         this.menu.addMenuItem(openItem);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -67,26 +121,74 @@ class SyMoIndicator extends PanelMenu.Button {
         const pageItem = new PopupMenu.PopupMenuItem('Project page');
         pageItem.connect('activate', () => {
             try {
-                Gio.AppInfo.launch_default_for_uri(metadata.url, global.create_app_launch_context(0, -1));
+                Gio.AppInfo.launch_default_for_uri(extension.metadata.url, global.create_app_launch_context(0, -1));
             } catch (error) {
-                console.error(`${metadata.name}: failed to open ${metadata.url}: ${error}`);
+                console.error(`${extension.metadata.name}: failed to open ${extension.metadata.url}: ${error}`);
             }
         });
         this.menu.addMenuItem(pageItem);
+    }
+
+    startUpdates() {
+        if (this._timerId)
+            return;
+        this._prevCpu = null;
+        this._update();
+        this._timerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, UPDATE_INTERVAL_SEC, () => {
+            this._update();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    stopUpdates() {
+        if (this._timerId) {
+            GLib.source_remove(this._timerId);
+            this._timerId = 0;
+        }
+    }
+
+    async _update() {
+        if (this._updating)
+            return;
+        this._updating = true;
+        try {
+            // CPU load is a difference of two samples, so the first update has none yet.
+            const cpu = await readCpuTimes();
+            const ramGb = await readUsedMemoryGb();
+            if (this._destroyed)
+                return;
+            let usage = '…';
+            if (this._prevCpu && cpu.total > this._prevCpu.total)
+                usage = `${Math.round(100 * (cpu.busy - this._prevCpu.busy) / (cpu.total - this._prevCpu.total))}%`;
+            this._prevCpu = cpu;
+            const {cpu: cpuLabel, ram, gb} = this._labels;
+            this._label.text = `${cpuLabel}: ${usage}  ${ram}: ${ramGb.toFixed(1)}${gb}`;
+        } catch (error) {
+            console.error(`SyMo Launcher: failed to read system usage: ${error}`);
+            this.stopUpdates();
+        } finally {
+            this._updating = false;
+        }
+    }
+
+    destroy() {
+        this._destroyed = true;
+        this.stopUpdates();
+        super.destroy();
     }
 });
 
 export default class SyMoLauncherExtension extends Extension {
     enable() {
-        this._indicator = new SyMoIndicator(this.metadata);
+        this._indicator = new SyMoIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
         // Hidden until the watcher reports that SyMo is not running: it always
-        // reports the initial state, so the button never flashes at login.
-        this._setButtonVisible(false);
+        // reports the initial state, so the indicator never flashes at login.
+        this._setIndicatorVisible(false);
         this._watchId = Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
             Gio.BusNameWatcherFlags.NONE,
-            () => this._setButtonVisible(false),
-            () => this._setButtonVisible(true));
+            () => this._setIndicatorVisible(false),
+            () => this._setIndicatorVisible(true));
     }
 
     disable() {
@@ -98,8 +200,13 @@ export default class SyMoLauncherExtension extends Extension {
         this._indicator = null;
     }
 
-    _setButtonVisible(visible) {
-        if (this._indicator)
-            this._indicator.container.visible = visible;
+    _setIndicatorVisible(visible) {
+        if (!this._indicator)
+            return;
+        this._indicator.container.visible = visible;
+        if (visible)
+            this._indicator.startUpdates();
+        else
+            this._indicator.stopUpdates();
     }
 }

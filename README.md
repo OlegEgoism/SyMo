@@ -125,12 +125,14 @@ sudo apt install gnome-screenshot scrot grim imagemagick
 
 [![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-SyMo_Launcher-4A86CF?style=for-the-badge&logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/9526/symo-launcher/)
 
-[SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) adds a
-panel button with **Open SyMo** and **Project page**. Install the SyMo app first
-(see above): extensions.gnome.org does not allow extensions to ship programs.
+[SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) shows the
+SyMo icon with CPU and RAM usage in the top panel right after installation. Its menu
+has **Open SyMo** and **Project page**.
 
-The button is shown only while SyMo is not running. Once SyMo starts, only its own
-tray icon stays on the panel; when SyMo quits, the button comes back.
+Graphs, power actions, the shutdown timer and Telegram/Discord notifications come from
+the SyMo app, which is installed separately (see above): extensions.gnome.org does not
+allow extensions to ship programs. While the app is running, it shows its own tray icon
+and the extension indicator hides, so there is always a single SyMo icon.
 
 | GNOME Shell | Ubuntu | Extension archive |
 |---|---|---|

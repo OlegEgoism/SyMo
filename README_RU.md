@@ -126,13 +126,14 @@ sudo apt install gnome-screenshot scrot grim imagemagick
 
 [![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-SyMo_Launcher-4A86CF?style=for-the-badge&logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/9526/symo-launcher/)
 
-[SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) добавляет
-на панель кнопку с пунктами **Open SyMo** и **Project page**. Сначала установите само
-приложение SyMo (см. выше): extensions.gnome.org не разрешает расширениям содержать
-программы.
+[SyMo Launcher](https://extensions.gnome.org/extension/9526/symo-launcher/) сразу после
+установки показывает на верхней панели значок SyMo с загрузкой ЦПУ и ОЗУ. В его меню
+есть пункты **Open SyMo** и **Project page**.
 
-Кнопка видна, только пока SyMo не запущен. Как только SyMo стартует, на панели
-остаётся лишь его собственный значок; когда SyMo закрывают, кнопка возвращается.
+Графики, управление питанием, таймер выключения и уведомления в Telegram/Discord даёт
+приложение SyMo, которое ставится отдельно (см. выше): extensions.gnome.org не разрешает
+расширениям содержать программы. Пока приложение запущено, оно показывает свой значок в
+трее, а значок расширения скрывается, так что на панели всегда один значок SyMo.
 
 | GNOME Shell | Ubuntu | Архив расширения |
 |---|---|---|
