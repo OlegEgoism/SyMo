@@ -105,10 +105,12 @@ chmod +x "$STAGE/install.sh" "$STAGE/uninstall-symo.sh"
 tar -C "$DIST_DIR" -czf "$STAGE.tar.gz" "$RELEASE"
 (cd "$DIST_DIR" && sha256sum "$RELEASE.tar.gz" > "$RELEASE.tar.gz.sha256")
 
+PYTHON="$PYTHON" "$ROOT_DIR/build-deb.sh" "$STAGE" "$VERSION"
 "$ROOT_DIR/package-gnome-extension.sh" "$DIST_DIR"
 
 echo ""
 echo "🎉 Готово:"
+echo "   Пакет:      $DIST_DIR/symo_${VERSION}_$(dpkg --print-architecture).deb"
 echo "   Приложение: $STAGE.tar.gz"
 echo "   Проверка:   $STAGE.tar.gz.sha256"
 echo "   Установка:  tar xzf $RELEASE.tar.gz && ./$RELEASE/install.sh"

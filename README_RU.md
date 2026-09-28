@@ -78,7 +78,8 @@ SyMo/
 ├─ gnome_extension/          # расширение SyMo Launcher для GNOME Shell
 │  ├─ gnome-42-44/           # старый формат (Ubuntu 22.04)
 │  └─ gnome-45/              # ES-модули (Ubuntu 24.04 и новее)
-├─ build.sh                  # сборка релиза: архив приложения + архивы расширения
+├─ build.sh                  # сборка релиза: .deb, архив приложения, архивы расширения
+├─ build-deb.sh              # сборка пакета .deb из результата build.sh
 ├─ install.sh                # установщик, входит в архив релиза
 ├─ uninstall-symo.sh         # удаление SyMo (--purge удаляет и настройки)
 ├─ package-gnome-extension.sh
@@ -102,9 +103,29 @@ SyMo/
 (расширение «Ubuntu AppIndicators»); в «чистом» GNOME установите
 `gnome-shell-extension-appindicator`.
 
+## Установка (пакет .deb, рекомендуется)
+
+Скачайте `symo_<версия>_amd64.deb` из GitHub Releases и откройте его в «Центре
+приложений» Ubuntu или выполните:
+
+```bash
+sudo apt install ./symo_*_amd64.deb
+```
+
+Один пакет ставит всё: приложение, команду `symo`, ярлык в меню и автозапуск при входе
+для всех пользователей; нужные библиотеки GTK и AppIndicator apt установит сам.
+Запустите SyMo из меню приложений сразу после установки — дальше он будет стартовать
+при каждом входе. Отключить автозапуск можно в «Автоматически запускаемых приложениях».
+
+Удаление:
+
+```bash
+sudo apt remove symo
+```
+
 ## Установка (архив релиза)
 
-Скачайте `SyMo-<версия>-linux-x86_64.tar.gz` из GitHub Releases и выполните:
+Без прав администратора скачайте `SyMo-<версия>-linux-x86_64.tar.gz` из GitHub Releases и выполните:
 
 ```bash
 sudo apt install gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
@@ -172,6 +193,8 @@ gnome-extensions enable symo@olegegoism.github.io
 
 ## Удаление
 
+Для пакета `.deb`: `sudo apt remove symo`. Для архива релиза:
+
 ```bash
 ~/.local/opt/SyMo/uninstall-symo.sh           # настройки и токены сохраняются
 ~/.local/opt/SyMo/uninstall-symo.sh --purge   # удалить всё
@@ -203,6 +226,7 @@ sudo apt install build-essential patchelf
 
 Результат в `dist/`:
 
+- `symo_<версия>_amd64.deb` — основной файл для скачивания, прикрепить к релизу на GitHub;
 - `SyMo-<версия>-linux-<arch>.tar.gz` и `.sha256` — прикрепить к релизу на GitHub;
 - `symo-launcher-gnome-42-44.shell-extension.zip` и
   `symo-launcher-gnome-45.shell-extension.zip` — загрузить оба на

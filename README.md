@@ -78,7 +78,8 @@ SyMo/
 ├─ gnome_extension/          # SyMo Launcher for GNOME Shell
 │  ├─ gnome-42-44/           # legacy format (Ubuntu 22.04)
 │  └─ gnome-45/              # ES modules (Ubuntu 24.04 and newer)
-├─ build.sh                  # release build: app archive + extension zips
+├─ build.sh                  # release build: .deb, app archive, extension zips
+├─ build-deb.sh              # builds the .deb package from the build output
 ├─ install.sh                # per-user installer shipped in the release archive
 ├─ uninstall-symo.sh         # removes SyMo (--purge also removes settings)
 ├─ package-gnome-extension.sh
@@ -102,9 +103,29 @@ The tray icon needs AppIndicator support. Ubuntu ships it by default
 (the "Ubuntu AppIndicators" extension); on vanilla GNOME install
 `gnome-shell-extension-appindicator`.
 
+## Install (.deb package, recommended)
+
+Download `symo_<version>_amd64.deb` from GitHub Releases and open it in the Ubuntu
+App Center, or run:
+
+```bash
+sudo apt install ./symo_*_amd64.deb
+```
+
+One package installs everything: the app, the `symo` command, a menu entry and
+autostart on login for all users; apt pulls in the required GTK and AppIndicator
+libraries. Start SyMo from the application menu right away — after that it starts
+with every login. To turn autostart off, use *Startup Applications*.
+
+Remove it with:
+
+```bash
+sudo apt remove symo
+```
+
 ## Install (release archive)
 
-Download `SyMo-<version>-linux-x86_64.tar.gz` from GitHub Releases, then:
+Without root access, download `SyMo-<version>-linux-x86_64.tar.gz` from GitHub Releases, then:
 
 ```bash
 sudo apt install gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
@@ -170,6 +191,8 @@ gnome-extensions enable symo@olegegoism.github.io
 
 ## Uninstall
 
+For the `.deb` package use `sudo apt remove symo`. For the release archive:
+
 ```bash
 ~/.local/opt/SyMo/uninstall-symo.sh           # keep settings and tokens
 ~/.local/opt/SyMo/uninstall-symo.sh --purge   # remove everything
@@ -201,6 +224,7 @@ sudo apt install build-essential patchelf
 
 Output in `dist/`:
 
+- `symo_<version>_amd64.deb` — the main download, attach to a GitHub release;
 - `SyMo-<version>-linux-<arch>.tar.gz` and `.sha256` — attach to a GitHub release;
 - `symo-launcher-gnome-42-44.shell-extension.zip` and
   `symo-launcher-gnome-45.shell-extension.zip` — upload both to extensions.gnome.org
