@@ -283,25 +283,33 @@ class SystemTrayApp:
         self.visibility_settings['menu_order'] = order
         visible = [key for key in order if self.visibility_settings.get(key, True)]
 
-        if any(key in visible for key in POWER_MENU_KEYS):
-            menu.append(Gtk.SeparatorMenuItem())
-        for key in visible:
-            if key == 'ping_network':
-                menu.append(Gtk.SeparatorMenuItem())
-                menu.append(self.menu_items[key])
-                menu.append(Gtk.SeparatorMenuItem())
-            else:
-                menu.append(self.menu_items[key])
-
-        menu.append(Gtk.SeparatorMenuItem())
-        menu.append(self._build_language_menu_item())
         settings_item = Gtk.MenuItem(label=tr('settings_label'))
         settings_item.connect("activate", self.show_settings)
-        menu.append(settings_item)
-        menu.append(Gtk.SeparatorMenuItem())
         quit_item = Gtk.MenuItem(label=tr('exit_app'))
         quit_item.connect("activate", self.quit)
-        menu.append(quit_item)
+
+        # None — разделитель; лишние (в начале и подряд) отбрасываются ниже.
+        entries: list[Optional[Gtk.MenuItem]] = []
+        power_started = False
+        for key in visible:
+            if key in POWER_MENU_KEYS and not power_started:
+                power_started = True
+                entries.append(None)
+            if key == 'ping_network':
+                entries += [None, self.menu_items[key], None]
+            else:
+                entries.append(self.menu_items[key])
+        entries += [None, self._build_language_menu_item(), settings_item, None, quit_item]
+
+        prev_is_separator = True
+        for entry in entries:
+            if entry is None:
+                if not prev_is_separator:
+                    menu.append(Gtk.SeparatorMenuItem())
+                prev_is_separator = True
+            else:
+                menu.append(entry)
+                prev_is_separator = False
 
         menu.show_all()
         self.menu = menu
