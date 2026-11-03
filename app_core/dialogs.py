@@ -7,6 +7,7 @@ from typing import Callable, Dict, Optional
 
 from gi.repository import Gtk, Gdk, GLib
 
+from . import autostart
 from .constants import (
     LOG_FILE,
     TELEGRAM_CONFIG_FILE,
@@ -102,6 +103,12 @@ class SettingsDialog(Gtk.Dialog):
 
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
+
+        startup_card, startup_content = card(tr('startup_section'))
+        general_content.add(startup_card)
+        self.autostart_check = Gtk.CheckButton(label=tr('autostart_on_login'))
+        self.autostart_check.set_active(autostart.is_enabled())
+        startup_content.add(self.autostart_check)
 
         intervals_card, intervals_content = card(tr('poll_interval_section'))
         interval_content.add(intervals_card)

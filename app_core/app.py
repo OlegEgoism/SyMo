@@ -34,6 +34,7 @@ from .constants import (
     SUPPORTED_LANGS,
     POLL_INTERVAL_DEFAULT_SEC,
 )
+from . import autostart
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
 from .dialogs import SettingsDialog
 from .graphs import GraphWindow, build_graph_specs
@@ -387,6 +388,10 @@ class SystemTrayApp:
             vs[key] = sanitize_poll_interval(spin.get_value_as_int())
         if not vs['logging_enabled']:
             self.metrics_log.close()
+
+        want_autostart = dialog.autostart_check.get_active()
+        if want_autostart != autostart.is_enabled() and not autostart.set_enabled(want_autostart):
+            self._show_message(tr('error'), tr('autostart_error'))
 
         tel = self.telegram_notifier
         tel_before = (tel.token, tel.chat_id, tel.enabled)
