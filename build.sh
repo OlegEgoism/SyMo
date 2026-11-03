@@ -42,8 +42,10 @@ STAGE="$DIST_DIR/$RELEASE"
 
 echo "⚙️  $RELEASE: $("$PYTHON" --version), Nuitka $("$PYTHON" -m nuitka --version 2>/dev/null | head -n1)"
 
+# gi.overrides.GLibUnix/GioUnix есть только в PyGObject 3.52+, и Nuitka сам их не
+# подключает; без GLibUnix оверрайды GLib падают при старте.
 optional_modules=()
-for module in gi._gi_cairo cairo; do
+for module in gi._gi_cairo cairo gi.overrides.GLibUnix gi.overrides.GioUnix; do
     if "$PYTHON" -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('$module') else 1)"; then
         optional_modules+=("--include-module=$module")
     fi
@@ -68,11 +70,12 @@ mv "$BUILD_DIR/app.dist" "$STAGE/app"
 # Nuitka копирует все typelib-файлы машины сборки, но не их библиотеки.
 # Используем системные typelib: они всегда соответствуют системным .so.
 rm -rf "$STAGE/app/girepository"
-# PyGObject связан с libgirepository-1.0, которой нет в Ubuntu 26.04+ (там только
-# girepository-2.0; формат typelib тот же). Кладём библиотеку рядом с gi/_gi.so.
-girepository_lib="$(ldd "$STAGE"/app/gi/_gi*.so | awk '/libgirepository-1\.0/ {print $3}')"
+# PyGObject из Ubuntu 22.04 связан с libgirepository-1.0, которой нет в Ubuntu 26.04+
+# (там только girepository-2.0; формат typelib тот же), а PyGObject 3.52+ — уже с 2.0.
+# Кладём ту библиотеку, с которой связан gi/_gi.so, рядом с ним.
+girepository_lib="$(ldd "$STAGE"/app/gi/_gi*.so | awk '/libgirepository-[0-9.]+\.so/ {print $3}')"
 if [[ -z "$girepository_lib" ]]; then
-    echo "❌ Не найдена libgirepository-1.0 для gi/_gi.so" >&2
+    echo "❌ Не найдена libgirepository для gi/_gi.so" >&2
     exit 1
 fi
 cp -L "$girepository_lib" "$STAGE/app/"
