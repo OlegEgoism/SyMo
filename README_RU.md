@@ -167,8 +167,6 @@ sudo apt remove symo
 
 Чтобы выпустить релиз, запушьте тег, совпадающий с `APP_VERSION`: `git tag v<версия> && git push origin v<версия>` — CI соберёт его на Ubuntu 22.04 и прикрепит все файлы из `dist/` к релизу на GitHub.
 
-Чтобы выпустить релиз, запушьте тег, совпадающий с `APP_VERSION`: `git tag v<версия> && git push origin v<версия>` — CI соберёт его на Ubuntu 22.04 и прикрепит все файлы из `dist/` к релизу на GitHub.
-
 ## Лицензия
 
 Copyright © 2025–2026 OlegEgoism. SyMo и SyMo Launcher распространяются по лицензии

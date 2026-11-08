@@ -167,8 +167,6 @@ is `version-name` in `gnome_extension/*/metadata.json`.
 
 To publish a release, push a tag matching `APP_VERSION`: `git tag v<version> && git push origin v<version>` — CI builds on Ubuntu 22.04 and attaches all files from `dist/` to the GitHub release.
 
-To publish a release, push a tag matching `APP_VERSION`: `git tag v<version> && git push origin v<version>` — CI builds on Ubuntu 22.04 and attaches all files from `dist/` to the GitHub release.
-
 ## License
 
 Copyright © 2025–2026 OlegEgoism. SyMo and SyMo Launcher are licensed under the
