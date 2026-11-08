@@ -26,7 +26,8 @@ if ((${#missing[@]})); then
     exit 1
 fi
 
-if ! "$PYTHON" -c "import gi, cairo, psutil, pynput, requests" 2>/dev/null; then
+# Только ищем модули, а не импортируем: pynput при импорте требует X-дисплей, которого нет в CI.
+if ! "$PYTHON" -c "import importlib.util, sys; sys.exit(any(importlib.util.find_spec(m) is None for m in ('gi', 'cairo', 'psutil', 'pynput', 'requests')))"; then
     echo "❌ $PYTHON: нет зависимостей приложения. См. раздел «Сборка» в README." >&2
     exit 1
 fi
