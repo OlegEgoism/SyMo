@@ -237,6 +237,8 @@ sudo apt install build-essential patchelf
 Версия приложения задаётся в `app_core/constants.py` (`APP_VERSION`), версия
 расширения — `version-name` в `gnome_extension/*/metadata.json`.
 
+Чтобы выпустить релиз, запушьте тег, совпадающий с `APP_VERSION`: `git tag v<версия> && git push origin v<версия>` — CI соберёт его на Ubuntu 22.04 и прикрепит все файлы из `dist/` к релизу на GitHub.
+
 ## Лицензия
 
 Copyright © 2025–2026 OlegEgoism.
