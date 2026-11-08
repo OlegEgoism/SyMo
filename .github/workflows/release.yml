@@ -43,6 +43,7 @@ jobs:
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           fail_on_unmatched_files: true
+          generate_release_notes: true
           files: |
             dist/symo_*_amd64.deb
             dist/SyMo-*-linux-x86_64.tar.gz
