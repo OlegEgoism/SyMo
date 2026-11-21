@@ -8,10 +8,10 @@ from typing import Deque, Dict, Tuple
 from .system_usage import MetricsSnapshot
 
 # Формат сэмплов по ключам:
-#   cpu:              (ts, usage_percent, temp_celsius)
+#   cpu:              (ts, usage_percent, temp_celsius или None)
 #   ram / swap / disk: (ts, used_gb, total_gb, percent)
 #   net:              (ts, recv_mbps, sent_mbps)
-#   keyboard / mouse: (ts, count)
+#   keyboard / mouse: (ts, count); нет сэмплов, пока счётчики недоступны
 HISTORY_KEYS = ('cpu', 'ram', 'swap', 'disk', 'net', 'keyboard', 'mouse')
 
 Sample = Tuple[float, ...]
@@ -37,15 +37,19 @@ def _usage_sample(ts: float, used: object, total: object) -> Sample:
 
 def samples_from_snapshot(snapshot: MetricsSnapshot) -> Dict[str, Sample]:
     ts = snapshot.timestamp
-    return {
-        'cpu': (ts, _clamp(_to_float(snapshot.cpu_usage), 0.0, 100.0), _clamp(_to_float(snapshot.cpu_temp), 0.0, 150.0)),
+    temp = None if snapshot.cpu_temp is None else _clamp(_to_float(snapshot.cpu_temp), 0.0, 150.0)
+    samples = {
+        'cpu': (ts, _clamp(_to_float(snapshot.cpu_usage), 0.0, 100.0), temp),
         'ram': _usage_sample(ts, snapshot.ram_used, snapshot.ram_total),
         'swap': _usage_sample(ts, snapshot.swap_used, snapshot.swap_total),
         'disk': _usage_sample(ts, snapshot.disk_used, snapshot.disk_total),
         'net': (ts, max(0.0, _to_float(snapshot.net_recv)), max(0.0, _to_float(snapshot.net_sent))),
-        'keyboard': (ts, max(0, int(snapshot.keyboard_clicks))),
-        'mouse': (ts, max(0, int(snapshot.mouse_clicks))),
     }
+    if snapshot.keyboard_clicks is not None:
+        samples['keyboard'] = (ts, max(0, int(snapshot.keyboard_clicks)))
+    if snapshot.mouse_clicks is not None:
+        samples['mouse'] = (ts, max(0, int(snapshot.mouse_clicks)))
+    return samples
 
 
 class MetricsHistory:

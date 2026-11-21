@@ -10,6 +10,7 @@ from gi.repository import Gdk, Gtk
 
 from .graph_math import ZOOM_STEP, ZoomState, decimate_samples, hover_index, visible_samples
 from .localization import tr
+from .system_usage import format_temp
 
 Sample = tuple
 RGB = tuple[float, float, float]
@@ -42,7 +43,8 @@ class Series:
     color_key: str
     legend: Callable[[], str]
     legend_text_rgb: RGB
-    value: Callable[[Sample], float]
+    # None — значения нет (например, у процессора нет датчика температуры): разрыв линии.
+    value: Callable[[Sample], Optional[float]]
     # Собственный максимум линии (например, температура на шкале процентов CPU).
     max_value: Optional[Callable[[Sequence[Sample]], float]] = None
 
@@ -103,13 +105,15 @@ def build_graph_specs() -> Dict[str, GraphSpec]:
             series=(
                 Series('graph_line_color_cpu', lambda: f"{tr('cpu')} (%)", (0.88, 0.92, 1.0), lambda s: s[1]),
                 Series('graph_line_color_temp', lambda: tr('temperature'), (1.0, 0.88, 0.82), lambda s: s[2],
-                       max_value=lambda samples: max(100.0, max(s[2] for s in samples) + 5.0)),
+                       max_value=lambda samples: max(100.0, max((s[2] for s in samples if s[2] is not None),
+                                                                default=0.0) + 5.0)),
             ),
             axis_max=_percent_axis,
             axis_label=_percent_label,
             axis_label_rgb=(0.72, 0.82, 0.9),
-            current_values=lambda s: f"{tr('cpu')}: {s[1]:.0f}%   {tr('temperature')}: {s[2]:.1f}°C",
-            hover_lines=lambda s: [_fmt_time(s[0]), f"{tr('cpu')}: {s[1]:.1f}%", f"{tr('temperature')}: {s[2]:.1f}°C"],
+            current_values=lambda s: f"{tr('cpu')}: {s[1]:.0f}%   {tr('temperature')}: {format_temp(s[2], 1)}",
+            hover_lines=lambda s: [_fmt_time(s[0]), f"{tr('cpu')}: {s[1]:.1f}%",
+                                   f"{tr('temperature')}: {format_temp(s[2], 1)}"],
         ),
         _usage_spec('ram', 'ram_loading', 'graph_line_color_ram', (0.72, 0.9, 0.72), (0.9, 1.0, 0.9)),
         _usage_spec('swap', 'swap_loading', 'graph_line_color_swap', (0.9, 0.72, 0.95), (0.98, 0.88, 1.0)),
@@ -307,23 +311,30 @@ class GraphWindow:
             cr.show_text(label)
 
         step_x = plot_w / (len(samples) - 1)
-        colors = [self._get_color(series.color_key) for series in spec.series]
-        for series, color in zip(spec.series, colors):
+        drawn = [(series, self._get_color(series.color_key)) for series in spec.series
+                 if any(series.value(sample) is not None for sample in samples)]
+        for series, color in drawn:
             max_value = max(1e-9, series.max_value(samples) if series.max_value else axis_max)
             cr.set_source_rgb(*color)
             cr.set_line_width(2)
+            line_started = False
             for idx, sample in enumerate(samples):
+                value = series.value(sample)
+                if value is None:
+                    line_started = False
+                    continue
                 x = margin_left + step_x * idx
-                y = MARGIN_TOP + plot_h * (1.0 - series.value(sample) / max_value)
-                if idx == 0:
-                    cr.move_to(x, y)
-                else:
+                y = MARGIN_TOP + plot_h * (1.0 - value / max_value)
+                if line_started:
                     cr.line_to(x, y)
+                else:
+                    cr.move_to(x, y)
+                    line_started = True
             cr.stroke()
 
         cr.set_font_size(12)
         legend_x = float(margin_left)
-        for series, color in zip(spec.series, colors):
+        for series, color in drawn:
             legend = series.legend()
             cr.set_source_rgb(*color)
             cr.rectangle(legend_x, 4, 12, 8)

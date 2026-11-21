@@ -53,7 +53,7 @@ from .settings import (
     sanitize_poll_interval,
     save_settings,
 )
-from .system_usage import MetricsSampler, MetricsSnapshot
+from .system_usage import MetricsSampler, MetricsSnapshot, format_count, format_temp, initial_network_state
 from .ui import mapped_or_none, show_message
 from notifications import TelegramNotifier, DiscordNotifier
 from notifications.base import NotificationDispatcher, format_status_message
@@ -113,6 +113,11 @@ LANGUAGE_FLAGS = {
 }
 
 POWER_MENU_KEYS = ('show_power_off', 'show_reboot', 'show_lock', 'show_timer')
+INPUT_COUNTER_KINDS = ('keyboard', 'mouse')
+
+
+def _is_wayland_session() -> bool:
+    return os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
 
 
 class SystemTrayApp:
@@ -146,20 +151,25 @@ class SystemTrayApp:
         self._item_display_cache: Dict[str, str] = {}
         self._last_item_update_ts: Dict[str, float] = {}
 
-        self.create_menu()
-
-        net = psutil.net_io_counters()
-        self.prev_net_data = {'recv': net.bytes_recv, 'sent': net.bytes_sent, 'time': time.time()}
-        self.metrics_sampler = MetricsSampler()
-
+        # Wayland не отдаёт приложениям чужие нажатия: глобальный хук увидел бы только
+        # окна XWayland, и счётчики показывали бы заниженные числа как настоящие.
+        self.input_counters_available = not _is_wayland_session()
+        if not self.input_counters_available:
+            logger.info("Сессия Wayland: счётчики клавиш и кликов отключены")
         self.keyboard_listener = None
         self.mouse_listener = None
-        self.init_listeners()
+        self.sync_input_listeners()
+
+        self.create_menu()
+
+        self.prev_net_data = initial_network_state()
+        self.metrics_sampler = MetricsSampler()
 
         self.telegram_notifier = TelegramNotifier()
         self.discord_notifier = DiscordNotifier()
-        self.last_telegram_notification_time = 0.0
-        self.last_discord_notification_time = 0.0
+        # Интервалы уведомлений — по монотонным часам; -inf — «отправить при первом обновлении».
+        self.last_telegram_notification_time = float("-inf")
+        self.last_discord_notification_time = float("-inf")
         self.telegram_dispatcher = NotificationDispatcher(self.telegram_notifier.send_message, "Telegram")
         self.discord_dispatcher = NotificationDispatcher(self.discord_notifier.send_message, "Discord")
 
@@ -196,31 +206,59 @@ class SystemTrayApp:
             logger.warning("Не удалось установить иконку: %s", e)
             self.indicator.set_icon(ICON_FALLBACK)
 
-    def init_listeners(self):
-        # pynput падает уже при импорте, если нет X-дисплея (Wayland без Xwayland):
-        # тогда отключаются только счётчики, а не всё приложение.
+    def sync_input_listeners(self) -> None:
+        """Глобальный хук клавиатуры или мыши работает, только пока его счётчик показан в меню."""
+        for kind in INPUT_COUNTER_KINDS:
+            attr = f'{kind}_listener'
+            wanted = self.input_counters_available and self.visibility_settings.get(f'{kind}_clicks', True)
+            listener = getattr(self, attr)
+            if wanted and listener is None:
+                setattr(self, attr, self._start_input_listener(kind))
+            elif not wanted and listener is not None:
+                self._stop_input_listener(listener)
+                setattr(self, attr, None)
+        if not self.input_counters_available:
+            self._stop_input_listeners()
+
+    def _start_input_listener(self, kind: str):
+        # pynput падает уже при импорте, если нет X-дисплея: тогда отключаются
+        # только счётчики, а не всё приложение.
         try:
             from pynput import keyboard, mouse
+            if kind == 'keyboard':
+                listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
+            else:
+                listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
+            listener.start()
+            return listener
         except Exception as e:
             logger.warning("Счётчики клавиш и кликов недоступны: %s", e)
-            return
-        hooks_ok = True
-        try:
-            self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
-            self.keyboard_listener.start()
-        except Exception as e:
-            logger.warning("Не удалось запустить keyboard listener: %s", e)
-            self.keyboard_listener = None
-            hooks_ok = False
-        try:
-            self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
-            self.mouse_listener.start()
-        except Exception as e:
-            logger.warning("Не удалось запустить mouse listener: %s", e)
-            self.mouse_listener = None
-            hooks_ok = False
-        if hooks_ok and os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
-            logger.warning("Сессия Wayland: счётчики клавиш и кликов видят только события XWayland-приложений")
+            self.input_counters_available = False
+            return None
+
+    @staticmethod
+    def _stop_input_listener(listener) -> None:
+        # stop() ждёт готовности хука и зависает навсегда, если поток pynput упал
+        # при запуске, поэтому главный поток GTK его не ждёт.
+        threading.Thread(target=listener.stop, name="pynput-stop", daemon=True).start()
+
+    def _stop_input_listeners(self) -> None:
+        for kind in INPUT_COUNTER_KINDS:
+            attr = f'{kind}_listener'
+            listener = getattr(self, attr)
+            if listener is not None:
+                self._stop_input_listener(listener)
+                setattr(self, attr, None)
+
+    def _input_counts(self) -> tuple[Optional[int], Optional[int]]:
+        """Значения счётчиков; None — счётчик недоступен или скрыт (хук не работает)."""
+        kbd, ms = get_counts()
+        return (kbd if self.keyboard_listener is not None else None,
+                ms if self.mouse_listener is not None else None)
+
+    def _input_counter_unavailable_text(self, title_key: str) -> str:
+        reason = " (Wayland)" if _is_wayland_session() else ""
+        return f"{tr(title_key)}: N/A{reason}"
 
     def on_key_press(self, _key):
         increment_keyboard()
@@ -238,8 +276,8 @@ class SystemTrayApp:
         self.visibility_settings['graph_history_minutes'] = sanitized_minutes
         self.metrics_history.resize(self._graph_history_points(sanitized_minutes))
 
-    def save_settings(self) -> None:
-        save_settings(self.settings_file, self.visibility_settings)
+    def save_settings(self) -> bool:
+        return save_settings(self.settings_file, self.visibility_settings)
 
     def graph_line_color(self, key: str) -> tuple[float, float, float]:
         return graph_line_color_rgb(self.visibility_settings, key)
@@ -266,8 +304,12 @@ class SystemTrayApp:
         self._new_item('swap', f"{tr('swap_loading')}: N/A", open_graph('swap'))
         self._new_item('disk', f"{tr('disk_loading')}: N/A", open_graph('disk'))
         self._new_item('net', f"{tr('lan_speed')}: N/A", open_graph('net'))
-        self._new_item('keyboard_clicks', f"{tr('keyboard_clicks')}: 0", open_graph('keyboard'))
-        self._new_item('mouse_clicks', f"{tr('mouse_clicks')}: 0", open_graph('mouse'))
+        for kind in INPUT_COUNTER_KINDS:
+            key = f'{kind}_clicks'
+            if self.input_counters_available:
+                self._new_item(key, f"{tr(key)}: 0", open_graph(kind))
+            else:
+                self._new_item(key, self._input_counter_unavailable_text(key), None)
         self._new_item('uptime', f"{tr('uptime_label')}: N/A", None)
         self._new_item('show_power_off', tr('power_off'),
                        lambda w: pc.confirm_action(w, pc.power_off, tr('confirm_text_power_off')))
@@ -313,8 +355,13 @@ class SystemTrayApp:
                 prev_is_separator = False
 
         menu.show_all()
+        old_menu = getattr(self, 'menu', None)
         self.menu = menu
         self.indicator.set_menu(menu)
+        if old_menu is not None:
+            # Меню пересоздаётся и из обработчика его же пункта (выбор языка),
+            # поэтому старое уничтожается после выхода из обработчика.
+            GLib.idle_add(old_menu.destroy)
 
     def _build_language_menu_item(self) -> Gtk.MenuItem:
         language_menu = Gtk.Menu()
@@ -335,7 +382,8 @@ class SystemTrayApp:
         if widget.get_active() and get_language() != lang_code:
             set_language(lang_code)
             self.visibility_settings['language'] = lang_code
-            self.save_settings()
+            if not self.save_settings():
+                show_message(tr('error'), tr('settings_save_error'))
             self.create_menu()
             for window in self.graph_windows.values():
                 window.refresh_texts()
@@ -388,6 +436,7 @@ class SystemTrayApp:
             vs[key] = sanitize_poll_interval(spin.get_value_as_int())
         if not vs['logging_enabled']:
             self.metrics_log.close()
+        self.sync_input_listeners()
 
         want_autostart = dialog.autostart_check.get_active()
         if want_autostart != autostart.is_enabled() and not autostart.set_enabled(want_autostart):
@@ -404,7 +453,7 @@ class SystemTrayApp:
         ):
             tel_after = (tel.token, tel.chat_id, tel.enabled)
             if tel.enabled and not tel_before[2]:
-                self.last_telegram_notification_time = 0.0
+                self.last_telegram_notification_time = float("-inf")
             if tel_after != tel_before:
                 tel.stop_bot()
             tel.start_bot()
@@ -419,11 +468,12 @@ class SystemTrayApp:
                 int(dialog.discord_interval_spin.get_value()),
         ):
             if disc.enabled and not disc_enabled_before:
-                self.last_discord_notification_time = 0.0
+                self.last_discord_notification_time = float("-inf")
         else:
             self._show_message(tr('error'), tr('setting_discord_error'))
 
-        self.save_settings()
+        if not self.save_settings():
+            self._show_message(tr('error'), tr('settings_save_error'))
         self.create_menu()
 
     def _show_message(self, title: str, message: str) -> None:
@@ -588,7 +638,7 @@ class SystemTrayApp:
     def update_info(self) -> bool:
         cycle_start = time.perf_counter()
         try:
-            kbd, ms = get_counts()
+            kbd, ms = self._input_counts()
             raw = self.metrics_sampler.snapshot(self.prev_net_data, self._metric_intervals(), kbd, ms)
             snapshot = dataclasses.replace(raw, uptime=self._format_uptime_localized(raw.uptime))
             self.latest_snapshot = snapshot
@@ -603,7 +653,7 @@ class SystemTrayApp:
         return True
 
     def _send_periodic_notifications(self, snapshot: MetricsSnapshot) -> None:
-        now = time.time()
+        now = time.monotonic()
         if (self.telegram_notifier.enabled and
                 now - self.last_telegram_notification_time >= self.telegram_notifier.notification_interval):
             self.telegram_dispatcher.submit(format_status_message(snapshot, "html"))
@@ -618,14 +668,14 @@ class SystemTrayApp:
         if not self.visibility_settings.get('logging_enabled', True):
             return
         line = (f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
-                f"CPU: {s.cpu_usage:.0f}% {s.cpu_temp}°C | "
+                f"CPU: {s.cpu_usage:.0f}% {format_temp(s.cpu_temp)} | "
                 f"RAM: {s.ram_used:.1f}/{s.ram_total:.1f} GB | "
                 f"SWAP: {s.swap_used:.1f}/{s.swap_total:.1f} GB | "
                 f"Disk: {s.disk_used:.1f}/{s.disk_total:.1f} GB | "
                 f"Net: ↓{s.net_recv:.1f}/↑{s.net_sent:.1f} {tr('mbps')} | "
                 f"Uptime: {s.uptime} | "
-                f"Keys: {s.keyboard_clicks} | "
-                f"Clicks: {s.mouse_clicks}\n")
+                f"Keys: {format_count(s.keyboard_clicks)} | "
+                f"Clicks: {format_count(s.mouse_clicks)}\n")
         max_bytes = sanitize_log_size_mb(self.visibility_settings.get('max_log_mb', 5)) * 1024 * 1024
         try:
             self.metrics_log.write(line, max_bytes)
@@ -653,7 +703,7 @@ class SystemTrayApp:
 
     def _due(self, item_key: str, interval_key: str, now: float) -> bool:
         interval = sanitize_poll_interval(self.visibility_settings.get(interval_key, POLL_INTERVAL_DEFAULT_SEC))
-        if now - self._last_item_update_ts.get(item_key, 0.0) >= interval:
+        if now - self._last_item_update_ts.get(item_key, float("-inf")) >= interval:
             self._last_item_update_ts[item_key] = now
             return True
         return False
@@ -665,7 +715,7 @@ class SystemTrayApp:
         return self._item_display_cache[item_key]
 
     def _update_ui(self, s: MetricsSnapshot) -> None:
-        now = time.time()
+        now = time.monotonic()
         vs = self.visibility_settings
         gb = tr('gb')
 
@@ -673,7 +723,7 @@ class SystemTrayApp:
             window.queue_draw()
 
         throttled = {
-            'cpu': ('cpu_interval_sec', f"{tr('cpu_info')}: {s.cpu_usage:.0f}%  🌡{s.cpu_temp}°C"),
+            'cpu': ('cpu_interval_sec', f"{tr('cpu_info')}: {s.cpu_usage:.0f}%  🌡{format_temp(s.cpu_temp)}"),
             'ram': ('ram_interval_sec', f"{tr('ram_loading')}: {s.ram_used:.1f}/{s.ram_total:.1f} {gb}"),
             'swap': ('swap_interval_sec', f"{tr('swap_loading')}: {s.swap_used:.1f}/{s.swap_total:.1f} {gb}"),
             'disk': ('disk_interval_sec', f"{tr('disk_loading')}: {s.disk_used:.1f}/{s.disk_total:.1f} {gb}"),
@@ -683,11 +733,10 @@ class SystemTrayApp:
             if vs.get(key, True):
                 self._set_label(self.menu_items[key], self._throttled_text(key, interval_key, now, text))
 
-        immediate = {
-            'uptime': f"{tr('uptime_label')}: {s.uptime}",
-            'keyboard_clicks': f"{tr('keyboard_clicks')}: {s.keyboard_clicks}",
-            'mouse_clicks': f"{tr('mouse_clicks')}: {s.mouse_clicks}",
-        }
+        immediate = {'uptime': f"{tr('uptime_label')}: {s.uptime}"}
+        if self.input_counters_available:
+            immediate['keyboard_clicks'] = f"{tr('keyboard_clicks')}: {format_count(s.keyboard_clicks)}"
+            immediate['mouse_clicks'] = f"{tr('mouse_clicks')}: {format_count(s.mouse_clicks)}"
         for key, text in immediate.items():
             if vs.get(key, True):
                 self._set_label(self.menu_items[key], text)
@@ -738,12 +787,7 @@ class SystemTrayApp:
                 pass
             self.settings_dialog = None
 
-        for listener in (self.keyboard_listener, self.mouse_listener):
-            try:
-                if listener:
-                    listener.stop()
-            except Exception:
-                pass
+        self._stop_input_listeners()
 
         if self._bus_name_id:
             Gio.bus_unown_name(self._bus_name_id)
@@ -764,8 +808,18 @@ class SystemTrayApp:
 
 def _acquire_single_instance_lock() -> Optional[IO[str]]:
     """Не дать запустить второй экземпляр (второй значок в трее и второй Telegram-бот)."""
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    lock_file = open(Path(runtime_dir) / f"{APP_NAME.lower()}.lock", "w")
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        lock_path = Path(runtime_dir) / f"{APP_NAME.lower()}.lock"
+    else:
+        # Общий /tmp: файл с uid, чтобы не столкнуться с блокировкой другого пользователя.
+        lock_path = Path(tempfile.gettempdir()) / f"{APP_NAME.lower()}-{os.getuid()}.lock"
+    try:
+        lock_file = open(lock_path, "w")
+    except OSError as e:
+        logger.warning("Не удалось открыть файл блокировки %s: %s", lock_path, e)
+        # Работаем без защиты от второго экземпляра, но запускаемся.
+        return open(os.devnull, "w")
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:

@@ -12,7 +12,7 @@ import requests
 from requests import Response
 
 from app_core.localization import tr
-from app_core.system_usage import MetricsSnapshot
+from app_core.system_usage import MetricsSnapshot, format_temp
 
 logger = logging.getLogger(__name__)
 
@@ -89,15 +89,18 @@ def format_status_message(snapshot: MetricsSnapshot, markup: str = "html") -> st
 
     s = snapshot
     rows = [
-        (tr('cpu'), f"{s.cpu_usage:.0f}% ({s.cpu_temp}{tr('temperature')})"),
+        (tr('cpu'), f"{s.cpu_usage:.0f}% ({format_temp(s.cpu_temp)})"),
         (tr('ram'), f"{s.ram_used:.1f}/{s.ram_total:.1f} {tr('gb')}"),
         (tr('swap'), f"{s.swap_used:.1f}/{s.swap_total:.1f} {tr('gb')}"),
         (tr('disk'), f"{s.disk_used:.1f}/{s.disk_total:.1f} {tr('gb')}"),
         (tr('network'), f"↓{s.net_recv:.1f}/↑{s.net_sent:.1f} {tr('mbps')}"),
         (tr('uptime'), s.uptime),
-        (tr('keyboard_clicks'), str(s.keyboard_clicks)),
-        (tr('mouse_clicks'), str(s.mouse_clicks)),
     ]
+    # Счётчик скрыт или недоступен (Wayland): строки нет, а не «N/A».
+    if s.keyboard_clicks is not None:
+        rows.append((tr('keyboard_clicks'), str(s.keyboard_clicks)))
+    if s.mouse_clicks is not None:
+        rows.append((tr('mouse_clicks'), str(s.mouse_clicks)))
     lines = [f"🖥 {bold(tr('system_status'))}"]
     lines.extend(f"🔹 {bold(label + ':')} {value(text)}" for label, text in rows)
     return "\n".join(lines)

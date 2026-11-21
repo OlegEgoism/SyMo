@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
@@ -21,6 +22,7 @@ from .constants import (
     POLL_INTERVAL_MAX_SEC,
     POLL_INTERVAL_MIN_SEC,
     POLL_INTERVAL_SETTING_KEYS,
+    SUPPORTED_LANGS,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,17 +52,41 @@ def atomic_write_json(path: Path, data: Any, mode: Optional[int] = None) -> None
         raise
 
 
+def _set_aside_corrupted(path: Path) -> None:
+    """Сохранить испорченный файл рядом, чтобы следующая запись его не затёрла."""
+    backup = path.with_name(f"{path.name}.bad-{int(time.time())}")
+    try:
+        os.replace(path, backup)
+        logger.warning("Испорченный файл %s сохранён как %s", path, backup)
+    except OSError as e:
+        logger.warning("Не удалось сохранить испорченный файл %s: %s", path, e)
+
+
 def read_json(path: Path) -> Dict[str, Any]:
-    """Прочитать JSON-объект; при отсутствии файла или ошибке вернуть {}."""
+    """Прочитать JSON-объект; при отсутствии файла или ошибке вернуть {}.
+
+    Файл, который не разбирается как JSON-объект, переименовывается в
+    <имя>.bad-<время>: иначе его молча перезаписали бы значения по умолчанию.
+    Так же откладывается файл, который не удалось прочитать (например, без прав).
+    """
     path = Path(path)
-    if not path.exists():
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        logger.warning("Не удалось прочитать %s: %s", path, e)
+        _set_aside_corrupted(path)
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.warning("Не удалось прочитать %s: %s", path, e)
+        data = json.loads(raw.decode("utf-8"))
+    except ValueError as e:
+        logger.warning("Не удалось разобрать %s: %s", path, e)
+        data = None
+    if not isinstance(data, dict):
+        _set_aside_corrupted(path)
         return {}
-    return data if isinstance(data, dict) else {}
+    return data
 
 
 def _clamp_int(value: object, default: int, low: int, high: int) -> int:
@@ -145,6 +171,8 @@ def normalize_settings(raw: Dict[str, Any]) -> Dict[str, Any]:
         source = (raw or {}).get(key, legacy_color if legacy_color is not None else fallback)
         settings[key] = sanitize_hex_color(source)
     settings['menu_order'] = normalize_menu_order(settings.get('menu_order'))
+    language = str(settings.get('language') or '').strip().lower()
+    settings['language'] = language if language in SUPPORTED_LANGS else None
     for key in POLL_INTERVAL_SETTING_KEYS:
         settings[key] = sanitize_poll_interval(settings.get(key))
     return settings
