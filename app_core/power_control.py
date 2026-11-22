@@ -234,7 +234,7 @@ class PowerControl:
         dialog.show()
 
     def open_scheduler(self, *_):
-        dialog = Gtk.Dialog(title=tr('settings'), transient_for=self.parent_window, flags=0)
+        dialog = Gtk.Dialog(title=tr('scheduler'), transient_for=self.parent_window, flags=0)
         self._replace_current_dialog(dialog)
         box = dialog.get_content_area()
         box.set_border_width(10)

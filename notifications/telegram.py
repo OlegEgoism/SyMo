@@ -10,19 +10,22 @@ import tempfile
 import threading
 import time
 from queue import Full, Queue
-from typing import Callable, Iterable, NamedTuple, Optional, TYPE_CHECKING
+from typing import Callable, Iterable, Optional, TYPE_CHECKING
 
-import requests
-from requests import Response
 from gi.repository import GLib
 
 from app_core.constants import TELEGRAM_CONFIG_FILE
+from app_core.graph_math import decimate_samples
+from app_core.graph_render import build_graph_specs, render_graph
 from app_core.localization import tr
 from app_core.power_control import Action, action_label
-from app_core.settings import atomic_write_json, graph_line_color_rgb, read_json
+from app_core.settings import atomic_write_json, read_json
 from notifications.base import format_status_message, normalize_interval, post_with_retries, truncate_message
 
+# requests (~30 мс при запуске) импортируется внутри функций отправки:
+# пока Telegram и Discord выключены, он не нужен.
 if TYPE_CHECKING:
+    from requests import Response
     from app_core.power_control import PowerControl
     from app_core.app import SystemTrayApp
 
@@ -31,36 +34,10 @@ logger = logging.getLogger(__name__)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
-class _GraphMetric(NamedTuple):
-    history_key: str
-    title: Callable[[], str]
-    value: Callable[[tuple], float]
-    unit: Callable[[], str]
-    color_key: str
-
-
-def _percent(sample: tuple) -> float:
-    return float(sample[3])
-
-
-_GRAPH_METRICS: dict[str, _GraphMetric] = {
-    "cpu": _GraphMetric("cpu", lambda: tr("cpu"), lambda s: float(s[1]), lambda: "%", "graph_line_color_cpu"),
-    "temp": _GraphMetric("cpu", lambda: f"{tr('cpu')} {tr('temperature')}", lambda s: float(s[2]),
-                         lambda: tr("temperature"), "graph_line_color_temp"),
-    "ram": _GraphMetric("ram", lambda: tr("ram"), _percent, lambda: "%", "graph_line_color_ram"),
-    "swap": _GraphMetric("swap", lambda: tr("swap"), _percent, lambda: "%", "graph_line_color_swap"),
-    "disk": _GraphMetric("disk", lambda: tr("disk"), _percent, lambda: "%", "graph_line_color_disk"),
-    "net": _GraphMetric("net", lambda: tr("network"), lambda s: float(s[1]) + float(s[2]),
-                        lambda: tr("mbps"), "graph_line_color_net_recv"),
-    "keyboard": _GraphMetric("keyboard", lambda: tr("keyboard_clicks"), lambda s: float(s[1]),
-                             lambda: "", "graph_line_color_keyboard"),
-    "mouse": _GraphMetric("mouse", lambda: tr("mouse_clicks"), lambda s: float(s[1]),
-                          lambda: "", "graph_line_color_mouse"),
-}
-
+# Команда → ключ графика. Температура рисуется на графике CPU, как и в окне.
 GRAPH_COMMANDS = {
     '/cpu_graph': 'cpu',
-    '/temp_graph': 'temp',
+    '/temp_graph': 'cpu',
     '/ram_graph': 'ram',
     '/net_graph': 'net',
     '/disk_graph': 'disk',
@@ -169,6 +146,8 @@ class TelegramNotifier:
         self.enabled: bool = False
         self.notification_interval: int = 3600
         self.screenshot_quality: str = "medium"
+        # Причина последней неудачной отправки — для окна настроек («Проверить»).
+        self.last_error: Optional[str] = None
         self.allowed_user_ids: list[int] = []
         self.allow_remote_power: bool = False
         self.allow_remote_screenshot: bool = False
@@ -250,6 +229,7 @@ class TelegramNotifier:
         return truncate_message(plain, cls.MAX_MESSAGE_LENGTH), None
 
     def send_message(self, message: str, force: bool = False, html_markup: bool = False) -> bool:
+        import requests
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
 
@@ -268,7 +248,8 @@ class TelegramNotifier:
             )
             return self._check_response(response, "сообщения")
         except Exception as e:
-            logger.exception("Ошибка отправки сообщения в Telegram: %s", e)
+            self.last_error = e.__class__.__name__
+            logger.exception("Ошибка отправки сообщения в Telegram: %s", e.__class__.__name__)
             return False
 
     def send_message_async(self, message: str) -> None:
@@ -284,24 +265,29 @@ class TelegramNotifier:
             return 1.0
         return max(0.1, min(cls._MAX_RETRY_AFTER_SEC, retry_after))
 
-    @staticmethod
-    def _check_response(response: Optional[Response], what: str) -> bool:
-        if response is None:
-            return False
-        if response.status_code != 200:
-            logger.error("Ошибка отправки %s в Telegram: HTTP %s", what, response.status_code)
-            return False
-        try:
-            data = response.json()
-        except ValueError:
-            logger.error("Ошибка отправки %s в Telegram: некорректный JSON в ответе API", what)
-            return False
-        if not data.get('ok', False):
-            logger.error("Ошибка Telegram API при отправке %s: %s", what, data.get('description', 'unknown error'))
+    def _check_response(self, response: Optional[Response], what: str) -> bool:
+        self.last_error = self._response_error(response)
+        if self.last_error:
+            logger.error("Ошибка отправки %s в Telegram: %s", what, self.last_error)
             return False
         return True
 
+    @staticmethod
+    def _response_error(response: Optional[Response]) -> Optional[str]:
+        """Понятная причина ошибки: описание Telegram API (например, «chat not found») или код HTTP."""
+        if response is None:
+            return "no connection to api.telegram.org"
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if response.status_code == 200 and data.get('ok', False):
+            return None
+        description = data.get('description') if isinstance(data, dict) else None
+        return f"HTTP {response.status_code}: {description}" if description else f"HTTP {response.status_code}"
+
     def send_photo(self, photo_path: str, caption: str = "", force: bool = False) -> bool:
+        import requests
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
 
@@ -472,100 +458,26 @@ class TelegramNotifier:
     def set_app_context(self, app: "SystemTrayApp") -> None:
         self.app_ref = app
 
-    @staticmethod
-    def _resolve_graph_metric(metric: str) -> Optional[_GraphMetric]:
-        return _GRAPH_METRICS.get((metric or "").strip().lower())
-
-    def _metric_samples_for_graph(self, metric: str) -> tuple[str, list[tuple[float, float]], str]:
-        spec = self._resolve_graph_metric(metric)
-        app = self.app_ref
-        if spec is None or app is None:
-            return "", [], ""
-        points: list[tuple[float, float]] = []
-        for sample in app.metrics_history.samples(spec.history_key):
-            try:
-                points.append((float(sample[0]), max(0.0, spec.value(sample))))
-            except (TypeError, ValueError, IndexError):
-                continue
-        return spec.title(), points, spec.unit()
-
-    def _graph_line_color_rgb(self, metric: str) -> tuple[float, float, float]:
-        spec = self._resolve_graph_metric(metric) or _GRAPH_METRICS["cpu"]
-        settings = getattr(self.app_ref, "visibility_settings", None) or {}
-        return graph_line_color_rgb(settings, spec.color_key)
-
     def _render_metric_graph_to_temp(self, metric: str) -> Optional[tuple[str, str]]:
-        title, points, unit = self._metric_samples_for_graph(metric)
-        if not points or not title:
+        """Тот же график, что в окне SyMo, за всю историю из настроек, в PNG-файл."""
+        app = self.app_ref
+        spec = build_graph_specs().get(metric)
+        if spec is None or app is None:
             return None
-        points = points[-180:]
-
+        samples = app.metrics_history.samples(metric)
+        if not samples:
+            return None
         try:
             import cairo  # type: ignore
         except Exception:
             logger.warning("cairo недоступен: не удалось построить изображение графика")
             return None
 
-        width, height = 980, 420
-        margin_left, margin_right = 56, 24
-        margin_top, margin_bottom = 36, 46
-        plot_w = max(10, width - margin_left - margin_right)
-        plot_h = max(10, height - margin_top - margin_bottom)
-
-        values = [p[1] for p in points]
-        v_min, v_max = min(values), max(values)
-        if abs(v_max - v_min) < 1e-6:
-            v_min = max(0.0, v_min - 1.0)
-            v_max = v_max + 1.0
-        caption = tr('graph_caption').format(title)
-
+        width, height = 980, 440
+        caption = tr('graph_caption').format(spec.title().strip())
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
-        cr = cairo.Context(surface)
-
-        cr.set_source_rgb(0.09, 0.09, 0.09)
-        cr.paint()
-        cr.set_source_rgb(0.18, 0.18, 0.18)
-        cr.rectangle(margin_left, margin_top, plot_w, plot_h)
-        cr.stroke()
-
-        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        cr.set_font_size(16)
-        cr.set_source_rgb(0.92, 0.92, 0.92)
-        cr.move_to(margin_left, 24)
-        cr.show_text(caption)
-
-        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-        cr.set_font_size(12)
-        cr.set_source_rgb(0.65, 0.65, 0.65)
-        cr.move_to(margin_left, height - 16)
-        cr.show_text(f"{tr('samples_label')}: {len(points)}")
-
-        time_start_label = self._format_graph_time(points[0][0])
-        time_end_label = self._format_graph_time(points[-1][0])
-        cr.set_source_rgb(0.70, 0.70, 0.70)
-        cr.move_to(margin_left, margin_top + plot_h + 16)
-        cr.show_text(time_start_label)
-        extents = cr.text_extents(time_end_label)
-        cr.move_to(margin_left + plot_w - extents[2], margin_top + plot_h + 16)
-        cr.show_text(time_end_label)
-
-        step_x = plot_w / max(1, len(points) - 1)
-        cr.set_source_rgb(*self._graph_line_color_rgb(metric))
-        cr.set_line_width(2.0)
-        for i, (_ts, value) in enumerate(points):
-            x = margin_left + i * step_x
-            y = margin_top + plot_h - ((value - v_min) / (v_max - v_min)) * plot_h
-            if i == 0:
-                cr.move_to(x, y)
-            else:
-                cr.line_to(x, y)
-        cr.stroke()
-
-        cr.set_source_rgb(0.82, 0.82, 0.82)
-        cr.move_to(8, margin_top + 6)
-        cr.show_text(f"{v_max:.1f}{unit}")
-        cr.move_to(8, margin_top + plot_h)
-        cr.show_text(f"{v_min:.1f}{unit}")
+        render_graph(cairo.Context(surface), spec, decimate_samples(samples, width * 2), width, height,
+                     app.graph_line_color, title=caption)
 
         fd, path = tempfile.mkstemp(prefix=f"symo-graph-{metric}-", suffix=".png")
         os.close(fd)
@@ -575,13 +487,6 @@ class TelegramNotifier:
             _remove_quietly(path)
             raise
         return path, caption
-
-    @staticmethod
-    def _format_graph_time(timestamp: float) -> str:
-        try:
-            return time.strftime("%H:%M:%S", time.localtime(float(timestamp)))
-        except Exception:
-            return "--:--:--"
 
     def _send_metric_graph(self, metric: str) -> None:
         render_result = self._render_metric_graph_to_temp(metric)
@@ -622,6 +527,7 @@ class TelegramNotifier:
 
     def _skip_pending_updates(self) -> Optional[int]:
         """Подтвердить все накопившиеся обновления, не выполняя их; вернуть последний update_id."""
+        import requests
         try:
             response = requests.get(self._api_url("getUpdates"), params={'offset': -1, 'timeout': 0}, timeout=10)
             if response.status_code != 200:
@@ -636,6 +542,7 @@ class TelegramNotifier:
             return None
 
     def _fetch_bot_username(self) -> Optional[str]:
+        import requests
         try:
             response = requests.get(self._api_url("getMe"), timeout=10)
             username = (response.json().get('result') or {}).get('username')
@@ -645,6 +552,7 @@ class TelegramNotifier:
             return None
 
     def _bot_worker(self, stop_event: threading.Event) -> None:
+        import requests
         # Смещение — своё у каждого запуска: после смены токена или долгого простоя
         # старое значение могло бы оказаться больше новых update_id, и все команды
         # молча отбрасывались бы.
@@ -846,7 +754,7 @@ class TelegramNotifier:
             tr('bot_help_message')
             + f"\n\n📊 {tr('graph_commands_title')}:"
             + f"\n/cpu_graph - {tr('cpu')}"
-            + f"\n/temp_graph - {tr('cpu')} {tr('temperature')}"
+            + f"\n/temp_graph - {tr('cpu')}, {tr('temperature_label')}"
             + f"\n/ram_graph - {tr('ram')}"
             + f"\n/net_graph - {tr('network')}"
             + f"\n/disk_graph - {tr('disk')}"

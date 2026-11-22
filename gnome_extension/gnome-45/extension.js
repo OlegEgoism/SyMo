@@ -12,6 +12,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+// >>> common: этот блок одинаков в gnome-42-44 и gnome-45, правьте оба (сверяет tests/test_gnome_extension.py)
 const DESKTOP_ID = 'SyMo.desktop';
 const COMMANDS = ['symo', 'SyMo'];
 // SyMo owns this name on the session bus while it runs.
@@ -96,6 +97,7 @@ class SyMoIndicator extends PanelMenu.Button {
         this._traySupportItem.visible = missing;
     }
 });
+// <<< common
 
 export default class SyMoLauncherExtension extends Extension {
     enable() {

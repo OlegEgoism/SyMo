@@ -50,3 +50,29 @@ def set_language(lang_code: str) -> None:
 
 def get_language() -> str:
     return current_lang
+
+
+def _plural_ru(value: int) -> str:
+    value = abs(int(value))
+    if value % 10 == 1 and value % 100 != 11:
+        return 'one'
+    if 2 <= value % 10 <= 4 and (value % 100 < 10 or value % 100 >= 20):
+        return 'few'
+    return 'many'
+
+
+def format_uptime(raw_uptime: str) -> str:
+    """«3 days, 4:05:06» из timedelta → «3 дня, 4:05:06» на текущем языке."""
+    parts = (raw_uptime or "").split(", ", 1)
+    if len(parts) != 2:
+        return raw_uptime
+    day_part, time_part = parts
+    day_tokens = day_part.split()
+    if len(day_tokens) != 2 or not day_tokens[0].isdigit():
+        return raw_uptime
+    days = int(day_tokens[0])
+    plural_key = _plural_ru(days) if current_lang == 'ru' else ('one' if days == 1 else 'many')
+    day_label = tr(f'uptime_day_{plural_key}')
+    if day_label == f'uptime_day_{plural_key}':
+        day_label = 'day' if days == 1 else 'days'
+    return f"{days} {day_label}, {time_part}"

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SUPPORTED_LANGS = ['ru', 'en', 'cn', 'de', 'it', 'es', 'tr', 'fr']
+from .language import LANGUAGES
+
+# Языки и их флаги описаны в одном месте — language.py.
+SUPPORTED_LANGS = list(LANGUAGES)
 APP_ID = "SystemMonitor"
 APP_NAME = "SyMo"
 APP_VERSION = "1.2.0"
@@ -30,6 +33,8 @@ MENU_ORDER_DEFAULT = [
     'keyboard_clicks',
     'mouse_clicks',
     'uptime',
+    'battery',
+    'gpu',
     'show_power_off',
     'show_reboot',
     'show_lock',
@@ -63,6 +68,14 @@ GRAPH_COLOR_DEFAULTS = {
     'graph_line_color_keyboard': '#ffd93f',
     'graph_line_color_mouse': '#66e6ff',
 }
+
+APP_LOG_FILE = _HOME / ".symo_app.log"
+PING_HOST_DEFAULT = "8.8.8.8"
+LOG_INTERVAL_DEFAULT_SEC = 60
+LOG_INTERVAL_MIN_SEC = 1
+LOG_INTERVAL_MAX_SEC = 3600
+# Пороги оповещений по умолчанию; 0 — выключено.
+ALERT_DEFAULTS = {'alert_cpu_temp_c': 90, 'alert_ram_percent': 95, 'alert_disk_percent': 95}
 
 LOG_MAX_MB_MIN = 1
 LOG_MAX_MB_MAX = 1024
