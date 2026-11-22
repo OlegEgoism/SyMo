@@ -1,4 +1,4 @@
 # Зависимости для тестов и проверок (CI и локально): .venv/bin/pip install -r requirements-dev.txt
 -r requirements.txt
 pytest==8.4.2
-pyflakes==3.4.0
+pyflakes==4.1.0
