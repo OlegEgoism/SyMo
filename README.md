@@ -19,7 +19,7 @@ controls power actions and sends notifications to Telegram and Discord.
 
 ## Requirements
 
-Ubuntu 22.04 or newer (GNOME 42–50), x86_64.
+Ubuntu 22.04 or newer (GNOME 42–50), x86_64 or arm64.
 The tray icon needs AppIndicator: Ubuntu ships it by default; on vanilla GNOME
 install `gnome-shell-extension-appindicator`.
 
@@ -27,11 +27,11 @@ install `gnome-shell-extension-appindicator`.
 
 ### Option 1. Ready-made package (recommended)
 
-1. Download `symo_<version>_amd64.deb` from [Releases](https://github.com/OlegEgoism/SyMo/releases).
+1. Download `symo_<version>_amd64.deb` (or `_arm64.deb`) from [Releases](https://github.com/OlegEgoism/SyMo/releases).
 2. Install it:
 
    ```bash
-   sudo apt install ./symo_*_amd64.deb
+   sudo apt install ./symo_*.deb
    ```
 
 3. Start SyMo from the application menu. From then on it starts by itself when you log in.
@@ -50,7 +50,7 @@ cd SyMo
 **2. Install system packages**
 
 ```bash
-sudo apt install git python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+sudo apt install git python3-venv python3-dev python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
   gir1.2-ayatanaappindicator3-0.1 build-essential patchelf
 ```
 
@@ -74,7 +74,7 @@ python3 -m venv --system-site-packages .venv
 **5. Install**
 
 ```bash
-sudo apt install ./dist/symo_*_amd64.deb
+sudo apt install ./dist/symo_*.deb
 ```
 
 **6. Start** SyMo from the application menu or with the `symo` command.
@@ -83,6 +83,26 @@ To update, run `git pull` in the project folder, then steps 4 and 5.
 
 > The package runs on the Ubuntu version it was built on and newer ones.
 
+### Option 3. Archive without admin rights
+
+Use this if you can't install packages. SyMo goes to `~/.local/opt/SyMo`, for your user only.
+
+1. Download `SyMo-<version>-linux-x86_64.tar.gz` (or `-aarch64`) and its `.sha256` from
+   [Releases](https://github.com/OlegEgoism/SyMo/releases).
+2. Verify, unpack and install:
+
+   ```bash
+   sha256sum -c SyMo-*.tar.gz.sha256
+   tar xzf SyMo-*.tar.gz
+   ./SyMo-*/install.sh
+   ```
+
+   Add `--no-autostart` if SyMo should not start at login.
+3. To uninstall: `~/.local/opt/SyMo/uninstall-symo.sh` (`--purge` also removes settings).
+
+> Don't install the archive and the package at the same time. To switch to the
+> package, uninstall the archive version first, then install the `.deb`.
+
 ### Development mode (run `app.py`)
 
 The app runs straight from source, no build needed. Code changes take effect
@@ -90,11 +110,12 @@ on the next restart.
 
 **1. Get the project** — as in step 1 above.
 
-**2. Install system packages** (no compiler or `patchelf` needed for this):
+**2. Install system packages** (pip needs `python3-dev` and a compiler to build `evdev`
+for the key counters; `patchelf` is not needed):
 
 ```bash
-sudo apt install python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
-  gir1.2-ayatanaappindicator3-0.1
+sudo apt install python3-venv python3-dev python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+  gir1.2-ayatanaappindicator3-0.1 build-essential
 ```
 
 **3. Create the environment and install the app's dependencies:**
@@ -139,6 +160,8 @@ The icon appears in the tray and the log goes to the terminal. Stop it with `Ctr
 ```bash
 sudo apt remove symo
 ```
+
+If SyMo was installed from the archive: `~/.local/opt/SyMo/uninstall-symo.sh`.
 
 Settings and tokens stay in your home folder: `~/.symo_settings.json`,
 `~/.symo_telegram.json`, `~/.symo_discord.json`. Delete them by hand if you don't need them.

@@ -55,11 +55,21 @@ done
 rm -rf "$BUILD_DIR" "$STAGE" "$STAGE.tar.gz" "$STAGE.tar.gz.sha256"
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
+# Исходный logo.png — 1024×1024 и 2,6 МБ; для значка в трее и в меню хватает 256 px.
+"$PYTHON" - "$ROOT_DIR/logo.png" "$BUILD_DIR/logo.png" <<'PY'
+import sys
+import gi
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf
+pixbuf = GdkPixbuf.Pixbuf.new_from_file(sys.argv[1])
+pixbuf.scale_simple(256, 256, GdkPixbuf.InterpType.HYPER).savev(sys.argv[2], "png", [], [])
+PY
+
 "$PYTHON" -m nuitka \
     --standalone \
     "${optional_modules[@]}" \
     --assume-yes-for-downloads \
-    --include-data-files=logo.png=logo.png \
+    --include-data-files="$BUILD_DIR/logo.png=logo.png" \
     --output-dir="$BUILD_DIR" \
     --output-filename="$APP_NAME" \
     --python-flag=no_site \
@@ -102,7 +112,8 @@ exec "$DIR/app/SyMo" "$@"
 EOF_LAUNCHER
 chmod +x "$STAGE/symo"
 
-cp install.sh uninstall-symo.sh logo.png README.md README_RU.md "$STAGE/"
+# Значок лежит в app/logo.png: его используют и приложение, и ярлыки install.sh.
+cp install.sh uninstall-symo.sh README.md README_RU.md "$STAGE/"
 [[ -f LICENSE ]] && cp LICENSE "$STAGE/"
 chmod +x "$STAGE/install.sh" "$STAGE/uninstall-symo.sh"
 

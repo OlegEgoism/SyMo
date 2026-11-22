@@ -70,21 +70,66 @@ Description: Lightweight system monitor for the tray
  power actions, a shutdown timer and Telegram/Discord notifications.
 EOF
 
-# При удалении пакета останавливаем запущенные экземпляры: их файлы исчезают.
-cat > "$PKG/DEBIAN/prerm" <<'EOF'
+# Запущенный SyMo подгружает модули из /opt/symo по мере надобности, поэтому перед
+# заменой или удалением файлов его нужно остановить, иначе он упадёт. preinst — скрипт
+# нового пакета: он срабатывает и при обновлении со старых версий, чей prerm при
+# обновлении ничего не делал. Копии из архива (~/.local/opt/SyMo) не трогаем.
+for script in preinst prerm; do
+    cat > "$PKG/DEBIAN/$script" <<'EOF'
 #!/bin/sh
 set -e
-if [ "$1" = "remove" ]; then
-    pkill -x SyMo || true
+case "$1" in
+    upgrade|remove|deconfigure)
+        if pkill -f '^/opt/symo/app/SyMo' 2>/dev/null; then
+            touch /run/symo-was-running 2>/dev/null || true
+        fi
+        ;;
+esac
+EOF
+    chmod 755 "$PKG/DEBIAN/$script"
+done
+
+cat > "$PKG/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+    if [ -e /run/symo-was-running ]; then
+        rm -f /run/symo-was-running
+        echo "SyMo был остановлен на время обновления. Запустите его из меню приложений."
+    fi
+    # Копия из архива перекрыла бы ярлыки пакета в меню и в автозапуске.
+    for dir in /home/*/.local/opt/SyMo; do
+        if [ -x "$dir/app/SyMo" ]; then
+            echo "Найдена копия SyMo из архива: $dir. Удалите её: $dir/uninstall-symo.sh"
+        fi
+    done
 fi
 EOF
-chmod 755 "$PKG/DEBIAN/prerm"
+chmod 755 "$PKG/DEBIAN/postinst"
+
+# Ярлык автозапуска — конфигурационный файл: правки администратора переживают обновление.
+echo "/etc/xdg/autostart/SyMo.desktop" > "$PKG/DEBIAN/conffiles"
+
+# Дата из последнего коммита: повторная сборка того же кода даёт тот же пакет.
+build_date="$(date -R -d "@${SOURCE_DATE_EPOCH:-$(git -C "$ROOT_DIR" log -1 --format=%ct 2>/dev/null || date +%s)}")"
+cat > "$PKG/usr/share/doc/symo/changelog.Debian" <<EOF
+symo ($VERSION) stable; urgency=medium
+
+  * Release $VERSION: https://github.com/OlegEgoism/SyMo/releases/tag/v$VERSION
+
+ -- OlegEgoism <olegpustovalov220@gmail.com>  $build_date
+EOF
+gzip -9n "$PKG/usr/share/doc/symo/changelog.Debian"
 
 # Стандартные права пакета: каталоги и программы 755, остальные файлы 644.
 chmod 755 "$PKG"
 find "$PKG" -type d -exec chmod 755 {} +
 find "$PKG" -type f -perm /111 -exec chmod 755 {} +
 find "$PKG" -type f ! -perm /111 -exec chmod 644 {} +
+
+(cd "$PKG" && find . -path ./DEBIAN -prune -o -type f -printf '%P\0' | sort -z | xargs -0 md5sum) \
+    > "$PKG/DEBIAN/md5sums"
+chmod 644 "$PKG/DEBIAN/md5sums"
 
 mkdir -p "$DIST_DIR"
 rm -f "$DEB"

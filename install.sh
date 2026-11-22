@@ -22,6 +22,13 @@ for arg in "$@"; do
     esac
 done
 
+# Пакет ставит свои ярлыки в /usr/share и /etc/xdg; ярлыки из ~/.local их перекрыли бы,
+# и меню, автозапуск и расширение запускали бы эту копию вместо пакетной.
+if dpkg-query -W -f='${Status}' symo 2>/dev/null | grep -q "install ok installed"; then
+    echo "❌ Установлен пакет symo. Обновляйте его через .deb или сначала удалите: sudo apt remove symo" >&2
+    exit 1
+fi
+
 if [[ ! -x "$SRC_DIR/app/SyMo" ]]; then
     echo "❌ Не найден $SRC_DIR/app/SyMo. Запускайте install.sh из распакованного архива релиза." >&2
     exit 1
@@ -43,10 +50,34 @@ if ((${#missing[@]})); then
     exit 1
 fi
 
+# Значение Exec по спецификации desktop-файлов: % удваивается, аргумент с особыми
+# символами берётся в кавычки, а обратная косая черта экранируется ещё раз для ключа.
+desktop_exec_quote() {
+    local s="${1//%/%%}"
+    case "$s" in
+        *[[:space:]\"\'\\\<\>~\|\&\;\$\*\?\#\(\)\`]*)
+            s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//\`/\\\`}"; s="${s//\$/\\\$}"
+            s="\"$s\"" ;;
+    esac
+    printf '%s' "${s//\\/\\\\}"
+}
+
+was_running=0
 if [[ "$SRC_DIR" != "$PREFIX" ]]; then
     if [[ -e "$PREFIX" && ! -x "$PREFIX/app/SyMo" ]]; then
         echo "❌ $PREFIX существует и не похож на установку SyMo. Укажите другой PREFIX." >&2
         exit 1
+    fi
+    # Запущенная копия грузит модули из $PREFIX по мере надобности: удалить каталог
+    # под ней — значит уронить её. Останавливаем и после обновления запускаем снова.
+    if pgrep -u "$(id -u)" -f "^$PREFIX/app/SyMo" >/dev/null 2>&1; then
+        echo "Останавливаю запущенный SyMo..."
+        pkill -u "$(id -u)" -f "^$PREFIX/app/SyMo" || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            pgrep -u "$(id -u)" -f "^$PREFIX/app/SyMo" >/dev/null 2>&1 || break
+            sleep 0.5
+        done
+        was_running=1
     fi
     rm -rf "$PREFIX"
     mkdir -p "$(dirname "$PREFIX")"
@@ -61,8 +92,8 @@ write_desktop() {
 Type=Application
 Name=SyMo
 Comment=System monitor in the tray
-Exec=$PREFIX/symo
-Icon=$PREFIX/logo.png
+Exec=$(desktop_exec_quote "$PREFIX/symo")
+Icon=$PREFIX/app/logo.png
 Terminal=false
 Categories=System;Monitor;
 StartupNotify=false
@@ -89,4 +120,8 @@ echo "  Запуск: меню приложений → SyMo, команда «s
 if ((AUTOSTART)); then
     echo "  Автозапуск при входе включён (отключить: $0 --no-autostart)."
 fi
-echo "  Если SyMo уже был запущен, перезапустите его."
+if ((was_running)); then
+    nohup "$PREFIX/symo" >/dev/null 2>&1 &
+    disown
+    echo "  SyMo перезапущен."
+fi

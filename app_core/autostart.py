@@ -57,11 +57,17 @@ def is_enabled() -> bool:
     return system_file is not None and _entry_active(system_file)
 
 
+# Символы, из-за которых аргумент Exec нужно брать в кавычки (спецификация desktop-файлов).
+_EXEC_RESERVED = frozenset(' \t\n"\'\\><~|&;$*?#()`')
+
+
 def _quote(arg: str) -> str:
-    if not any(ch in arg for ch in ' \t"\'\\$`'):
-        return arg
-    escaped = arg.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
-    return f'"{escaped}"'
+    """Аргумент для ключа Exec: % удваивается, аргумент с особыми символами берётся в
+    кавычки, а обратная косая черта экранируется ещё раз — значение ключа само строка."""
+    arg = arg.replace("%", "%%")
+    if any(ch in _EXEC_RESERVED for ch in arg):
+        arg = '"' + "".join("\\" + ch if ch in '"`$\\' else ch for ch in arg) + '"'
+    return arg.replace("\\", "\\\\")
 
 
 def _app_root() -> Path:

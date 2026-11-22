@@ -11,13 +11,27 @@ for arg in "$@"; do
   esac
 done
 
-if [[ -n "$(pgrep -x SyMo 2>/dev/null || true)" ]]; then
+# Останавливаем только копию из архива: пакетная работает из /opt/symo и остаётся.
+if pgrep -u "$(id -u)" -f "^$HOME/.local/opt/SyMo/app/SyMo" >/dev/null 2>&1; then
   echo "Останавливаю запущенный SyMo..."
-  pkill -x SyMo || true
+  pkill -u "$(id -u)" -f "^$HOME/.local/opt/SyMo/app/SyMo" || true
 fi
+
+package_installed() {
+  dpkg-query -W -f='${Status}' symo 2>/dev/null | grep -q "install ok installed"
+}
 
 remove_path() {
   local target="$1"
+  # Файлы пакета symo удаляет только apt.
+  if dpkg-query -S "$target" >/dev/null 2>&1; then
+    return
+  fi
+  # Ярлык с Hidden=true — это выключенный в настройках автозапуск пакета: без него
+  # SyMo снова начнёт запускаться при входе.
+  if [[ -f "$target" ]] && package_installed && grep -q '^Hidden=true' "$target"; then
+    return
+  fi
   if [[ -e "$target" || -L "$target" ]]; then
     if [[ -w "$(dirname "$target")" ]]; then
       rm -rf "$target"
@@ -71,6 +85,9 @@ for path in "${PATHS[@]}"; do
 done
 
 echo "SyMo удалён."
+if package_installed; then
+  echo "Пакет symo по-прежнему установлен. Удалить его: sudo apt remove symo"
+fi
 if ((PURGE == 0)); then
   # Сам скрипт мог быть удалён вместе с ~/.local/opt/SyMo, поэтому подсказываем rm.
   echo "Настройки, токены и лог сохранены. Удалить их: rm -f ~/.symo_*.json ~/.symo_log.txt ~/.symo_log.txt.1"
