@@ -43,6 +43,9 @@ _OVERDUE_THRESHOLD_SEC = 5
 _OVERDUE_GRACE_SEC = 60
 # Ответ кнопки «Отменить действие»: Escape и крестик дают DELETE_EVENT и только закрывают окно.
 _RESPONSE_CANCEL_ACTION = 1
+# Если после запроса выключения через менеджер сессии компьютер всё ещё работает,
+# удалённому пользователю сообщается: возможно, приложение ждёт ответа на экране.
+_SHUTDOWN_WATCHDOG_SEC = 180
 
 # Выключение через менеджер сессии: приложения успевают сохранить данные или спросить
 # пользователя. (имя на шине, путь, интерфейс, метод, (сигнатура, аргументы) или None)
@@ -177,8 +180,19 @@ class PowerControl:
                 ok = False
             if not ok:
                 GLib.idle_add(self._report_failure, act, notify_remote)
+            elif notify_remote is not None and act in (Action.POWER_OFF, Action.REBOOT):
+                GLib.idle_add(self._start_shutdown_watchdog, act, notify_remote)
 
         threading.Thread(target=worker, name=f"power-{act.value}", daemon=True).start()
+
+    @staticmethod
+    def _start_shutdown_watchdog(act: Action, notify_remote: RemoteNotifier) -> bool:
+        def still_running() -> bool:
+            notify_remote(f"⚠️ {tr('bot_power_still_running').format(action_label(act))}")
+            return False
+
+        GLib.timeout_add_seconds(_SHUTDOWN_WATCHDOG_SEC, still_running)
+        return False
 
     def _report_failure(self, act: Action, notify_remote: Optional[RemoteNotifier]) -> bool:
         text = tr('action_failed').format(action_label(act))
@@ -289,7 +303,7 @@ class PowerControl:
         previous_remote = self._notify_remote
         replaced = self.cancel_schedule()
         if replaced is not None and previous_remote is not None and previous_remote != notify_remote:
-            previous_remote(tr('bot_action_cancelled_locally').format(action_label(replaced)))
+            previous_remote(tr('bot_action_rescheduled_locally').format(action_label(act), int(minutes)))
         self.scheduled_action = act
         self._deadline = _now() + int(minutes) * 60
         self._warned = False
@@ -317,6 +331,10 @@ class PowerControl:
         cancelled = self.cancel_schedule()
         if cancelled is not None and notify_remote is not None:
             notify_remote(tr('bot_action_cancelled_locally').format(action_label(cancelled)))
+
+    def remote_scheduled_action(self) -> Optional[Action]:
+        """Действие, запланированное удалённо (например, из Telegram), или None."""
+        return self.scheduled_action if self._notify_remote is not None else None
 
     def remaining_seconds(self) -> int:
         if self._deadline is None:

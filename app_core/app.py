@@ -42,7 +42,7 @@ from .history import MetricsHistory
 from .language import LANGUAGES
 from .localization import tr, detect_system_language, set_language, get_language
 from .logging_utils import MetricsLogWriter, setup_logging
-from .power_control import PowerControl
+from .power_control import PowerControl, action_label
 from .settings import (
     graph_line_color_rgb,
     load_settings,
@@ -793,6 +793,7 @@ class SystemTrayApp:
             return
         self._quitting = True
 
+        self._report_remote_action_cancelled_on_exit()
         self.telegram_dispatcher.stop()
         self.discord_dispatcher.stop()
         self.telegram_notifier.stop_bot()
@@ -820,6 +821,19 @@ class SystemTrayApp:
             self._bus_name_id = 0
         self.metrics_log.close()
         Gtk.main_quit()
+
+    def _report_remote_action_cancelled_on_exit(self) -> None:
+        """Таймер живёт в процессе SyMo: при выходе удалённо запланированное действие
+        пропадает, и тот, кто его запросил, должен об этом узнать."""
+        act = self.power_control.remote_scheduled_action()
+        if act is None:
+            return
+        text = tr('bot_action_cancelled_on_exit').format(action_label(act))
+        sender = threading.Thread(target=self.telegram_notifier.send_message, args=(text,),
+                                  name="telegram-exit", daemon=True)
+        sender.start()
+        # Выход ждёт отправку недолго: сеть может быть недоступна.
+        sender.join(timeout=3.0)
 
     def run(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
