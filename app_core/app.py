@@ -42,7 +42,7 @@ from .history import MetricsHistory
 from .language import LANGUAGES
 from .localization import tr, detect_system_language, set_language, get_language
 from .logging_utils import MetricsLogWriter, setup_logging
-from .power_control import PowerControl
+from .power_control import PowerControl, action_label
 from .settings import (
     graph_line_color_rgb,
     load_settings,
@@ -56,6 +56,7 @@ from .settings import (
 from .system_usage import MetricsSampler, MetricsSnapshot, format_count, format_temp, initial_network_state
 from .ui import mapped_or_none, show_message
 from notifications import TelegramNotifier, DiscordNotifier
+from notifications.telegram import is_valid_chat_id, parse_user_ids
 from notifications.base import NotificationDispatcher, format_status_message
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,8 @@ class SystemTrayApp:
         # Интервалы уведомлений — по монотонным часам; -inf — «отправить при первом обновлении».
         self.last_telegram_notification_time = float("-inf")
         self.last_discord_notification_time = float("-inf")
-        self.telegram_dispatcher = NotificationDispatcher(self.telegram_notifier.send_message, "Telegram")
+        self.telegram_dispatcher = NotificationDispatcher(
+            lambda text: self.telegram_notifier.send_message(text, html_markup=True), "Telegram")
         self.discord_dispatcher = NotificationDispatcher(self.discord_notifier.send_message, "Discord")
 
         self.telegram_notifier.set_power_control(self.power_control)
@@ -409,6 +411,12 @@ class SystemTrayApp:
         dialog.show()
 
     def _on_settings_response(self, dialog: SettingsDialog, response: int) -> None:
+        # Неверные поля Telegram: окно остаётся открытым с введёнными значениями.
+        if response == Gtk.ResponseType.OK:
+            error = self._telegram_settings_error(dialog)
+            if error:
+                show_message(tr('error'), error, dialog)
+                return
         try:
             if response == Gtk.ResponseType.OK:
                 self._apply_settings(dialog)
@@ -442,23 +450,7 @@ class SystemTrayApp:
         if want_autostart != autostart.is_enabled() and not autostart.set_enabled(want_autostart):
             self._show_message(tr('error'), tr('autostart_error'))
 
-        tel = self.telegram_notifier
-        tel_before = (tel.token, tel.chat_id, tel.enabled)
-        if tel.save_config(
-                dialog.token_entry.get_text().strip(),
-                dialog.chat_id_entry.get_text().strip(),
-                dialog.telegram_enable_check.get_active(),
-                int(dialog.interval_spin.get_value()),
-                dialog.screenshot_quality_combo.get_active_id() or "medium",
-        ):
-            tel_after = (tel.token, tel.chat_id, tel.enabled)
-            if tel.enabled and not tel_before[2]:
-                self.last_telegram_notification_time = float("-inf")
-            if tel_after != tel_before:
-                tel.stop_bot()
-            tel.start_bot()
-        else:
-            self._show_message(tr('error'), tr('setting_telegram_error'))
+        self._apply_telegram_settings(dialog)
 
         disc = self.discord_notifier
         disc_enabled_before = disc.enabled
@@ -475,6 +467,40 @@ class SystemTrayApp:
         if not self.save_settings():
             self._show_message(tr('error'), tr('settings_save_error'))
         self.create_menu()
+
+    @staticmethod
+    def _telegram_settings_error(dialog: SettingsDialog) -> Optional[str]:
+        chat_id = dialog.chat_id_entry.get_text().strip()
+        if chat_id and not is_valid_chat_id(chat_id):
+            return tr('telegram_chat_id_invalid')
+        if parse_user_ids(dialog.allowed_users_entry.get_text()) is None:
+            return tr('telegram_allowed_users_invalid')
+        return None
+
+    def _apply_telegram_settings(self, dialog: SettingsDialog) -> None:
+        chat_id = dialog.chat_id_entry.get_text().strip()
+        allowed_user_ids = parse_user_ids(dialog.allowed_users_entry.get_text()) or []
+
+        tel = self.telegram_notifier
+        tel_before = (tel.token, tel.chat_id, tel.enabled)
+        if not tel.save_config(
+                dialog.token_entry.get_text().strip(),
+                chat_id,
+                dialog.telegram_enable_check.get_active(),
+                int(dialog.interval_spin.get_value()),
+                dialog.screenshot_quality_combo.get_active_id() or "medium",
+                allowed_user_ids=allowed_user_ids,
+                allow_remote_power=dialog.allow_remote_power_check.get_active(),
+                allow_remote_screenshot=dialog.allow_remote_screenshot_check.get_active(),
+        ):
+            self._show_message(tr('error'), tr('setting_telegram_error'))
+            return
+        tel_after = (tel.token, tel.chat_id, tel.enabled)
+        if tel.enabled and not tel_before[2]:
+            self.last_telegram_notification_time = float("-inf")
+        if tel_after != tel_before:
+            tel.stop_bot()
+        tel.start_bot()
 
     def _show_message(self, title: str, message: str) -> None:
         show_message(title, message, self.settings_dialog)
@@ -767,6 +793,7 @@ class SystemTrayApp:
             return
         self._quitting = True
 
+        self._report_remote_action_cancelled_on_exit()
         self.telegram_dispatcher.stop()
         self.discord_dispatcher.stop()
         self.telegram_notifier.stop_bot()
@@ -794,6 +821,19 @@ class SystemTrayApp:
             self._bus_name_id = 0
         self.metrics_log.close()
         Gtk.main_quit()
+
+    def _report_remote_action_cancelled_on_exit(self) -> None:
+        """Таймер живёт в процессе SyMo: при выходе удалённо запланированное действие
+        пропадает, и тот, кто его запросил, должен об этом узнать."""
+        act = self.power_control.remote_scheduled_action()
+        if act is None:
+            return
+        text = tr('bot_action_cancelled_on_exit').format(action_label(act))
+        sender = threading.Thread(target=self.telegram_notifier.send_message, args=(text,),
+                                  name="telegram-exit", daemon=True)
+        sender.start()
+        # Выход ждёт отправку недолго: сеть может быть недоступна.
+        sender.join(timeout=3.0)
 
     def run(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
