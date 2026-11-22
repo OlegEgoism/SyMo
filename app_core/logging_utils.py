@@ -4,17 +4,28 @@ import logging
 from pathlib import Path
 from typing import IO, Optional
 
-from .constants import LOG_FILE
+from logging.handlers import RotatingFileHandler
+
+from .constants import APP_LOG_FILE, LOG_FILE
 
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_APP_LOG_MAX_BYTES = 1024 * 1024
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """Настроить диагностический лог (stderr). Повторный вызов ничего не меняет."""
+    """Диагностический лог в stderr и в ~/.symo_app.log: из файла его можно сохранить
+    в настройках и приложить к сообщению об ошибке. Повторный вызов ничего не меняет."""
     root = logging.getLogger()
     if root.handlers:
         return
     logging.basicConfig(level=level, format=_LOG_FORMAT)
+    try:
+        handler = RotatingFileHandler(APP_LOG_FILE, maxBytes=_APP_LOG_MAX_BYTES, backupCount=1, encoding="utf-8")
+    except OSError as e:
+        logging.getLogger(__name__).warning("Не удалось открыть %s: %s", APP_LOG_FILE, e)
+        return
+    handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    root.addHandler(handler)
 
 
 class MetricsLogWriter:

@@ -1,0 +1,38 @@
+# Проверки на каждый push и pull request: тесты, pyflakes и shellcheck на Ubuntu 22.04 —
+# самой старой поддерживаемой системе.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # PyGObject и pycairo берём из apt; python3-dev и компилятор нужны для evdev (pynput).
+      - name: Системные зависимости
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv python3-dev python3-gi python3-gi-cairo \
+              gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 build-essential shellcheck
+
+      - name: Окружение Python
+        run: |
+          /usr/bin/python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install -r requirements-dev.txt
+
+      - name: pyflakes
+        run: .venv/bin/python -m pyflakes app.py app_core notifications tests
+
+      - name: Тесты
+        run: .venv/bin/python -m pytest -q tests
+
+      - name: shellcheck
+        run: shellcheck -S warning *.sh

@@ -96,6 +96,10 @@ def format_status_message(snapshot: MetricsSnapshot, markup: str = "html") -> st
         (tr('network'), f"↓{s.net_recv:.1f}/↑{s.net_sent:.1f} {tr('mbps')}"),
         (tr('uptime'), s.uptime),
     ]
+    if s.battery_percent is not None:
+        rows.append((tr('battery_label'), f"{s.battery_percent:.0f}%" + (" ⚡" if s.battery_plugged else "")))
+    if s.gpu_usage is not None:
+        rows.append((tr('gpu_label'), f"{s.gpu_usage:.0f}%"))
     # Счётчик скрыт или недоступен (Wayland): строки нет, а не «N/A».
     if s.keyboard_clicks is not None:
         rows.append((tr('keyboard_clicks'), str(s.keyboard_clicks)))
@@ -135,11 +139,10 @@ class NotificationDispatcher:
                     pass
 
     def _run(self) -> None:
+        # Блокирующее ожидание: поток не просыпается, пока нечего отправлять;
+        # stop() кладёт в очередь None.
         while not self._stop.is_set():
-            try:
-                message = self._queue.get(timeout=0.5)
-            except Empty:
-                continue
+            message = self._queue.get()
             try:
                 if message is None:
                     return

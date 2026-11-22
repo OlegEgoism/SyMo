@@ -11,8 +11,9 @@ from .system_usage import MetricsSnapshot
 #   cpu:              (ts, usage_percent, temp_celsius или None)
 #   ram / swap / disk: (ts, used_gb, total_gb, percent)
 #   net:              (ts, recv_mbps, sent_mbps)
-#   keyboard / mouse: (ts, count); нет сэмплов, пока счётчики недоступны
+#   keyboard / mouse: (ts, count, per_minute); нет сэмплов, пока счётчики недоступны
 HISTORY_KEYS = ('cpu', 'ram', 'swap', 'disk', 'net', 'keyboard', 'mouse')
+RATE_KEYS = ('keyboard', 'mouse')
 
 Sample = Tuple[float, ...]
 
@@ -45,11 +46,23 @@ def samples_from_snapshot(snapshot: MetricsSnapshot) -> Dict[str, Sample]:
         'disk': _usage_sample(ts, snapshot.disk_used, snapshot.disk_total),
         'net': (ts, max(0.0, _to_float(snapshot.net_recv)), max(0.0, _to_float(snapshot.net_sent))),
     }
+    # Скорость в минуту досчитывает MetricsHistory: для неё нужен предыдущий сэмпл.
     if snapshot.keyboard_clicks is not None:
-        samples['keyboard'] = (ts, max(0, int(snapshot.keyboard_clicks)))
+        samples['keyboard'] = (ts, max(0, int(snapshot.keyboard_clicks)), 0.0)
     if snapshot.mouse_clicks is not None:
-        samples['mouse'] = (ts, max(0, int(snapshot.mouse_clicks)))
+        samples['mouse'] = (ts, max(0, int(snapshot.mouse_clicks)), 0.0)
     return samples
+
+
+def _with_rate(sample: Sample, previous: Sample | None) -> Sample:
+    """Нажатий в минуту между предыдущим и текущим сэмплом счётчика."""
+    if previous is None:
+        return sample
+    ts, count = sample[0], sample[1]
+    elapsed = ts - previous[0]
+    if elapsed <= 0:
+        return ts, count, previous[2]
+    return ts, count, max(0, count - previous[1]) / elapsed * 60.0
 
 
 class MetricsHistory:
@@ -72,7 +85,10 @@ class MetricsHistory:
         samples = samples_from_snapshot(snapshot)
         with self._lock:
             for key, sample in samples.items():
-                self._data[key].append(sample)
+                buf = self._data[key]
+                if key in RATE_KEYS:
+                    sample = _with_rate(sample, buf[-1] if buf else None)
+                buf.append(sample)
 
     def samples(self, key: str) -> list[Sample]:
         with self._lock:

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import glob
 import logging
-import os
+import shutil
+import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from datetime import timedelta
@@ -37,6 +40,11 @@ class MetricsSnapshot:
     # None — счётчики недоступны (Wayland) или скрыты.
     keyboard_clicks: Optional[int]
     mouse_clicks: Optional[int]
+    disk_path: str = "/"
+    # None — батареи нет или GPU не удалось опросить: пункт меню скрыт.
+    battery_percent: Optional[float] = None
+    battery_plugged: Optional[bool] = None
+    gpu_usage: Optional[float] = None
 
 
 # Датчики hwmon процессора по убыванию предпочтения: (имя драйвера, метки).
@@ -195,9 +203,23 @@ class SystemUsage:
         return s.used / (1024 ** 3), s.total / (1024 ** 3)
 
     @staticmethod
-    def get_disk_usage() -> Tuple[float, float]:
-        d = psutil.disk_usage('/')
+    def get_disk_usage(path: str = "/") -> Tuple[float, float]:
+        try:
+            d = psutil.disk_usage(path)
+        except OSError:
+            # Выбранный диск отключён: показываем корневой раздел.
+            d = psutil.disk_usage('/')
         return d.used / (1024 ** 3), d.total / (1024 ** 3)
+
+    @staticmethod
+    def get_battery() -> Tuple[Optional[float], Optional[bool]]:
+        try:
+            battery = psutil.sensors_battery()
+        except Exception:
+            battery = None
+        if battery is None:
+            return None, None
+        return float(battery.percent), battery.power_plugged
 
     @staticmethod
     def get_network_speed(prev_data: Dict[str, Any]) -> Tuple[float, float]:
@@ -225,6 +247,55 @@ class SystemUsage:
         return str(timedelta(seconds=int(seconds)))
 
 
+def list_disk_mounts() -> list[str]:
+    """Точки монтирования настоящих дисков для выбора в настройках."""
+    mounts = []
+    for part in psutil.disk_partitions(all=False):
+        if part.mountpoint.startswith(("/snap/", "/boot/efi", "/var/snap/")) or part.fstype in ("squashfs", ""):
+            continue
+        if part.mountpoint not in mounts:
+            mounts.append(part.mountpoint)
+    return mounts or ["/"]
+
+
+class GpuUsage:
+    """Загрузка GPU: amdgpu отдаёт её файлом в sysfs, NVIDIA — через nvidia-smi.
+
+    nvidia-smi работает десятки миллисекунд, поэтому опрашивается в отдельном потоке
+    раз в несколько секунд, а главный цикл берёт последнее значение.
+    """
+    _NVIDIA_POLL_SEC = 5.0
+
+    def __init__(self) -> None:
+        self._sysfs = sorted(glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"))
+        self._value: Optional[float] = None
+        self._nvidia_started = False
+
+    def read(self) -> Optional[float]:
+        for path in self._sysfs:
+            try:
+                return float(Path(path).read_text().strip())
+            except (OSError, ValueError):
+                continue
+        if not self._sysfs and not self._nvidia_started and shutil.which("nvidia-smi"):
+            self._nvidia_started = True
+            threading.Thread(target=self._poll_nvidia, name="gpu-nvidia", daemon=True).start()
+        return self._value
+
+    def _poll_nvidia(self) -> None:
+        while True:
+            try:
+                out = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+                                     capture_output=True, text=True, timeout=10, check=True).stdout
+                values = [float(line) for line in out.split() if line.strip()]
+                self._value = max(values) if values else None
+            except Exception as e:
+                logger.info("nvidia-smi недоступен, загрузка GPU не показывается: %s", e)
+                self._value = None
+                return
+            time.sleep(self._NVIDIA_POLL_SEC)
+
+
 class MetricsSampler:
     """Collect metrics using per-metric cache intervals to reduce psutil polling."""
 
@@ -236,6 +307,8 @@ class MetricsSampler:
         "disk",
         "net",
         "uptime",
+        "battery",
+        "gpu",
     )
 
     def __init__(self) -> None:
@@ -247,7 +320,11 @@ class MetricsSampler:
             "disk": (0.0, 0.0),
             "net": (0.0, 0.0),
             "uptime": "00:00:00",
+            "battery": (None, None),
+            "gpu": None,
         }
+        self.disk_path = "/"
+        self._gpu = GpuUsage()
         # Интервалы считаются по монотонным часам: перевод системного времени
         # не должен замораживать метрики.
         self._last_update_ts: Dict[str, float] = {key: float("-inf") for key in self._METRIC_KEYS}
@@ -259,6 +336,8 @@ class MetricsSampler:
             if now - self._last_update_ts[key] < min_interval:
                 continue
             self._cache[key] = self._collect_metric(key, prev_net_data)
+            if key == "disk":
+                self._cache["disk_path"] = self.disk_path
             self._last_update_ts[key] = now
         return dict(self._cache)
 
@@ -274,6 +353,7 @@ class MetricsSampler:
         swap_used, swap_total = data['swap']
         disk_used, disk_total = data['disk']
         net_recv, net_sent = data['net']
+        battery_percent, battery_plugged = data['battery']
         return MetricsSnapshot(
             timestamp=time.time(),
             cpu_temp=data['cpu_temp'],
@@ -289,10 +369,13 @@ class MetricsSampler:
             uptime=str(data['uptime']),
             keyboard_clicks=keyboard_clicks,
             mouse_clicks=mouse_clicks,
+            disk_path=str(data.get('disk_path', self.disk_path)),
+            battery_percent=battery_percent,
+            battery_plugged=battery_plugged,
+            gpu_usage=data['gpu'],
         )
 
-    @staticmethod
-    def _collect_metric(key: str, prev_net_data: Dict[str, Any]) -> Any:
+    def _collect_metric(self, key: str, prev_net_data: Dict[str, Any]) -> Any:
         if key == "cpu_temp":
             return SystemUsage.get_cpu_temp()
         if key == "cpu_usage":
@@ -302,7 +385,11 @@ class MetricsSampler:
         if key == "swap":
             return SystemUsage.get_swap_usage()
         if key == "disk":
-            return SystemUsage.get_disk_usage()
+            return SystemUsage.get_disk_usage(self.disk_path)
+        if key == "battery":
+            return SystemUsage.get_battery()
+        if key == "gpu":
+            return self._gpu.read()
         if key == "net":
             return SystemUsage.get_network_speed(prev_net_data)
         if key == "uptime":

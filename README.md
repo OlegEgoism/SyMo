@@ -9,8 +9,9 @@ controls power actions and sends notifications to Telegram and Discord.
 
 ## Features
 
-- **Tray metrics:** CPU and temperature, RAM, swap, disk, network, uptime, key presses and mouse clicks.
+- **Tray metrics:** CPU and temperature, RAM, swap, disk (any partition), network, battery, GPU (AMD, NVIDIA), uptime, key presses and mouse clicks.
 - **Graphs** for every metric: mouse wheel zooms, drag pans, hover shows the point's values.
+- **Alerts** when the CPU overheats or RAM and disk fill up — on the desktop, in Telegram and Discord.
 - **Power:** shutdown, reboot, lock, delayed actions with a timer.
 - **Notifications:** Telegram bot (`/status`, `/screenshot` commands) and Discord webhook.
 - **Settings:** menu item visibility and order, start on login, graph colors, logging.
@@ -126,6 +127,7 @@ The icon appears in the tray and the log goes to the terminal. Stop it with `Ctr
 
 - **Start on login:** *Settings* → *Display* → *Start SyMo when you log in*.
 - **Telegram / Discord:** *Settings* → *Notifications*: bot token and chat ID, or webhook URL.
+- **Alerts:** *Settings* → *Notifications* → *Alerts*: temperature, RAM and disk thresholds (0 turns one off).
 - The `/screenshot` command needs these tools:
 
   ```bash
@@ -164,6 +166,16 @@ To install: `sudo apt install gnome-shell-extension-manager` → open
 
 The app version is `APP_VERSION` in `app_core/constants.py`; the extension version
 is `version-name` in `gnome_extension/*/metadata.json`.
+
+Tests and checks (CI runs the same on every push):
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest tests
+.venv/bin/python -m pyflakes app.py app_core notifications tests
+```
+
+The app log goes to `~/.symo_app.log`; *Settings* → *Logging* → *Save log* saves it together with the metrics log.
 
 To publish a release, push a tag matching `APP_VERSION`: `git tag v<version> && git push origin v<version>` — CI builds on Ubuntu 22.04 and attaches all files from `dist/` to the GitHub release.
 

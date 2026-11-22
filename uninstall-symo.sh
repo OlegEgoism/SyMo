@@ -61,6 +61,8 @@ if ((PURGE)); then
     "$HOME/.symo_discord.json"
     "$HOME/.symo_log.txt"
     "$HOME/.symo_log.txt.1"
+    "$HOME/.symo_app.log"
+    "$HOME/.symo_app.log.1"
   )
 fi
 

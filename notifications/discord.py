@@ -22,6 +22,8 @@ class DiscordNotifier:
         self.webhook_url: Optional[str] = None
         self.enabled: bool = False
         self.notification_interval: int = 3600
+        # Причина последней неудачной отправки — для окна настроек («Проверить»).
+        self.last_error: Optional[str] = None
         if autoload:
             self.load_config()
 
@@ -68,13 +70,21 @@ class DiscordNotifier:
                 retry_after=self._extract_retry_after,
             )
         except Exception as e:
-            logger.exception("Ошибка отправки сообщения в Discord: %s", e)
+            self.last_error = e.__class__.__name__
+            logger.exception("Ошибка отправки сообщения в Discord: %s", e.__class__.__name__)
             return False
         if response is None:
+            self.last_error = "no connection to discord.com"
             return False
         if response.status_code not in (200, 204):
-            logger.error("Ошибка отправки в Discord: HTTP %s", response.status_code)
+            try:
+                message = response.json().get("message")
+            except (ValueError, AttributeError):
+                message = None
+            self.last_error = f"HTTP {response.status_code}: {message}" if message else f"HTTP {response.status_code}"
+            logger.error("Ошибка отправки в Discord: %s", self.last_error)
             return False
+        self.last_error = None
         return True
 
     @classmethod

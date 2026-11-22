@@ -4,12 +4,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
 from .constants import (
+    ALERT_DEFAULTS,
+    LOG_INTERVAL_DEFAULT_SEC,
+    LOG_INTERVAL_MAX_SEC,
+    LOG_INTERVAL_MIN_SEC,
+    PING_HOST_DEFAULT,
     GRAPH_COLOR_DEFAULTS,
     GRAPH_HISTORY_MINUTES_DEFAULT,
     GRAPH_HISTORY_MINUTES_MAX,
@@ -118,6 +124,29 @@ def sanitize_hex_color(value: object, fallback: str = GRAPH_LINE_COLOR_FALLBACK)
     return fallback
 
 
+def sanitize_log_interval(value: object) -> int:
+    return _clamp_int(value, LOG_INTERVAL_DEFAULT_SEC, LOG_INTERVAL_MIN_SEC, LOG_INTERVAL_MAX_SEC)
+
+
+def sanitize_alert_threshold(key: str, value: object) -> int:
+    high = 150 if key == 'alert_cpu_temp_c' else 100
+    return _clamp_int(value, ALERT_DEFAULTS.get(key, 0), 0, high)
+
+
+_HOST_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}")
+
+
+def sanitize_ping_host(value: object) -> str:
+    """Имя хоста или IP-адрес. Начало с «-» не допускается: ping принял бы его за параметр."""
+    host = str(value or "").strip()
+    return host if _HOST_RE.fullmatch(host) else PING_HOST_DEFAULT
+
+
+def sanitize_disk_path(value: object) -> str:
+    path = str(value or "").strip()
+    return path if path.startswith("/") else "/"
+
+
 def hex_to_rgb(value: object) -> tuple[float, float, float]:
     hex_color = sanitize_hex_color(value)
     return (
@@ -153,7 +182,11 @@ def default_settings() -> Dict[str, Any]:
         'graph_history_minutes': GRAPH_HISTORY_MINUTES_DEFAULT,
         'menu_order': MENU_ORDER_DEFAULT.copy(),
         'profiling_enabled': False,
+        'battery': True, 'gpu': True,
+        'disk_path': '/', 'ping_host': PING_HOST_DEFAULT,
+        'log_interval_sec': LOG_INTERVAL_DEFAULT_SEC,
     }
+    settings.update(ALERT_DEFAULTS)
     for key in POLL_INTERVAL_SETTING_KEYS:
         settings[key] = POLL_INTERVAL_DEFAULT_SEC
     settings.update(GRAPH_COLOR_DEFAULTS)
@@ -165,6 +198,11 @@ def normalize_settings(raw: Dict[str, Any]) -> Dict[str, Any]:
     settings.update(raw or {})
     settings['graph_history_minutes'] = sanitize_graph_history_minutes(settings.get('graph_history_minutes'))
     settings['max_log_mb'] = sanitize_log_size_mb(settings.get('max_log_mb'))
+    settings['log_interval_sec'] = sanitize_log_interval(settings.get('log_interval_sec'))
+    settings['ping_host'] = sanitize_ping_host(settings.get('ping_host'))
+    settings['disk_path'] = sanitize_disk_path(settings.get('disk_path'))
+    for key in ALERT_DEFAULTS:
+        settings[key] = sanitize_alert_threshold(key, settings.get(key))
     # Старые версии хранили один общий цвет 'graph_line_color'.
     legacy_color = raw.get('graph_line_color') if raw else None
     for key, fallback in GRAPH_COLOR_DEFAULTS.items():

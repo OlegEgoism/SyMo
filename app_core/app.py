@@ -6,26 +6,25 @@ import fcntl
 import importlib
 import logging
 import os
-import platform
 import signal
+import sys
 import subprocess
 import tempfile
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import IO, Any, Dict, Optional
+from typing import IO, TYPE_CHECKING, Any, Dict, Optional
 
 import gi
 
 gi.require_version("Gtk", "3.0")
 
-import psutil
 from gi.repository import Gio, Gtk, GLib
 
 from .constants import (
     APP_ID,
     APP_NAME,
+    APP_VERSION,
     DBUS_NAME,
     ICON_FALLBACK,
     LOG_FILE,
@@ -35,12 +34,12 @@ from .constants import (
     POLL_INTERVAL_DEFAULT_SEC,
 )
 from . import autostart
+from .alerts import AlertMonitor, show_desktop_notification
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
-from .dialogs import SettingsDialog
 from .graphs import GraphWindow, build_graph_specs
 from .history import MetricsHistory
 from .language import LANGUAGES
-from .localization import tr, detect_system_language, set_language, get_language
+from .localization import tr, detect_system_language, format_uptime, set_language, get_language
 from .logging_utils import MetricsLogWriter, setup_logging
 from .power_control import PowerControl, action_label
 from .settings import (
@@ -49,14 +48,23 @@ from .settings import (
     normalize_menu_order,
     sanitize_graph_history_minutes,
     sanitize_hex_color,
+    sanitize_alert_threshold,
+    sanitize_disk_path,
+    sanitize_log_interval,
     sanitize_log_size_mb,
+    sanitize_ping_host,
     sanitize_poll_interval,
     save_settings,
 )
+from .system_info import build_system_info_text
 from .system_usage import MetricsSampler, MetricsSnapshot, format_count, format_temp, initial_network_state
 from .ui import mapped_or_none, show_message
 from notifications import TelegramNotifier, DiscordNotifier
 from notifications.telegram import is_valid_chat_id, parse_user_ids
+
+if TYPE_CHECKING:
+    # Окно настроек импортируется при первом открытии: при запуске оно не нужно.
+    from .dialogs import SettingsDialog
 from notifications.base import NotificationDispatcher, format_status_message
 
 logger = logging.getLogger(__name__)
@@ -101,17 +109,6 @@ def _add_unix_signal_handler(signum: int, handler) -> None:
     except (ValueError, ImportError, AttributeError):
         pass
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signum, handler)
-
-LANGUAGE_FLAGS = {
-    'ru': '🇷🇺',
-    'en': '🇬🇧',
-    'cn': '🇨🇳',
-    'de': '🇩🇪',
-    'it': '🇮🇹',
-    'es': '🇪🇸',
-    'tr': '🇹🇷',
-    'fr': '🇫🇷',
-}
 
 POWER_MENU_KEYS = ('show_power_off', 'show_reboot', 'show_lock', 'show_timer')
 INPUT_COUNTER_KINDS = ('keyboard', 'mouse')
@@ -165,6 +162,9 @@ class SystemTrayApp:
 
         self.prev_net_data = initial_network_state()
         self.metrics_sampler = MetricsSampler()
+        self.metrics_sampler.disk_path = self.visibility_settings['disk_path']
+        self.alert_monitor = AlertMonitor()
+        self._last_log_write = float("-inf")
 
         self.telegram_notifier = TelegramNotifier()
         self.discord_notifier = DiscordNotifier()
@@ -313,13 +313,15 @@ class SystemTrayApp:
             else:
                 self._new_item(key, self._input_counter_unavailable_text(key), None)
         self._new_item('uptime', f"{tr('uptime_label')}: N/A", None)
+        self._new_item('battery', f"{tr('battery_label')}: N/A", None)
+        self._new_item('gpu', f"{tr('gpu_label')}: N/A", None)
         self._new_item('show_power_off', tr('power_off'),
                        lambda w: pc.confirm_action(w, pc.power_off, tr('confirm_text_power_off')))
         self._new_item('show_reboot', tr('reboot'),
                        lambda w: pc.confirm_action(w, pc.reboot, tr('confirm_text_reboot')))
         self._new_item('show_lock', tr('lock'),
                        lambda w: pc.confirm_action(w, pc.lock_screen, tr('confirm_text_lock')))
-        self._new_item('show_timer', tr('settings'), pc.open_scheduler)
+        self._new_item('show_timer', tr('scheduler'), pc.open_scheduler)
         self._new_item('ping_network', tr('ping_network'), self.on_ping_click)
         self._new_item('show_system_info', tr('system_info'), self.on_system_info_click)
 
@@ -357,6 +359,9 @@ class SystemTrayApp:
                 prev_is_separator = False
 
         menu.show_all()
+        # Батарея и GPU появятся при первом обновлении, если они есть.
+        for key in ('battery', 'gpu'):
+            self.menu_items[key].set_visible(False)
         old_menu = getattr(self, 'menu', None)
         self.menu = menu
         self.indicator.set_menu(menu)
@@ -370,7 +375,7 @@ class SystemTrayApp:
         group_root = None
         for code in SUPPORTED_LANGS:
             language_name = (LANGUAGES.get(code) or LANGUAGES.get('en', {})).get('language_name', code)
-            flag = LANGUAGE_FLAGS.get(code, '🏳️')
+            flag = (LANGUAGES.get(code) or {}).get('language_flag', '🏳️')
             item = Gtk.RadioMenuItem.new_with_label_from_widget(group_root, f"{flag} {language_name}")
             group_root = group_root or item
             item.set_active(code == get_language())
@@ -404,6 +409,7 @@ class SystemTrayApp:
         if self.settings_dialog and self.settings_dialog.get_mapped():
             self.settings_dialog.present()
             return
+        from .dialogs import SettingsDialog
         dialog = SettingsDialog(None, self.visibility_settings)
         self.settings_dialog = dialog
         self.power_control.set_parent_window(dialog)
@@ -439,6 +445,12 @@ class SystemTrayApp:
             vs[color_key] = sanitize_hex_color(color_value)
         vs['menu_order'] = dialog.get_menu_order()
         vs['max_log_mb'] = sanitize_log_size_mb(dialog.logsize_spin.get_value_as_int())
+        vs['log_interval_sec'] = sanitize_log_interval(dialog.log_interval_spin.get_value_as_int())
+        vs['ping_host'] = sanitize_ping_host(dialog.ping_host_entry.get_text())
+        vs['disk_path'] = sanitize_disk_path(dialog.disk_combo.get_active_id())
+        self.metrics_sampler.disk_path = vs['disk_path']
+        for key, spin in dialog.alert_spins.items():
+            vs[key] = sanitize_alert_threshold(key, spin.get_value_as_int())
         self._set_graph_history_window(dialog.graph_history_spin.get_value_as_int())
         for key, spin in dialog.poll_interval_spins().items():
             vs[key] = sanitize_poll_interval(spin.get_value_as_int())
@@ -514,7 +526,7 @@ class SystemTrayApp:
             self._progress_dialog = None
 
     def on_ping_click(self, *_):
-        host = "8.8.8.8"
+        host = sanitize_ping_host(self.visibility_settings.get('ping_host'))
         count = 4
         timeout = 5
 
@@ -552,56 +564,9 @@ class SystemTrayApp:
 
         threading.Thread(target=worker, name="ping", daemon=True).start()
 
-    def _detect_cpu_model(self) -> str:
-        try:
-            proc_info = Path("/proc/cpuinfo")
-            if proc_info.exists():
-                for line in proc_info.read_text(encoding="utf-8", errors="ignore").splitlines():
-                    if ":" in line and line.lower().startswith("model name"):
-                        return line.split(":", 1)[1].strip()
-        except Exception:
-            pass
-        return platform.processor() or tr('unknown_value')
-
-    def _build_system_info_text(self) -> str:
-        uname = platform.uname()
-        cpu_count = psutil.cpu_count(logical=False) or 0
-        cpu_threads = psutil.cpu_count(logical=True) or 0
-        cpu_freq = psutil.cpu_freq()
-        ram = psutil.virtual_memory()
-        swap = psutil.swap_memory()
-        disk = psutil.disk_usage("/")
-        boot_dt = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M:%S")
-        gb = 1024 ** 3
-
-        freq_text = tr('unknown_value')
-        if cpu_freq and cpu_freq.max:
-            freq_text = f"{cpu_freq.max / 1000:.2f} GHz"
-        elif cpu_freq and cpu_freq.current:
-            freq_text = f"{cpu_freq.current / 1000:.2f} GHz"
-
-        return "\n".join([
-            f"{tr('system_label')}: {uname.system} {uname.release}",
-            f"{tr('hostname_label')}: {uname.node}",
-            f"{tr('architecture_label')}: {uname.machine}",
-            "",
-            f"{tr('cpu_label')}: {self._detect_cpu_model()}",
-            f"{tr('cores_label')}: {cpu_count}",
-            f"{tr('threads_label')}: {cpu_threads}",
-            f"{tr('cpu_frequency_label')}: {freq_text}",
-            "",
-            f"{tr('ram_total_label')}: {ram.total / gb:.2f} {tr('gb')}",
-            f"{tr('ram_available_label')}: {ram.available / gb:.2f} {tr('gb')}",
-            f"{tr('swap_total_label')}: {swap.total / gb:.2f} {tr('gb')}",
-            f"{tr('disk_total_label')}: {disk.total / gb:.2f} {tr('gb')}",
-            f"{tr('disk_free_label')}: {disk.free / gb:.2f} {tr('gb')}",
-            f"{tr('boot_time_label')}: {boot_dt}",
-            f"{tr('python_version_label')}: {platform.python_version()}",
-        ])
-
     def on_system_info_click(self, *_):
         try:
-            info_text = self._build_system_info_text()
+            info_text = build_system_info_text(self.visibility_settings.get('disk_path', '/'))
         except Exception as e:
             self._show_message(tr('error'), f"{tr('system_info_error')}: {e}")
             return
@@ -624,30 +589,6 @@ class SystemTrayApp:
         if self.graph_windows.get(window.spec.key) is window:
             del self.graph_windows[window.spec.key]
 
-    @staticmethod
-    def _plural_ru(value: int) -> str:
-        value = abs(int(value))
-        if value % 10 == 1 and value % 100 != 11:
-            return 'one'
-        if 2 <= value % 10 <= 4 and (value % 100 < 10 or value % 100 >= 20):
-            return 'few'
-        return 'many'
-
-    def _format_uptime_localized(self, raw_uptime: str) -> str:
-        parts = (raw_uptime or "").split(", ", 1)
-        if len(parts) != 2:
-            return raw_uptime
-        day_part, time_part = parts
-        day_tokens = day_part.split()
-        if len(day_tokens) != 2 or not day_tokens[0].isdigit():
-            return raw_uptime
-        days = int(day_tokens[0])
-        plural_key = self._plural_ru(days) if get_language() == 'ru' else ('one' if days == 1 else 'many')
-        day_label = tr(f'uptime_day_{plural_key}')
-        if day_label == f'uptime_day_{plural_key}':
-            day_label = 'day' if days == 1 else 'days'
-        return f"{days} {day_label}, {time_part}"
-
     def _metric_intervals(self) -> Dict[str, int]:
         vs = self.visibility_settings
         cpu = int(vs.get('cpu_interval_sec', POLL_INTERVAL_DEFAULT_SEC))
@@ -659,6 +600,8 @@ class SystemTrayApp:
             'swap': int(vs.get('swap_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
             'net': int(vs.get('net_interval_sec', POLL_INTERVAL_DEFAULT_SEC)),
             'uptime': POLL_INTERVAL_DEFAULT_SEC,
+            'battery': 10,
+            'gpu': 2,
         }
 
     def update_info(self) -> bool:
@@ -666,12 +609,13 @@ class SystemTrayApp:
         try:
             kbd, ms = self._input_counts()
             raw = self.metrics_sampler.snapshot(self.prev_net_data, self._metric_intervals(), kbd, ms)
-            snapshot = dataclasses.replace(raw, uptime=self._format_uptime_localized(raw.uptime))
+            snapshot = dataclasses.replace(raw, uptime=format_uptime(raw.uptime))
             self.latest_snapshot = snapshot
             self.metrics_history.append_snapshot(snapshot)
 
             self._update_ui(snapshot)
             self._send_periodic_notifications(snapshot)
+            self._check_alerts(snapshot)
             self._write_metrics_log(snapshot)
             self._record_profiling(cycle_start)
         except Exception as e:
@@ -690,9 +634,23 @@ class SystemTrayApp:
             self.discord_dispatcher.submit(format_status_message(snapshot, "markdown"))
             self.last_discord_notification_time = now
 
+    def _check_alerts(self, snapshot: MetricsSnapshot) -> None:
+        for text in self.alert_monitor.check(snapshot, self.visibility_settings, time.monotonic()):
+            logger.warning("Оповещение: %s", text)
+            show_desktop_notification(text)
+            if self.telegram_notifier.enabled:
+                self.telegram_notifier.send_message_async(f"⚠️ {text}")
+            if self.discord_notifier.enabled:
+                threading.Thread(target=self.discord_notifier.send_message, args=(f"⚠️ {text}",),
+                                 name="discord-alert", daemon=True).start()
+
     def _write_metrics_log(self, s: MetricsSnapshot) -> None:
         if not self.visibility_settings.get('logging_enabled', True):
             return
+        now = time.monotonic()
+        if now - self._last_log_write < sanitize_log_interval(self.visibility_settings.get('log_interval_sec')):
+            return
+        self._last_log_write = now
         line = (f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
                 f"CPU: {s.cpu_usage:.0f}% {format_temp(s.cpu_temp)} | "
                 f"RAM: {s.ram_used:.1f}/{s.ram_total:.1f} GB | "
@@ -760,6 +718,17 @@ class SystemTrayApp:
                 self._set_label(self.menu_items[key], self._throttled_text(key, interval_key, now, text))
 
         immediate = {'uptime': f"{tr('uptime_label')}: {s.uptime}"}
+        optional = {
+            'battery': None if s.battery_percent is None else
+            f"{tr('battery_label')}: {s.battery_percent:.0f}%" + (" ⚡" if s.battery_plugged else ""),
+            'gpu': None if s.gpu_usage is None else f"{tr('gpu_label')}: {s.gpu_usage:.0f}%",
+        }
+        for key, text in optional.items():
+            item = self.menu_items[key]
+            # Нет батареи или GPU не опрашивается — пункта нет в меню.
+            item.set_visible(text is not None and bool(vs.get(key, True)))
+            if text is not None:
+                self._set_label(item, text)
         if self.input_counters_available:
             immediate['keyboard_clicks'] = f"{tr('keyboard_clicks')}: {format_count(s.keyboard_clicks)}"
             immediate['mouse_clicks'] = f"{tr('mouse_clicks')}: {format_count(s.mouse_clicks)}"
@@ -880,7 +849,11 @@ def _report_missing_app_indicator() -> None:
 
 
 def main() -> None:
+    if "--version" in sys.argv[1:]:
+        print(f"{APP_NAME} {APP_VERSION}")
+        return
     setup_logging()
+    logger.info("%s %s", APP_NAME, APP_VERSION)
     lock = _acquire_single_instance_lock()
     if lock is None:
         logger.info("%s уже запущен", APP_NAME)

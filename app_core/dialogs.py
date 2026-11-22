@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 import threading
 from typing import Callable, Dict, Optional
 
@@ -9,6 +8,12 @@ from gi.repository import Gtk, Gdk, GLib
 
 from . import autostart
 from .constants import (
+    ALERT_DEFAULTS,
+    APP_LOG_FILE,
+    LOG_INTERVAL_DEFAULT_SEC,
+    LOG_INTERVAL_MAX_SEC,
+    LOG_INTERVAL_MIN_SEC,
+    PING_HOST_DEFAULT,
     LOG_FILE,
     TELEGRAM_CONFIG_FILE,
     DISCORD_CONFIG_FILE,
@@ -24,6 +29,7 @@ from .constants import (
 )
 from .localization import tr
 from .settings import normalize_menu_order, read_json, sanitize_poll_interval
+from .system_usage import list_disk_mounts
 from .ui import show_message
 from notifications import TelegramNotifier, DiscordNotifier
 from notifications.telegram import is_valid_chat_id
@@ -77,11 +83,13 @@ class SettingsDialog(Gtk.Dialog):
         interval_scroller, interval_content = build_page()
         notification_scroller, notification_content = build_page()
         logging_scroller, logging_content = build_page()
+        graphs_scroller, graphs_content = build_page()
         license_scroller, license_content = build_page()
         stack.add_titled(general_scroller, "display", tr('display_tab'))
         stack.add_titled(interval_scroller, "poll_interval", tr('poll_interval_tab'))
         stack.add_titled(notification_scroller, "notify", tr('notification_section'))
         stack.add_titled(logging_scroller, "logging", tr('logging_tab'))
+        stack.add_titled(graphs_scroller, "graphs", tr('graphs_tab'))
         stack.add_titled(license_scroller, "license", tr('license_tab'))
 
         def card(title: str) -> Gtk.Box:
@@ -104,6 +112,34 @@ class SettingsDialog(Gtk.Dialog):
 
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
+
+        metrics_card, metrics_content = card(tr('metrics_section'))
+        general_content.add(metrics_card)
+
+        def labeled_row(content: Gtk.Box, label_text: str, widget: Gtk.Widget, width_chars: int = 28) -> None:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            label = Gtk.Label(label=label_text)
+            label.set_xalign(0)
+            label.set_width_chars(width_chars)
+            row.pack_start(label, False, False, 0)
+            row.pack_start(widget, False, False, 0)
+            content.add(row)
+
+        self.disk_combo = Gtk.ComboBoxText()
+        current_disk = self.visibility_settings.get('disk_path', '/')
+        mounts = list_disk_mounts()
+        if current_disk not in mounts:
+            mounts.append(current_disk)
+        for mount in mounts:
+            self.disk_combo.append(mount, mount)
+        self.disk_combo.set_active_id(current_disk)
+        labeled_row(metrics_content, tr('disk_path_label'), self.disk_combo)
+
+        self.ping_host_entry = Gtk.Entry()
+        self.ping_host_entry.set_text(self.visibility_settings.get('ping_host', PING_HOST_DEFAULT))
+        self.ping_host_entry.set_placeholder_text(PING_HOST_DEFAULT)
+        self.ping_host_entry.set_width_chars(24)
+        labeled_row(metrics_content, tr('ping_host_label'), self.ping_host_entry)
 
         startup_card, startup_content = card(tr('startup_section'))
         general_content.add(startup_card)
@@ -129,7 +165,7 @@ class SettingsDialog(Gtk.Dialog):
 
         self.tray_cpu_interval_spin = add_interval_row(tr('cpu_tray'), 'tray_cpu_interval_sec')
         self.tray_ram_interval_spin = add_interval_row(tr('ram_tray'), 'tray_ram_interval_sec')
-        self.cpu_interval_spin = add_interval_row(tr('cpu_info'), 'cpu_interval_sec')
+        self.cpu_interval_spin = add_interval_row(tr('cpu_info').strip(), 'cpu_interval_sec')
         self.ram_interval_spin = add_interval_row(tr('ram_loading'), 'ram_interval_sec')
         self.net_interval_spin = add_interval_row(tr('lan_speed'), 'net_interval_sec')
         self.disk_interval_spin = add_interval_row(tr('disk_loading'), 'disk_interval_sec')
@@ -149,10 +185,12 @@ class SettingsDialog(Gtk.Dialog):
             ('keyboard_clicks', 'keyboard_clicks'),
             ('mouse_clicks', 'mouse_clicks'),
             ('uptime_label', 'uptime'),
+            ('battery_label', 'battery'),
+            ('gpu_label', 'gpu'),
             ('power_off', 'show_power_off'),
             ('reboot', 'show_reboot'),
             ('lock', 'show_lock'),
-            ('settings', 'show_timer'),
+            ('scheduler', 'show_timer'),
             ('ping_network', 'ping_network'),
             ('system_info', 'show_system_info'),
         ]
@@ -161,7 +199,7 @@ class SettingsDialog(Gtk.Dialog):
         current_order = normalize_menu_order(self.visibility_settings.get('menu_order'))
         for key in current_order:
             label_key = display_map.get(key, key)
-            self.menu_order_store.append([bool(self.visibility_settings.get(key, True)), tr(label_key), key])
+            self.menu_order_store.append([bool(self.visibility_settings.get(key, True)), tr(label_key).strip(), key])
 
         self.menu_order_view = Gtk.TreeView(model=self.menu_order_store)
         self.menu_order_view.set_headers_visible(False)
@@ -199,7 +237,7 @@ class SettingsDialog(Gtk.Dialog):
         license_info.set_selectable(True)
         license_card_content.add(license_info)
 
-        logging_card, logging_card_content = card(tr('logging_section'))
+        logging_card, logging_card_content = card(tr('logging_tab'))
         logging_content.add(logging_card)
 
         logging_box = Gtk.Box(spacing=6)
@@ -226,10 +264,18 @@ class SettingsDialog(Gtk.Dialog):
         logsize_box.pack_start(self.logsize_spin, False, False, 0)
         logging_card_content.add(logsize_box)
 
+        self.log_interval_spin = Gtk.SpinButton.new_with_range(LOG_INTERVAL_MIN_SEC, LOG_INTERVAL_MAX_SEC, 1)
+        self.log_interval_spin.set_value(int(self.visibility_settings.get('log_interval_sec', LOG_INTERVAL_DEFAULT_SEC)))
+        self.log_interval_spin.set_width_chars(8)
+        labeled_row(logging_card_content, tr('log_interval_label'), self.log_interval_spin)
+
+        graphs_card, graphs_card_content = card(tr('graphs_tab'))
+        graphs_content.add(graphs_card)
+
         self.show_zoom_controls_check = Gtk.CheckButton(label=tr('show_graph_zoom_controls'))
         self.show_zoom_controls_check.set_active(self.visibility_settings.get('show_graph_zoom_controls', True))
         self.show_zoom_controls_check.set_margin_bottom(2)
-        logging_card_content.add(self.show_zoom_controls_check)
+        graphs_card_content.add(self.show_zoom_controls_check)
 
         graph_history_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         graph_history_label = Gtk.Label(label=tr('graph_history_minutes'))
@@ -253,10 +299,10 @@ class SettingsDialog(Gtk.Dialog):
         self.graph_history_spin.set_tooltip_text(graph_history_hint)
         graph_history_box.pack_start(graph_history_label, False, False, 0)
         graph_history_box.pack_start(self.graph_history_spin, False, False, 0)
-        logging_card_content.add(graph_history_box)
+        graphs_card_content.add(graph_history_box)
 
         graph_colors_card, graph_colors_content = card(tr('graph_colors_title'))
-        logging_card_content.add(graph_colors_card)
+        graphs_content.add(graph_colors_card)
 
         graph_colors_info = Gtk.Label(label=tr('graph_colors_info'))
         graph_colors_info.set_xalign(0)
@@ -265,7 +311,7 @@ class SettingsDialog(Gtk.Dialog):
 
         graph_color_rows = [
             ('graph_line_color_cpu', f"{tr('cpu')}"),
-            ('graph_line_color_temp', f"{tr('temperature')}"),
+            ('graph_line_color_temp', f"{tr('temperature_label')}"),
             ('graph_line_color_ram', f"{tr('ram')}"),
             ('graph_line_color_swap', f"{tr('swap')}"),
             ('graph_line_color_disk', f"{tr('disk')}"),
@@ -426,6 +472,22 @@ class SettingsDialog(Gtk.Dialog):
         discord_interval_box.set_margin_bottom(8)
         discord_content.add(discord_interval_box)
 
+        alerts_card, alerts_content = card(tr('alerts_section'))
+        notification_content.add(alerts_card)
+        alerts_info = Gtk.Label(label=tr('alerts_info'))
+        alerts_info.set_xalign(0)
+        alerts_info.set_line_wrap(True)
+        alerts_content.add(alerts_info)
+        self.alert_spins: Dict[str, Gtk.SpinButton] = {}
+        for key, label_key, upper in (('alert_cpu_temp_c', 'alert_cpu_temp', 150),
+                                      ('alert_ram_percent', 'alert_ram', 100),
+                                      ('alert_disk_percent', 'alert_disk', 100)):
+            spin = Gtk.SpinButton.new_with_range(0, upper, 1)
+            spin.set_value(int(self.visibility_settings.get(key, ALERT_DEFAULTS[key])))
+            spin.set_width_chars(8)
+            self.alert_spins[key] = spin
+            labeled_row(alerts_content, tr(label_key), spin)
+
         self._prefill_configs()
         self.show_all()
 
@@ -496,7 +558,8 @@ class SettingsDialog(Gtk.Dialog):
     def _message(self, title: str, message: str):
         show_message(title, message, self)
 
-    def _run_connection_test(self, button: Gtk.Button, send: Callable[[], bool]) -> None:
+    def _run_connection_test(self, button: Gtk.Button, send: Callable[[], bool],
+                             error: Callable[[], Optional[str]] = lambda: None) -> None:
         """Отправить тестовое сообщение в фоне: сеть не блокирует интерфейс."""
         button.set_sensitive(False)
 
@@ -509,8 +572,9 @@ class SettingsDialog(Gtk.Dialog):
 
             def finish():
                 button.set_sensitive(True)
-                self._message(tr('ok') if ok else tr('error'),
-                              tr('test_message_ok') if ok else tr('test_message_error'))
+                detail = None if ok else error()
+                text = tr('test_message_ok') if ok else tr('test_message_error')
+                self._message(tr('ok') if ok else tr('error'), f"{text}\n\n{detail}" if detail else text)
                 return False
 
             GLib.idle_add(finish)
@@ -531,7 +595,8 @@ class SettingsDialog(Gtk.Dialog):
         notifier.configure(token, chat_id, self.telegram_enable_check.get_active(),
                            int(self.interval_spin.get_value()),
                            self.screenshot_quality_combo.get_active_id() or "medium")
-        self._run_connection_test(button, lambda: notifier.send_message(tr('test_message'), force=True))
+        self._run_connection_test(button, lambda: notifier.send_message(tr('test_message'), force=True),
+                                  lambda: notifier.last_error)
 
     def test_discord(self, button):
         webhook_url = self.webhook_entry.get_text().strip()
@@ -541,7 +606,8 @@ class SettingsDialog(Gtk.Dialog):
         notifier = DiscordNotifier(autoload=False)
         notifier.configure(webhook_url, self.discord_enable_check.get_active(),
                            int(self.discord_interval_spin.get_value()))
-        self._run_connection_test(button, lambda: notifier.send_message(tr('test_message'), force=True))
+        self._run_connection_test(button, lambda: notifier.send_message(tr('test_message'), force=True),
+                                  lambda: notifier.last_error)
 
     def download_log_file(self, _w):
         dialog = Gtk.FileChooserDialog(
@@ -550,7 +616,7 @@ class SettingsDialog(Gtk.Dialog):
             action=Gtk.FileChooserAction.SAVE
         )
         dialog.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
-                           tr('apply_label'), Gtk.ResponseType.OK)
+                           tr('save_label'), Gtk.ResponseType.OK)
         dialog.set_current_name("info_log.txt")
         dialog.set_do_overwrite_confirmation(True)
 
@@ -560,7 +626,13 @@ class SettingsDialog(Gtk.Dialog):
             if not filename:
                 return
             try:
-                shutil.copyfile(LOG_FILE, filename)
+                # В один файл: журнал приложения (ошибки, предупреждения) и лог метрик.
+                with open(filename, "w", encoding="utf-8") as out:
+                    for title, path in (("SyMo app log", APP_LOG_FILE), ("SyMo metrics log", LOG_FILE)):
+                        out.write(f"===== {title}: {path} =====\n")
+                        if path.exists():
+                            out.write(path.read_text(encoding="utf-8", errors="replace"))
+                        out.write("\n")
             except Exception as e:
                 logger.error("Ошибка сохранения лога: %s", e)
                 self._message(tr('error'), str(e))
