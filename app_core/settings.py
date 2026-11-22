@@ -124,6 +124,9 @@ def sanitize_hex_color(value: object, fallback: str = GRAPH_LINE_COLOR_FALLBACK)
     return fallback
 
 
+TRAY_ICON_MODES = ('logo', 'meter')
+
+
 def sanitize_log_interval(value: object) -> int:
     return _clamp_int(value, LOG_INTERVAL_DEFAULT_SEC, LOG_INTERVAL_MIN_SEC, LOG_INTERVAL_MAX_SEC)
 
@@ -186,6 +189,8 @@ def default_settings() -> Dict[str, Any]:
         'disk_path': '/', 'ping_host': PING_HOST_DEFAULT,
         'log_interval_sec': LOG_INTERVAL_DEFAULT_SEC,
         # Проверка обновлений: включена, время последней проверки и найденная версия.
+        # Значок в трее: 'logo' — логотип, 'meter' — шкалы загрузки CPU и RAM.
+        'tray_icon': 'logo',
         'check_updates': True, 'update_last_check': 0.0, 'update_latest_version': '',
         'update_notified_version': '',
     }
@@ -207,6 +212,8 @@ def normalize_settings(raw: Dict[str, Any]) -> Dict[str, Any]:
     for key in ALERT_DEFAULTS:
         settings[key] = sanitize_alert_threshold(key, settings.get(key))
     settings['check_updates'] = bool(settings.get('check_updates'))
+    if settings.get('tray_icon') not in TRAY_ICON_MODES:
+        settings['tray_icon'] = 'logo'
     try:
         settings['update_last_check'] = max(0.0, float(settings.get('update_last_check') or 0.0))
     except (TypeError, ValueError):

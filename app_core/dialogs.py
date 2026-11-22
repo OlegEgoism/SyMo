@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from typing import Callable, Dict, Optional
@@ -28,7 +29,14 @@ from .constants import (
     POLL_INTERVAL_MIN_SEC,
 )
 from .localization import tr
-from .settings import normalize_menu_order, read_json, sanitize_poll_interval
+from .settings import (
+    atomic_write_json,
+    default_settings,
+    normalize_menu_order,
+    normalize_settings,
+    read_json,
+    sanitize_poll_interval,
+)
 from .system_usage import list_disk_mounts
 from .ui import show_message
 from notifications import TelegramNotifier, DiscordNotifier
@@ -44,7 +52,8 @@ MENU_ORDER_KEY_COLUMN = 2
 class SettingsDialog(Gtk.Dialog):
     _css_installed = False
 
-    def __init__(self, parent: Optional[Gtk.Widget], visibility: Dict):
+    def __init__(self, parent: Optional[Gtk.Widget], visibility: Dict,
+                 on_replace_settings: Optional[Callable[[Dict, str], None]] = None):
         super().__init__(title=tr('settings_label'),
                          transient_for=parent if (parent and parent.get_mapped()) else None,
                          flags=0)
@@ -54,6 +63,8 @@ class SettingsDialog(Gtk.Dialog):
         self.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL,
                          tr('apply_label'), Gtk.ResponseType.OK)
         self.visibility_settings = visibility
+        # Сброс и импорт заменяют все настройки сразу, минуя «Применить».
+        self._on_replace_settings = on_replace_settings
 
         box = self.get_content_area()
         box.set_border_width(10)
@@ -113,6 +124,18 @@ class SettingsDialog(Gtk.Dialog):
         self.tray_cpu_check = add_check('cpu_tray', 'tray_cpu')
         self.tray_ram_check = add_check('ram_tray', 'tray_ram')
 
+        tray_icon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        tray_icon_label = Gtk.Label(label=tr('tray_icon_label'))
+        tray_icon_label.set_xalign(0)
+        self.tray_icon_combo = Gtk.ComboBoxText()
+        self.tray_icon_combo.append('logo', tr('tray_icon_logo'))
+        self.tray_icon_combo.append('meter', tr('tray_icon_meter'))
+        self.tray_icon_combo.set_active_id(self.visibility_settings.get('tray_icon', 'logo'))
+        self.tray_icon_combo.set_tooltip_text(tr('tray_icon_hint'))
+        tray_icon_box.pack_start(tray_icon_label, False, False, 0)
+        tray_icon_box.pack_start(self.tray_icon_combo, False, False, 0)
+        visibility_content.add(tray_icon_box)
+
         metrics_card, metrics_content = card(tr('metrics_section'))
         general_content.add(metrics_card)
 
@@ -140,6 +163,17 @@ class SettingsDialog(Gtk.Dialog):
         self.ping_host_entry.set_placeholder_text(PING_HOST_DEFAULT)
         self.ping_host_entry.set_width_chars(24)
         labeled_row(metrics_content, tr('ping_host_label'), self.ping_host_entry)
+
+        manage_card, manage_content = card(tr('settings_manage_section'))
+        general_content.add(manage_card)
+        manage_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        for label_key, handler in (('settings_reset', self._reset_settings),
+                                   ('settings_export', self._export_settings),
+                                   ('settings_import', self._import_settings)):
+            button = Gtk.Button(label=tr(label_key))
+            button.connect("clicked", handler)
+            manage_box.pack_start(button, False, False, 0)
+        manage_content.add(manage_box)
 
         startup_card, startup_content = card(tr('startup_section'))
         general_content.add(startup_card)
@@ -559,6 +593,70 @@ class SettingsDialog(Gtk.Dialog):
             self.webhook_entry.set_text(discord.webhook_url or '')
             self.discord_enable_check.set_active(discord.enabled)
             self.discord_interval_spin.set_value(discord.notification_interval)
+
+    # Служебное состояние (проверка обновлений) не переносится и не сбрасывается.
+    _STATE_PREFIX = 'update_'
+
+    def _keep_state(self, settings: Dict) -> Dict:
+        for key, value in self.visibility_settings.items():
+            if key.startswith(self._STATE_PREFIX):
+                settings[key] = value
+        return settings
+
+    def _reset_settings(self, _button) -> None:
+        confirm = Gtk.MessageDialog(transient_for=self, flags=0, message_type=Gtk.MessageType.QUESTION,
+                                    buttons=Gtk.ButtonsType.OK_CANCEL, text=tr('settings_reset_confirm'))
+        response = confirm.run()
+        confirm.destroy()
+        if response != Gtk.ResponseType.OK or self._on_replace_settings is None:
+            return
+        settings = default_settings()
+        settings['language'] = self.visibility_settings.get('language')
+        self._on_replace_settings(self._keep_state(settings), tr('settings_reset_done'))
+
+    def _choose_file(self, action: Gtk.FileChooserAction, button_key: str) -> Optional[str]:
+        chooser = Gtk.FileChooserDialog(title=tr('settings_manage_section'), parent=self, action=action)
+        chooser.add_buttons(tr('cancel_label'), Gtk.ResponseType.CANCEL, tr(button_key), Gtk.ResponseType.OK)
+        json_filter = Gtk.FileFilter()
+        json_filter.set_name("JSON")
+        json_filter.add_pattern("*.json")
+        chooser.add_filter(json_filter)
+        if action == Gtk.FileChooserAction.SAVE:
+            chooser.set_current_name("symo-settings.json")
+            chooser.set_do_overwrite_confirmation(True)
+        response = chooser.run()
+        filename = chooser.get_filename() if response == Gtk.ResponseType.OK else None
+        chooser.destroy()
+        return filename
+
+    def _export_settings(self, _button) -> None:
+        filename = self._choose_file(Gtk.FileChooserAction.SAVE, 'save_label')
+        if not filename:
+            return
+        settings = {key: value for key, value in self.visibility_settings.items()
+                    if not key.startswith(self._STATE_PREFIX)}
+        try:
+            # Токенов здесь нет: они хранятся отдельно (связка ключей или ~/.symo_telegram.json).
+            atomic_write_json(filename, settings)
+        except OSError as e:
+            self._message(tr('error'), str(e))
+            return
+        self._message(tr('ok'), tr('settings_export_done').format(filename))
+
+    def _import_settings(self, _button) -> None:
+        filename = self._choose_file(Gtk.FileChooserAction.OPEN, 'settings_import')
+        if not filename or self._on_replace_settings is None:
+            return
+        try:
+            with open(filename, encoding="utf-8") as fh:
+                data = json.load(fh)
+            if not isinstance(data, dict):
+                raise ValueError("JSON object expected")
+        except (OSError, ValueError) as e:
+            self._message(tr('error'), tr('settings_import_error').format(e))
+            return
+        data = {key: value for key, value in data.items() if not key.startswith(self._STATE_PREFIX)}
+        self._on_replace_settings(self._keep_state(normalize_settings(data)), tr('settings_import_done'))
 
     def _message(self, title: str, message: str):
         show_message(title, message, self)
