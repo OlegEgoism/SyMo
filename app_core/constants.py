@@ -8,7 +8,7 @@ from .language import LANGUAGES
 SUPPORTED_LANGS = list(LANGUAGES)
 APP_ID = "SystemMonitor"
 APP_NAME = "SyMo"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 # Имя на сессионной шине D-Bus: по нему расширение SyMo Launcher понимает,
 # что приложение уже запущено, и скрывает свою кнопку.
 DBUS_NAME = "io.github.olegegoism.SyMo"
