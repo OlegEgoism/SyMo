@@ -26,6 +26,7 @@ from .localization import tr
 from .settings import normalize_menu_order, read_json, sanitize_poll_interval
 from .ui import show_message
 from notifications import TelegramNotifier, DiscordNotifier
+from notifications.telegram import is_valid_chat_id
 
 logger = logging.getLogger(__name__)
 
@@ -358,8 +359,29 @@ class SettingsDialog(Gtk.Dialog):
         self.screenshot_quality_combo.set_active_id("medium")
         screenshot_quality_box.pack_start(screenshot_quality_label, False, False, 0)
         screenshot_quality_box.pack_start(self.screenshot_quality_combo, False, False, 0)
-        screenshot_quality_box.set_margin_bottom(8)
+        screenshot_quality_box.set_margin_bottom(6)
         telegram_content.add(screenshot_quality_box)
+
+        allowed_users_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        allowed_users_label = Gtk.Label(label=tr('telegram_allowed_users'))
+        allowed_users_label.set_xalign(0)
+        allowed_users_label.set_width_chars(20)
+        self.allowed_users_entry = Gtk.Entry()
+        self.allowed_users_entry.set_placeholder_text("123456789, 987654321")
+        self.allowed_users_entry.set_hexpand(True)
+        allowed_users_hint = tr('telegram_allowed_users_hint')
+        allowed_users_label.set_tooltip_text(allowed_users_hint)
+        self.allowed_users_entry.set_tooltip_text(allowed_users_hint)
+        allowed_users_box.pack_start(allowed_users_label, False, False, 0)
+        allowed_users_box.pack_start(self.allowed_users_entry, True, True, 0)
+        allowed_users_box.set_margin_bottom(4)
+        telegram_content.add(allowed_users_box)
+
+        self.allow_remote_power_check = Gtk.CheckButton(label=tr('telegram_allow_power'))
+        self.allow_remote_screenshot_check = Gtk.CheckButton(label=tr('telegram_allow_screenshot'))
+        self.allow_remote_screenshot_check.set_margin_bottom(8)
+        telegram_content.add(self.allow_remote_power_check)
+        telegram_content.add(self.allow_remote_screenshot_check)
 
         discord_card, discord_content = card("Discord")
         notification_content.add(discord_card)
@@ -460,6 +482,9 @@ class SettingsDialog(Gtk.Dialog):
             self.telegram_enable_check.set_active(telegram.enabled)
             self.interval_spin.set_value(telegram.notification_interval)
             self.screenshot_quality_combo.set_active_id(telegram.screenshot_quality)
+            self.allowed_users_entry.set_text(", ".join(str(user_id) for user_id in telegram.allowed_user_ids))
+            self.allow_remote_power_check.set_active(telegram.allow_remote_power)
+            self.allow_remote_screenshot_check.set_active(telegram.allow_remote_screenshot)
 
         discord = DiscordNotifier(autoload=False)
         if read_json(DISCORD_CONFIG_FILE):
@@ -497,6 +522,9 @@ class SettingsDialog(Gtk.Dialog):
         chat_id = self.chat_id_entry.get_text().strip()
         if not token or not chat_id:
             self._message(tr('error'), tr('bot_message'))
+            return
+        if not is_valid_chat_id(chat_id):
+            self._message(tr('error'), tr('telegram_chat_id_invalid'))
             return
         # Проверка не сохраняет конфиг: он пишется только по кнопке «Применить».
         notifier = TelegramNotifier(autoload=False)
