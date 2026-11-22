@@ -12,7 +12,8 @@ from .system_usage import MetricsSnapshot
 #   ram / swap / disk: (ts, used_gb, total_gb, percent)
 #   net:              (ts, recv_mbps, sent_mbps)
 #   keyboard / mouse: (ts, count, per_minute); нет сэмплов, пока счётчики недоступны
-HISTORY_KEYS = ('cpu', 'ram', 'swap', 'disk', 'net', 'keyboard', 'mouse')
+#   battery / gpu:    (ts, percent); нет сэмплов, если батареи или GPU нет
+HISTORY_KEYS = ('cpu', 'ram', 'swap', 'disk', 'net', 'keyboard', 'mouse', 'battery', 'gpu')
 RATE_KEYS = ('keyboard', 'mouse')
 
 Sample = Tuple[float, ...]
@@ -51,6 +52,10 @@ def samples_from_snapshot(snapshot: MetricsSnapshot) -> Dict[str, Sample]:
         samples['keyboard'] = (ts, max(0, int(snapshot.keyboard_clicks)), 0.0)
     if snapshot.mouse_clicks is not None:
         samples['mouse'] = (ts, max(0, int(snapshot.mouse_clicks)), 0.0)
+    if snapshot.battery_percent is not None:
+        samples['battery'] = (ts, _clamp(_to_float(snapshot.battery_percent), 0.0, 100.0))
+    if snapshot.gpu_usage is not None:
+        samples['gpu'] = (ts, _clamp(_to_float(snapshot.gpu_usage), 0.0, 100.0))
     return samples
 
 

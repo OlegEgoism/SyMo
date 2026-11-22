@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import logging
 import os
 import re
@@ -44,6 +45,8 @@ GRAPH_COMMANDS = {
     '/swap_graph': 'swap',
     '/keyboard_graph': 'keyboard',
     '/mouse_graph': 'mouse',
+    '/battery_graph': 'battery',
+    '/gpu_graph': 'gpu',
 }
 
 
@@ -106,15 +109,42 @@ def _parse_delay_minutes(args: list[str]) -> Optional[int]:
     return minutes if REMOTE_POWER_DELAY_MIN <= minutes <= REMOTE_POWER_DELAY_MAX else None
 
 
+# Данные кнопки под сообщением бота — имя команды без «/».
+_CALLBACK_DATA_RE = re.compile(r"[a-z_]{1,32}")
+Buttons = list[list[tuple[str, str]]]
+
+
+def _graph_command_labels() -> list[tuple[str, str]]:
+    return [
+        ('cpu_graph', tr('cpu')),
+        ('temp_graph', f"{tr('cpu')}, {tr('temperature_label')}"),
+        ('ram_graph', tr('ram')),
+        ('net_graph', tr('network')),
+        ('disk_graph', tr('disk')),
+        ('swap_graph', tr('swap')),
+        ('keyboard_graph', tr('keyboard_clicks')),
+        ('mouse_graph', tr('mouse_clicks')),
+        ('battery_graph', tr('battery_label')),
+        ('gpu_graph', tr('gpu_label')),
+    ]
+
+
+def _inline_keyboard(buttons: Buttons) -> str:
+    return json.dumps({'inline_keyboard': [[{'text': text, 'callback_data': data} for text, data in row]
+                                           for row in buttons]}, ensure_ascii=False)
+
+
 class _BotRun:
     """Состояние одного запуска бота: у каждого потока опроса своё."""
 
     def __init__(self, started_at: float, reply: Callable[..., None],
-                 submit_slow: Callable[[Callable[[], None]], bool]) -> None:
+                 submit_slow: Callable[[Callable[[], None]], bool],
+                 answer_callback: Callable[[str], None] = lambda _query_id: None) -> None:
         self.started_at = started_at
         self.bot_username: Optional[str] = None
         self.reply = reply
         self.submit_slow = submit_slow
+        self.answer_callback = answer_callback
         self.last_denial: dict[object, float] = {}
 
 
@@ -228,7 +258,8 @@ class TelegramNotifier:
         plain = html.unescape(_HTML_TAG_RE.sub("", text))
         return truncate_message(plain, cls.MAX_MESSAGE_LENGTH), None
 
-    def send_message(self, message: str, force: bool = False, html_markup: bool = False) -> bool:
+    def send_message(self, message: str, force: bool = False, html_markup: bool = False,
+                     buttons: Optional[Buttons] = None) -> bool:
         import requests
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
@@ -237,6 +268,8 @@ class TelegramNotifier:
         payload = {'chat_id': self.chat_id, 'text': text}
         if parse_mode:
             payload['parse_mode'] = parse_mode
+        if buttons:
+            payload['reply_markup'] = _inline_keyboard(buttons)
         url = self._api_url("sendMessage")
 
         try:
@@ -251,6 +284,53 @@ class TelegramNotifier:
             self.last_error = e.__class__.__name__
             logger.exception("Ошибка отправки сообщения в Telegram: %s", e.__class__.__name__)
             return False
+
+    def bot_commands(self) -> list[dict[str, str]]:
+        """Команды для меню Telegram: только те, что сейчас разрешены в настройках."""
+        commands = [('status', tr('system_status'))]
+        if self.allow_remote_screenshot:
+            commands.append(('screenshot', tr('bot_cmd_screenshot')))
+        if self.allow_remote_power:
+            commands += [('poweroff', tr('power_off')), ('reboot', tr('reboot')),
+                         ('cancel', tr('cancel_action_button'))]
+        commands += [('lock', tr('lock')), ('help', tr('bot_cmd_help'))]
+        commands += [(name, tr('graph_caption').format(label)) for name, label in _graph_command_labels()]
+        return [{'command': name, 'description': description[:256]} for name, description in commands]
+
+    def publish_commands(self) -> bool:
+        """Показать команды в меню «/» Telegram на текущем языке SyMo."""
+        import requests
+        if not self.enabled or not self.token:
+            return False
+        try:
+            response = requests.post(self._api_url("setMyCommands"), json={'commands': self.bot_commands()},
+                                     timeout=(3, 10))
+        except Exception as e:
+            logger.warning("Не удалось обновить меню команд Telegram: %s", e.__class__.__name__)
+            return False
+        error = self._response_error(response)
+        if error:
+            logger.warning("Не удалось обновить меню команд Telegram: %s", error)
+        return error is None
+
+    def publish_commands_async(self) -> None:
+        threading.Thread(target=self.publish_commands, name="telegram-commands", daemon=True).start()
+
+    def status_buttons(self) -> Buttons:
+        """Кнопки под статусом: графики одним нажатием вместо набора команды."""
+        rows: Buttons = [[(f"📊 {tr('cpu')}", 'cpu_graph'), (tr('ram'), 'ram_graph'), (tr('network'), 'net_graph')],
+                         [(tr('disk'), 'disk_graph'), (tr('swap'), 'swap_graph')]]
+        if self.allow_remote_screenshot:
+            rows[1].append((f"📸 {tr('bot_cmd_screenshot')}", 'screenshot'))
+        return rows
+
+    def _answer_callback(self, query_id: str) -> None:
+        """Убрать «часики» с нажатой кнопки."""
+        import requests
+        try:
+            requests.post(self._api_url("answerCallbackQuery"), data={'callback_query_id': query_id}, timeout=(3, 7))
+        except Exception as e:
+            logger.info("Не удалось ответить на нажатие кнопки Telegram: %s", e.__class__.__name__)
 
     def send_message_async(self, message: str) -> None:
         """Отправить из главного потока, не дожидаясь сети."""
@@ -563,11 +643,14 @@ class TelegramNotifier:
         threading.Thread(target=self._run_jobs, args=(slow_jobs,), name="telegram-media", daemon=True).start()
         threading.Thread(target=self._run_jobs, args=(replies,), name="telegram-reply", daemon=True).start()
 
-        def reply(text: str, html_markup: bool = False) -> None:
+        def enqueue_reply(job: Callable[[], None]) -> None:
             try:
-                replies.put_nowait(lambda: self.send_message(text, html_markup=html_markup))
+                replies.put_nowait(job)
             except Full:
                 logger.warning("Очередь ответов Telegram переполнена: ответ отброшен")
+
+        def reply(text: str, html_markup: bool = False, buttons: Optional[Buttons] = None) -> None:
+            enqueue_reply(lambda: self.send_message(text, html_markup=html_markup, buttons=buttons))
 
         def submit_slow(job: Callable[[], None]) -> bool:
             try:
@@ -577,7 +660,9 @@ class TelegramNotifier:
                 reply(tr('bot_busy'))
                 return False
 
-        run = _BotRun(started_at, reply, submit_slow)
+        run = _BotRun(started_at, reply, submit_slow,
+                      answer_callback=lambda query_id: enqueue_reply(lambda: self._answer_callback(query_id)))
+        self.publish_commands()
         backoff_seconds = 1.0
 
         def pause(seconds: Optional[float] = None) -> None:
@@ -601,7 +686,10 @@ class TelegramNotifier:
                         if data.get('ok'):
                             for update in data.get('result', []):
                                 last_update_id = int(update['update_id'])
-                                self._process_update(update, run)
+                                if 'callback_query' in update:
+                                    self._process_callback(update['callback_query'], run)
+                                else:
+                                    self._process_update(update, run)
                         backoff_seconds = 1.0
                     elif response.status_code == 409:
                         logger.warning("Другой экземпляр бота уже получает обновления")
@@ -644,6 +732,18 @@ class TelegramNotifier:
         if message.get('sender_chat') or sender.get('is_bot') or sender.get('id') in _SERVICE_SENDER_IDS:
             return False
         return sender.get('id') in allowed_user_ids
+
+    def _process_callback(self, query: dict, run: _BotRun) -> None:
+        """Нажатие кнопки под сообщением бота выполняется как команда от нажавшего,
+        с теми же проверками чата и прав."""
+        if query.get('id'):
+            run.answer_callback(str(query['id']))
+        data = str(query.get('data') or '')
+        if not _CALLBACK_DATA_RE.fullmatch(data):
+            return
+        message = query.get('message') or {}
+        self._process_update({'message': {'chat': message.get('chat') or {}, 'from': query.get('from') or {},
+                                          'date': time.time(), 'text': f"/{data}"}}, run)
 
     def _process_update(self, update: dict, run: _BotRun) -> None:
         message = update.get('message') or {}
@@ -708,7 +808,8 @@ class TelegramNotifier:
             act = POWER_COMMANDS[command]
             # Через таймер: на компьютере видно предупреждение с кнопкой отмены, а здесь — /cancel.
             GLib.idle_add(self._schedule_power_action, act, minutes)
-            reply(f"⏳ {tr('bot_action_scheduled').format(action_label(act), minutes)}")
+            reply(f"⏳ {tr('bot_action_scheduled').format(action_label(act), minutes)}",
+                  buttons=[[(f"❌ {tr('cancel_action_button')}", 'cancel')]])
         elif command == '/cancel':
             if power is not None:
                 GLib.idle_add(self._cancel_power_action)
@@ -724,7 +825,7 @@ class TelegramNotifier:
                 return
             run.submit_slow(self._send_screenshot)
         elif command == '/help':
-            reply(self._help_text())
+            reply(self._help_text(), buttons=self.status_buttons())
         elif command in GRAPH_COMMANDS:
             metric = GRAPH_COMMANDS[command]
             run.submit_slow(lambda: self._send_metric_graph(metric))
@@ -750,18 +851,8 @@ class TelegramNotifier:
 
     @staticmethod
     def _help_text() -> str:
-        return (
-            tr('bot_help_message')
-            + f"\n\n📊 {tr('graph_commands_title')}:"
-            + f"\n/cpu_graph - {tr('cpu')}"
-            + f"\n/temp_graph - {tr('cpu')}, {tr('temperature_label')}"
-            + f"\n/ram_graph - {tr('ram')}"
-            + f"\n/net_graph - {tr('network')}"
-            + f"\n/disk_graph - {tr('disk')}"
-            + f"\n/swap_graph - {tr('swap')}"
-            + f"\n/keyboard_graph - {tr('keyboard_clicks')}"
-            + f"\n/mouse_graph - {tr('mouse_clicks')}"
-        )
+        graphs = "".join(f"\n/{name} - {label}" for name, label in _graph_command_labels())
+        return f"{tr('bot_help_message')}\n\n📊 {tr('graph_commands_title')}:{graphs}"
 
     def _send_system_status(self, reply: Callable[..., None]) -> None:
         # Берём срез из основного цикла: вызов psutil.cpu_percent() из этого
@@ -770,7 +861,7 @@ class TelegramNotifier:
         if snapshot is None:
             reply(f"❌ {tr('error')}")
             return
-        reply(format_status_message(snapshot, "html"), html_markup=True)
+        reply(format_status_message(snapshot, "html"), html_markup=True, buttons=self.status_buttons())
 
 
 def _remove_quietly(path: str) -> None:

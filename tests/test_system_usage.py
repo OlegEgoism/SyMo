@@ -104,3 +104,9 @@ def test_history_counts_activity_per_minute():
     first, second = history.samples("mouse")
     assert first[2] == 0.0
     assert second == (110.0, 30, 120.0)
+
+
+def test_history_keeps_battery_and_gpu_when_present():
+    assert "battery" not in samples_from_snapshot(_snapshot())
+    samples = samples_from_snapshot(_snapshot(battery_percent=87.0, battery_plugged=True, gpu_usage=140.0))
+    assert samples["battery"][1] == 87.0 and samples["gpu"][1] == 100.0

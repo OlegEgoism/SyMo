@@ -67,6 +67,8 @@ GRAPH_COLOR_DEFAULTS = {
     'graph_line_color_net_sent': '#ffbf33',
     'graph_line_color_keyboard': '#ffd93f',
     'graph_line_color_mouse': '#66e6ff',
+    'graph_line_color_battery': '#a3e635',
+    'graph_line_color_gpu': '#c084fc',
 }
 
 APP_LOG_FILE = _HOME / ".symo_app.log"

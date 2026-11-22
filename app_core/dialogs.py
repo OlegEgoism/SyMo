@@ -146,6 +146,9 @@ class SettingsDialog(Gtk.Dialog):
         self.autostart_check = Gtk.CheckButton(label=tr('autostart_on_login'))
         self.autostart_check.set_active(autostart.is_enabled())
         startup_content.add(self.autostart_check)
+        self.check_updates_check = Gtk.CheckButton(label=tr('check_updates_label'))
+        self.check_updates_check.set_active(bool(self.visibility_settings.get('check_updates', True)))
+        startup_content.add(self.check_updates_check)
 
         intervals_card, intervals_content = card(tr('poll_interval_section'))
         interval_content.add(intervals_card)
@@ -319,6 +322,8 @@ class SettingsDialog(Gtk.Dialog):
             ('graph_line_color_net_sent', f"{tr('network')} ↑"),
             ('graph_line_color_keyboard', f"{tr('keyboard_clicks')}"),
             ('graph_line_color_mouse', f"{tr('mouse_clicks')}"),
+            ('graph_line_color_battery', f"{tr('battery_label')}"),
+            ('graph_line_color_gpu', f"{tr('gpu_label')}"),
         ]
         self.graph_line_color_buttons: dict[str, Gtk.ColorButton] = {}
         for color_key, color_label_text in graph_color_rows:

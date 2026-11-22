@@ -38,6 +38,8 @@ def test_normalize_settings_sanitizes_values():
     assert s["log_interval_sec"] == 1
     assert s["graph_line_color_cpu"] == "#abcdef"
     assert normalize_settings({"language": "xx"})["language"] is None
+    assert normalize_settings({})["check_updates"] is True
+    assert normalize_settings({"update_last_check": "bad"})["update_last_check"] == 0.0
     assert s["menu_order"][-1] == "show_system_info" and "battery" in s["menu_order"]
 
 
