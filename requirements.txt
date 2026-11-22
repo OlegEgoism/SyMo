@@ -2,7 +2,7 @@
 # PyGObject и pycairo на Ubuntu лучше брать из apt (python3-gi, python3-gi-cairo)
 # и создавать venv с --system-site-packages: тогда pip их не компилирует.
 PyGObject>=3.42
-pycairo>=1.20
+pycairo>=1.29.2
 psutil>=5.9
 pynput>=1.7.6
 requests>=2.28
