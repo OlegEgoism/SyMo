@@ -12,8 +12,6 @@ import time
 from queue import Full, Queue
 from typing import Callable, Iterable, Optional, TYPE_CHECKING
 
-import requests
-from requests import Response
 from gi.repository import GLib
 
 from app_core.constants import TELEGRAM_CONFIG_FILE
@@ -24,7 +22,10 @@ from app_core.power_control import Action, action_label
 from app_core.settings import atomic_write_json, read_json
 from notifications.base import format_status_message, normalize_interval, post_with_retries, truncate_message
 
+# requests (~30 мс при запуске) импортируется внутри функций отправки:
+# пока Telegram и Discord выключены, он не нужен.
 if TYPE_CHECKING:
+    from requests import Response
     from app_core.power_control import PowerControl
     from app_core.app import SystemTrayApp
 
@@ -228,6 +229,7 @@ class TelegramNotifier:
         return truncate_message(plain, cls.MAX_MESSAGE_LENGTH), None
 
     def send_message(self, message: str, force: bool = False, html_markup: bool = False) -> bool:
+        import requests
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
 
@@ -285,6 +287,7 @@ class TelegramNotifier:
         return f"HTTP {response.status_code}: {description}" if description else f"HTTP {response.status_code}"
 
     def send_photo(self, photo_path: str, caption: str = "", force: bool = False) -> bool:
+        import requests
         if (not force and not self.enabled) or not self.token or not self.chat_id:
             return False
 
@@ -524,6 +527,7 @@ class TelegramNotifier:
 
     def _skip_pending_updates(self) -> Optional[int]:
         """Подтвердить все накопившиеся обновления, не выполняя их; вернуть последний update_id."""
+        import requests
         try:
             response = requests.get(self._api_url("getUpdates"), params={'offset': -1, 'timeout': 0}, timeout=10)
             if response.status_code != 200:
@@ -538,6 +542,7 @@ class TelegramNotifier:
             return None
 
     def _fetch_bot_username(self) -> Optional[str]:
+        import requests
         try:
             response = requests.get(self._api_url("getMe"), timeout=10)
             username = (response.json().get('result') or {}).get('username')
@@ -547,6 +552,7 @@ class TelegramNotifier:
             return None
 
     def _bot_worker(self, stop_event: threading.Event) -> None:
+        import requests
         # Смещение — своё у каждого запуска: после смены токена или долгого простоя
         # старое значение могло бы оказаться больше новых update_id, и все команды
         # молча отбрасывались бы.

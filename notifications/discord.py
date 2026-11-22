@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
-
-import requests
-from requests import Response
+from typing import TYPE_CHECKING, Optional
 
 from app_core.constants import DISCORD_CONFIG_FILE
 from app_core.settings import atomic_write_json, read_json
 from notifications.base import normalize_interval, post_with_retries, truncate_message
+
+# requests (~30 мс при запуске) импортируется внутри функций отправки:
+# пока Telegram и Discord выключены, он не нужен.
+if TYPE_CHECKING:
+    from requests import Response
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,7 @@ class DiscordNotifier:
             return False
 
     def send_message(self, message: str, force: bool = False) -> bool:
+        import requests
         if (not force and not self.enabled) or not self.webhook_url:
             return False
         payload = {

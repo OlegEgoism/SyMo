@@ -6,13 +6,15 @@ import logging
 import threading
 import time
 from queue import Empty, Full, Queue
-from typing import Callable, Collection, Optional
-
-import requests
-from requests import Response
+from typing import TYPE_CHECKING, Callable, Collection, Optional
 
 from app_core.localization import tr
 from app_core.system_usage import MetricsSnapshot, format_temp
+
+# requests (~30 мс при запуске) импортируется внутри функций отправки:
+# пока Telegram и Discord выключены, он не нужен.
+if TYPE_CHECKING:
+    from requests import Response
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,7 @@ def post_with_retries(
     После последней попытки пауза не делается. ``retry_after`` может вернуть
     задержку, которую сервер попросил явно (HTTP 429).
     """
+    import requests
     backoff = 1.0
     last_response: Optional[Response] = None
     for attempt in range(1, max_attempts + 1):
