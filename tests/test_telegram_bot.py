@@ -46,8 +46,15 @@ def bot(monkeypatch):
     notifier.set_power_control(FakePower())
     idle = []
     monkeypatch.setattr(tg.GLib, "idle_add", lambda fn, *a: idle.append((fn, a)) or 1)
-    notifier.run_state = tg._BotRun(time.time() - 1000, lambda text, html_markup=False: notifier.sent.append(text),
-                                    lambda job: notifier.slow.append(job) or True)
+    notifier.buttons = []
+    notifier.answered = []
+
+    def reply(text, html_markup=False, buttons=None):
+        notifier.sent.append(text)
+        notifier.buttons.append(buttons)
+
+    notifier.run_state = tg._BotRun(time.time() - 1000, reply, lambda job: notifier.slow.append(job) or True,
+                                    answer_callback=notifier.answered.append)
     notifier.run_state.bot_username = "symo_bot"
 
     def send(text, chat_type="private", from_id=100, age=0, extra=None):
@@ -63,7 +70,19 @@ def bot(monkeypatch):
             fn(*args)
         return notifier.sent
 
+    def press(data, chat_type="private", from_id=100):
+        notifier.sent.clear()
+        notifier.slow.clear()
+        query = {"id": "q1", "data": data, "from": {"id": from_id},
+                 "message": {"chat": {"id": 100, "type": chat_type}, "date": time.time() - 3600}}
+        notifier._process_callback(query, notifier.run_state)
+        while idle:
+            fn, args = idle.pop(0)
+            fn(*args)
+        return notifier.sent
+
     notifier.send = send
+    notifier.press = press
     return notifier
 
 
@@ -125,3 +144,27 @@ def test_response_errors_and_retry_after():
     assert tg.TelegramNotifier._response_error(bad) == "HTTP 400: Bad Request: chat not found"
     text, mode = tg.TelegramNotifier._prepare_text("a < b & c", False)
     assert mode is None and text == "a < b & c"
+
+
+def test_buttons_run_commands_with_the_same_rules(bot):
+    bot.allow_remote_power = True
+    bot.send("/poweroff")
+    assert bot.buttons[-1] == [[(f"❌ {tr('cancel_action_button')}", "cancel")]]
+    bot.press("cancel")                                         # сообщение старое, но нажатие свежее
+    assert bot.power_control_ref.calls[-1] == ("cancel", Action.POWER_OFF) and bot.answered == ["q1"]
+    calls = list(bot.power_control_ref.calls)
+    bot.press("poweroff", chat_type="group", from_id=555)       # чужой участник группы
+    assert bot.power_control_ref.calls == calls
+    bot.press("cpu_graph", chat_type="group", from_id=555)
+    assert len(bot.slow) == 1
+    assert bot.press("bad data!") == [] and bot.slow == []
+
+
+def test_command_menu_follows_permissions(bot):
+    names = [c["command"] for c in bot.bot_commands()]
+    assert "poweroff" not in names and "screenshot" not in names and "battery_graph" in names
+    bot.allow_remote_power = bot.allow_remote_screenshot = True
+    names = [c["command"] for c in bot.bot_commands()]
+    assert {"poweroff", "reboot", "cancel", "screenshot", "status", "help"} <= set(names)
+    assert all(len(c["description"]) <= 256 for c in bot.bot_commands())
+    assert "/gpu_graph" in bot._help_text()

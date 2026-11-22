@@ -13,7 +13,7 @@ controls power actions and sends notifications to Telegram and Discord.
 - **Graphs** for every metric: mouse wheel zooms, drag pans, hover shows the point's values.
 - **Alerts** when the CPU overheats or RAM and disk fill up — on the desktop, in Telegram and Discord.
 - **Power:** shutdown, reboot, lock, delayed actions with a timer.
-- **Notifications:** Telegram bot (`/status`, `/screenshot` commands) and Discord webhook.
+- **Notifications:** Telegram bot (command menu and buttons: status, graphs, screenshot, power off with cancel) and Discord webhook.
 - **Settings:** menu item visibility and order, start on login, graph colors, logging.
 - **8 languages:** Russian, English, Chinese, German, Italian, Spanish, Turkish, French.
 
@@ -146,7 +146,7 @@ The icon appears in the tray and the log goes to the terminal. Stop it with `Ctr
 
 ## Configuration
 
-- **Start on login:** *Settings* → *Display* → *Start SyMo when you log in*.
+- **Start on login and updates:** *Settings* → *Display* → *Startup*. If SyMo is already running, starting it again from the app menu opens the settings.
 - **Telegram / Discord:** *Settings* → *Notifications*: bot token and chat ID, or webhook URL.
 - **Alerts:** *Settings* → *Notifications* → *Alerts*: temperature, RAM and disk thresholds (0 turns one off).
 - The `/screenshot` command needs these tools:

@@ -80,6 +80,20 @@ def _usage_spec(key: str, title_key: str, color_key: str, axis_rgb: RGB, legend_
     )
 
 
+def _percent_spec(key: str, title_key: str, color_key: str, axis_rgb: RGB, legend_rgb: RGB) -> GraphSpec:
+    """Одна величина в процентах: батарея, загрузка GPU."""
+    return GraphSpec(
+        key=key,
+        title=lambda: tr(title_key),
+        series=(Series(color_key, lambda: f"{tr(title_key)} (%)", legend_rgb, lambda s: s[1]),),
+        axis_max=_percent_axis,
+        axis_label=_percent_label,
+        axis_label_rgb=axis_rgb,
+        current_values=lambda s: f"{tr(title_key)}: {s[1]:.0f}%",
+        hover_lines=lambda s: [_fmt_time(s[0]), f"{tr(title_key)}: {s[1]:.0f}%"],
+    )
+
+
 def _counter_spec(key: str, title_key: str, color_key: str, legend_rgb: RGB) -> GraphSpec:
     """Клавиатура и мышь: активность в минуту (s[2]), а не счётчик с запуска (s[1])."""
     def per_minute(s: Sample) -> str:
@@ -136,6 +150,8 @@ def build_graph_specs() -> Dict[str, GraphSpec]:
         ),
         _counter_spec('keyboard', 'keyboard_clicks', 'graph_line_color_keyboard', (1.0, 0.96, 0.78)),
         _counter_spec('mouse', 'mouse_clicks', 'graph_line_color_mouse', (0.85, 0.98, 1.0)),
+        _percent_spec('battery', 'battery_label', 'graph_line_color_battery', (0.8, 0.93, 0.7), (0.92, 1.0, 0.85)),
+        _percent_spec('gpu', 'gpu_label', 'graph_line_color_gpu', (0.85, 0.78, 0.98), (0.95, 0.9, 1.0)),
     ]
     return {spec.key: spec for spec in specs}
 

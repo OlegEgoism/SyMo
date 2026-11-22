@@ -17,6 +17,8 @@ def test_renders_without_temperature_and_with_gaps():
     _render("cpu", gap, title="CPU")
     _render("keyboard", [(1000.0, 5, 0.0), (1001.0, 9, 240.0)])
     _render("net", [])
+    _render("battery", [(1000.0, 80.0), (1001.0, 79.0)])
+    _render("gpu", [(1000.0, 5.0)])
 
 
 def test_x_axis_follows_time():

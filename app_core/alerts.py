@@ -70,7 +70,7 @@ class AlertMonitor:
         return messages
 
 
-def show_desktop_notification(text: str) -> None:
+def show_desktop_notification(text: str, title: Optional[str] = None) -> None:
     """Уведомление рабочего стола через org.freedesktop.Notifications, без лишних пакетов."""
     def on_bus(_source, result):
         try:
@@ -78,8 +78,8 @@ def show_desktop_notification(text: str) -> None:
         except GLib.Error as e:
             logger.warning("Нет сессионной шины для уведомления: %s", e.message)
             return
-        params = GLib.Variant("(susssasa{sv}i)", (APP_NAME, 0, "dialog-warning", tr('alert_title'), text,
-                                                   [], {}, -1))
+        params = GLib.Variant("(susssasa{sv}i)", (APP_NAME, 0, "dialog-warning", title or tr('alert_title'),
+                                                   text, [], {}, -1))
         bus.call("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
                  "org.freedesktop.Notifications", "Notify", params, None, Gio.DBusCallFlags.NONE,
                  5000, None, None)

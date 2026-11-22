@@ -33,7 +33,7 @@ from .constants import (
     SUPPORTED_LANGS,
     POLL_INTERVAL_DEFAULT_SEC,
 )
-from . import autostart
+from . import autostart, updates
 from .alerts import AlertMonitor, show_desktop_notification
 from .click_tracker import increment_keyboard, increment_mouse, get_counts
 from .graphs import GraphWindow, build_graph_specs
@@ -119,7 +119,8 @@ def _is_wayland_session() -> bool:
 
 
 class SystemTrayApp:
-    def __init__(self):
+    def __init__(self, application: Optional[Gtk.Application] = None):
+        self.application = application
         self.settings_file = SETTINGS_FILE
         self.visibility_settings: Dict[str, Any] = load_settings(self.settings_file)
 
@@ -127,13 +128,15 @@ class SystemTrayApp:
             self.visibility_settings['language'] = detect_system_language()
             self.save_settings()
         set_language(self.visibility_settings['language'])
+        # Версия, найденная прошлой проверкой, показывается в меню сразу после запуска.
+        latest = self.visibility_settings.get('update_latest_version', '')
+        self.available_update: Optional[str] = latest if updates.is_newer(latest) else None
 
         self.indicator = AppInd.Indicator.new(APP_ID, ICON_FALLBACK, AppInd.IndicatorCategory.SYSTEM_SERVICES)
         self._set_indicator_icon()
         self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
 
         self._quitting = False
-        self._bus_name_id = 0
         self.power_control = PowerControl()
         self.settings_dialog: Optional[SettingsDialog] = None
         self._progress_dialog: Optional[Gtk.MessageDialog] = None
@@ -313,8 +316,8 @@ class SystemTrayApp:
             else:
                 self._new_item(key, self._input_counter_unavailable_text(key), None)
         self._new_item('uptime', f"{tr('uptime_label')}: N/A", None)
-        self._new_item('battery', f"{tr('battery_label')}: N/A", None)
-        self._new_item('gpu', f"{tr('gpu_label')}: N/A", None)
+        self._new_item('battery', f"{tr('battery_label')}: N/A", open_graph('battery'))
+        self._new_item('gpu', f"{tr('gpu_label')}: N/A", open_graph('gpu'))
         self._new_item('show_power_off', tr('power_off'),
                        lambda w: pc.confirm_action(w, pc.power_off, tr('confirm_text_power_off')))
         self._new_item('show_reboot', tr('reboot'),
@@ -346,7 +349,10 @@ class SystemTrayApp:
                 entries += [None, self.menu_items[key], None]
             else:
                 entries.append(self.menu_items[key])
-        entries += [None, self._build_language_menu_item(), settings_item, None, quit_item]
+        update_item = Gtk.MenuItem(label=tr('update_menu_item').format(self.available_update or ''))
+        update_item.connect("activate", self._open_releases_page)
+        self.menu_items['update'] = update_item
+        entries += [None, update_item, self._build_language_menu_item(), settings_item, None, quit_item]
 
         prev_is_separator = True
         for entry in entries:
@@ -362,6 +368,7 @@ class SystemTrayApp:
         # Батарея и GPU появятся при первом обновлении, если они есть.
         for key in ('battery', 'gpu'):
             self.menu_items[key].set_visible(False)
+        update_item.set_visible(self.available_update is not None)
         old_menu = getattr(self, 'menu', None)
         self.menu = menu
         self.indicator.set_menu(menu)
@@ -391,6 +398,7 @@ class SystemTrayApp:
             self.visibility_settings['language'] = lang_code
             if not self.save_settings():
                 show_message(tr('error'), tr('settings_save_error'))
+            self.telegram_notifier.publish_commands_async()
             self.create_menu()
             for window in self.graph_windows.values():
                 window.refresh_texts()
@@ -458,6 +466,11 @@ class SystemTrayApp:
             self.metrics_log.close()
         self.sync_input_listeners()
 
+        enable_updates = dialog.check_updates_check.get_active() and not vs.get('check_updates')
+        vs['check_updates'] = dialog.check_updates_check.get_active()
+        if enable_updates:
+            self._check_updates(force=True)
+
         want_autostart = dialog.autostart_check.get_active()
         if want_autostart != autostart.is_enabled() and not autostart.set_enabled(want_autostart):
             self._show_message(tr('error'), tr('autostart_error'))
@@ -513,6 +526,46 @@ class SystemTrayApp:
         if tel_after != tel_before:
             tel.stop_bot()
         tel.start_bot()
+        # Флажки разрешений меняют список команд в меню Telegram.
+        tel.publish_commands_async()
+
+    def _first_update_check(self) -> bool:
+        self._check_updates()
+        return GLib.SOURCE_REMOVE
+
+    def _hourly_update_check(self) -> bool:
+        self._check_updates()
+        return GLib.SOURCE_CONTINUE
+
+    def _check_updates(self, force: bool = False) -> None:
+        """Раз в сутки спросить GitHub о новой версии; сеть — в фоновом потоке."""
+        vs = self.visibility_settings
+        due = time.time() - vs.get('update_last_check', 0.0) >= updates.CHECK_INTERVAL_SEC
+        if vs.get('check_updates') and (force or due):
+            vs['update_last_check'] = time.time()
+            threading.Thread(target=lambda: GLib.idle_add(self._on_update_checked, updates.fetch_latest_version()),
+                             name="update-check", daemon=True).start()
+
+    def _on_update_checked(self, version: Optional[str]) -> bool:
+        vs = self.visibility_settings
+        if version:
+            vs['update_latest_version'] = version
+        if version and updates.is_newer(version):
+            self.available_update = version
+            self.menu_items['update'].set_label(tr('update_menu_item').format(version))
+            self.menu_items['update'].set_visible(True)
+            if vs.get('update_notified_version') != version:
+                vs['update_notified_version'] = version
+                show_desktop_notification(tr('update_available').format(version), title=APP_NAME)
+        self.save_settings()
+        return GLib.SOURCE_REMOVE
+
+    @staticmethod
+    def _open_releases_page(*_args) -> None:
+        try:
+            Gio.AppInfo.launch_default_for_uri(updates.RELEASES_PAGE_URL, None)
+        except GLib.Error as e:
+            logger.warning("Не удалось открыть %s: %s", updates.RELEASES_PAGE_URL, e.message)
 
     def _show_message(self, title: str, message: str) -> None:
         show_message(title, message, self.settings_dialog)
@@ -784,12 +837,11 @@ class SystemTrayApp:
             self.settings_dialog = None
 
         self._stop_input_listeners()
-
-        if self._bus_name_id:
-            Gio.bus_unown_name(self._bus_name_id)
-            self._bus_name_id = 0
         self.metrics_log.close()
-        Gtk.main_quit()
+        if self.application is not None:
+            self.application.quit()
+        else:
+            Gtk.main_quit()
 
     def _report_remote_action_cancelled_on_exit(self) -> None:
         """Таймер живёт в процессе SyMo: при выходе удалённо запланированное действие
@@ -804,15 +856,15 @@ class SystemTrayApp:
         # Выход ждёт отправку недолго: сеть может быть недоступна.
         sender.join(timeout=3.0)
 
-    def run(self):
+    def start(self) -> None:
         for sig in (signal.SIGINT, signal.SIGTERM):
             _add_unix_signal_handler(sig, self._on_unix_signal)
-        self._bus_name_id = Gio.bus_own_name(
-            Gio.BusType.SESSION, DBUS_NAME, Gio.BusNameOwnerFlags.NONE, None, None, None)
         # Начальный снимок, чтобы графики не открывались полностью пустыми.
         self.update_info()
         GLib.timeout_add_seconds(TIME_UPDATE_SEC, self.update_info)
-        Gtk.main()
+        GLib.timeout_add_seconds(updates.FIRST_CHECK_DELAY_SEC, self._first_update_check)
+        # Раз в час проверяем, не прошли ли сутки с прошлой проверки.
+        GLib.timeout_add_seconds(3600, self._hourly_update_check)
 
 
 def _acquire_single_instance_lock() -> Optional[IO[str]]:
@@ -854,16 +906,49 @@ def main() -> None:
         return
     setup_logging()
     logger.info("%s %s", APP_NAME, APP_VERSION)
-    lock = _acquire_single_instance_lock()
-    if lock is None:
-        logger.info("%s уже запущен", APP_NAME)
-        return
-    Gtk.init([])
-    if AppInd is None:
-        _report_missing_app_indicator()
-        raise SystemExit(1)
-    SystemTrayApp().run()
-    lock.close()
+
+    # Gtk.Application владеет именем DBUS_NAME на сессионной шине: по нему расширение
+    # SyMo Launcher видит, что SyMo запущен. Повторный запуск (из меню, командой symo)
+    # не стартует второй экземпляр, а передаёт «activate» уже работающему — тот
+    # открывает настройки.
+    application = Gtk.Application(
+        application_id=DBUS_NAME,
+        flags=getattr(Gio.ApplicationFlags, "DEFAULT_FLAGS", Gio.ApplicationFlags.FLAGS_NONE))
+    state: Dict[str, Any] = {}
+
+    def on_startup(app: Gtk.Application) -> None:
+        # Файл блокировки — на случай второго графического сеанса того же пользователя:
+        # у него своя шина D-Bus, но второй Telegram-бот не нужен.
+        lock = _acquire_single_instance_lock()
+        if lock is None:
+            logger.info("%s уже запущен в другом сеансе", APP_NAME)
+            return
+        if AppInd is None:
+            _report_missing_app_indicator()
+            state['exit_code'] = 1
+            return
+        tray = SystemTrayApp(app)
+        state.update(lock=lock, tray=tray)
+        app.hold()
+        tray.start()
+
+    def on_activate(_app: Gtk.Application) -> None:
+        tray = state.get('tray')
+        if tray is None:
+            return
+        if not state.get('started'):
+            state['started'] = True  # первая активация — это сам запуск
+            return
+        logger.info("Повторный запуск %s: открываю настройки", APP_NAME)
+        tray.show_settings()
+
+    application.connect("startup", on_startup)
+    application.connect("activate", on_activate)
+    status = application.run([sys.argv[0]])
+    if state.get('lock'):
+        state['lock'].close()
+    if state.get('exit_code') or status:
+        raise SystemExit(state.get('exit_code') or status)
 
 
 if __name__ == "__main__":

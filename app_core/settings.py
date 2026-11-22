@@ -185,6 +185,9 @@ def default_settings() -> Dict[str, Any]:
         'battery': True, 'gpu': True,
         'disk_path': '/', 'ping_host': PING_HOST_DEFAULT,
         'log_interval_sec': LOG_INTERVAL_DEFAULT_SEC,
+        # Проверка обновлений: включена, время последней проверки и найденная версия.
+        'check_updates': True, 'update_last_check': 0.0, 'update_latest_version': '',
+        'update_notified_version': '',
     }
     settings.update(ALERT_DEFAULTS)
     for key in POLL_INTERVAL_SETTING_KEYS:
@@ -203,6 +206,13 @@ def normalize_settings(raw: Dict[str, Any]) -> Dict[str, Any]:
     settings['disk_path'] = sanitize_disk_path(settings.get('disk_path'))
     for key in ALERT_DEFAULTS:
         settings[key] = sanitize_alert_threshold(key, settings.get(key))
+    settings['check_updates'] = bool(settings.get('check_updates'))
+    try:
+        settings['update_last_check'] = max(0.0, float(settings.get('update_last_check') or 0.0))
+    except (TypeError, ValueError):
+        settings['update_last_check'] = 0.0
+    for key in ('update_latest_version', 'update_notified_version'):
+        settings[key] = str(settings.get(key) or '')
     # Старые версии хранили один общий цвет 'graph_line_color'.
     legacy_color = raw.get('graph_line_color') if raw else None
     for key, fallback in GRAPH_COLOR_DEFAULTS.items():
