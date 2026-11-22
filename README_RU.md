@@ -18,7 +18,7 @@ SyMo — лёгкий системный монитор для трея Linux (G
 
 ## Требования
 
-Ubuntu 22.04 или новее (GNOME 42–50), архитектура x86_64.
+Ubuntu 22.04 или новее (GNOME 42–50), архитектура x86_64 или arm64.
 Для значка в трее нужен AppIndicator: в Ubuntu он есть по умолчанию, в «чистом»
 GNOME установите `gnome-shell-extension-appindicator`.
 
@@ -26,11 +26,11 @@ GNOME установите `gnome-shell-extension-appindicator`.
 
 ### Способ 1. Готовый пакет (рекомендуется)
 
-1. Скачайте `symo_<версия>_amd64.deb` со страницы [Releases](https://github.com/OlegEgoism/SyMo/releases).
+1. Скачайте `symo_<версия>_amd64.deb` (или `_arm64.deb`) со страницы [Releases](https://github.com/OlegEgoism/SyMo/releases).
 2. Установите:
 
    ```bash
-   sudo apt install ./symo_*_amd64.deb
+   sudo apt install ./symo_*.deb
    ```
 
 3. Запустите SyMo из меню приложений. Дальше он будет запускаться сам при входе в систему.
@@ -49,7 +49,7 @@ cd SyMo
 **2. Установите системные пакеты**
 
 ```bash
-sudo apt install git python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+sudo apt install git python3-venv python3-dev python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
   gir1.2-ayatanaappindicator3-0.1 build-essential patchelf
 ```
 
@@ -73,7 +73,7 @@ python3 -m venv --system-site-packages .venv
 **5. Установите**
 
 ```bash
-sudo apt install ./dist/symo_*_amd64.deb
+sudo apt install ./dist/symo_*.deb
 ```
 
 **6. Запустите** SyMo из меню приложений или командой `symo`.
@@ -82,6 +82,26 @@ sudo apt install ./dist/symo_*_amd64.deb
 
 > Пакет работает на той версии Ubuntu, где собран, и на более новых.
 
+### Способ 3. Архив без прав администратора
+
+Подходит, если нельзя ставить пакеты. SyMo ставится в `~/.local/opt/SyMo` только для вас.
+
+1. Скачайте `SyMo-<версия>-linux-x86_64.tar.gz` (или `-aarch64`) и `.sha256` со страницы
+   [Releases](https://github.com/OlegEgoism/SyMo/releases).
+2. Проверьте, распакуйте и установите:
+
+   ```bash
+   sha256sum -c SyMo-*.tar.gz.sha256
+   tar xzf SyMo-*.tar.gz
+   ./SyMo-*/install.sh
+   ```
+
+   С флагом `--no-autostart` SyMo не будет запускаться при входе.
+3. Удаление: `~/.local/opt/SyMo/uninstall-symo.sh` (с `--purge` удалятся и настройки).
+
+> Не ставьте архив и пакет одновременно. Чтобы перейти на пакет, сначала удалите
+> версию из архива, затем поставьте `.deb`.
+
 ### Запуск в режиме разработки (через `app.py`)
 
 Приложение запускается прямо из исходников, без сборки. Изменения в коде видны
@@ -89,11 +109,12 @@ sudo apt install ./dist/symo_*_amd64.deb
 
 **1. Скачайте проект** — как в шаге 1 выше.
 
-**2. Установите системные пакеты** (компилятор и `patchelf` для этого не нужны):
+**2. Установите системные пакеты** (`python3-dev` и компилятор нужны pip, чтобы собрать
+модуль `evdev` для счётчиков клавиш; `patchelf` не нужен):
 
 ```bash
-sudo apt install python3-venv python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
-  gir1.2-ayatanaappindicator3-0.1
+sudo apt install python3-venv python3-dev python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+  gir1.2-ayatanaappindicator3-0.1 build-essential
 ```
 
 **3. Создайте окружение и поставьте зависимости приложения:**
@@ -137,6 +158,8 @@ python3 -m venv --system-site-packages .venv
 ```bash
 sudo apt remove symo
 ```
+
+Если SyMo установлен из архива: `~/.local/opt/SyMo/uninstall-symo.sh`.
 
 Настройки и токены лежат в домашней папке: `~/.symo_settings.json`,
 `~/.symo_telegram.json`, `~/.symo_discord.json`. Удалите их вручную, если они не нужны.

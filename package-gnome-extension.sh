@@ -31,7 +31,8 @@ for variant in "${VARIANTS[@]}"; do
 
   uuid="$(read_metadata "$dir/metadata.json" uuid)"
   shells="$(read_metadata "$dir/metadata.json" shell-version)"
-  out="$DIST_DIR/${uuid%%@*}-launcher-${variant}.shell-extension.zip"
+  version="$(read_metadata "$dir/metadata.json" version-name)"
+  out="$DIST_DIR/${uuid%%@*}-launcher-${variant}-v${version}.shell-extension.zip"
   rm -f "$out"
 
   if command -v gnome-extensions >/dev/null 2>&1; then

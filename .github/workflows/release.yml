@@ -11,8 +11,11 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-22.04
+  build:
+    strategy:
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -39,6 +42,22 @@ jobs:
       - name: Сборка
         run: ./build.sh
 
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.runner }}
+          path: dist/*.*
+          if-no-files-found: error
+
+  # Публикует один job, чтобы две сборки не создавали релиз одновременно.
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
       - name: Публикация релиза
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
@@ -46,6 +65,9 @@ jobs:
           generate_release_notes: true
           files: |
             dist/symo_*_amd64.deb
+            dist/symo_*_arm64.deb
             dist/SyMo-*-linux-x86_64.tar.gz
             dist/SyMo-*-linux-x86_64.tar.gz.sha256
+            dist/SyMo-*-linux-aarch64.tar.gz
+            dist/SyMo-*-linux-aarch64.tar.gz.sha256
             dist/symo-launcher-gnome-*.shell-extension.zip
