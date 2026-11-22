@@ -15,6 +15,7 @@ from typing import Callable, Iterable, Optional, TYPE_CHECKING
 
 from gi.repository import GLib
 
+from app_core import secret_store
 from app_core.constants import TELEGRAM_CONFIG_FILE
 from app_core.graph_math import decimate_samples
 from app_core.graph_render import build_graph_specs, render_graph
@@ -205,7 +206,7 @@ class TelegramNotifier:
         config = read_json(TELEGRAM_CONFIG_FILE)
         if config:
             self.configure(
-                config.get('TELEGRAM_BOT_TOKEN') or '',
+                secret_store.load_secret(config, 'TELEGRAM_BOT_TOKEN', 'telegram_bot_token') or '',
                 config.get('TELEGRAM_CHAT_ID') or '',
                 config.get('enabled', False),
                 config.get('notification_interval', 3600),
@@ -214,6 +215,9 @@ class TelegramNotifier:
                 allow_remote_power=config.get('allow_remote_power', False),
                 allow_remote_screenshot=config.get('allow_remote_screenshot', False),
             )
+            # Токен из старых версий лежит в файле открытым текстом: переносим в связку ключей.
+            if config.get('TELEGRAM_BOT_TOKEN') and secret_store.available():
+                self._write_config()
 
     def save_config(self, token: str, chat_id: str, enabled: bool, interval: int,
                     screenshot_quality: str = "medium", *, allowed_user_ids: Iterable[int] = (),
@@ -221,9 +225,12 @@ class TelegramNotifier:
         self.configure(token, chat_id, enabled, interval, screenshot_quality,
                        allowed_user_ids=allowed_user_ids, allow_remote_power=allow_remote_power,
                        allow_remote_screenshot=allow_remote_screenshot)
+        return self._write_config()
+
+    def _write_config(self) -> bool:
         try:
             atomic_write_json(TELEGRAM_CONFIG_FILE, {
-                'TELEGRAM_BOT_TOKEN': self.token,
+                **secret_store.save_secret('TELEGRAM_BOT_TOKEN', 'telegram_bot_token', self.token),
                 'TELEGRAM_CHAT_ID': self.chat_id,
                 'enabled': self.enabled,
                 'notification_interval': self.notification_interval,

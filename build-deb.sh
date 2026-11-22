@@ -60,7 +60,7 @@ Architecture: $ARCH
 Maintainer: OlegEgoism <olegpustovalov220@gmail.com>
 Installed-Size: $(du -sk "$PKG" | cut -f1)
 Depends: libc6 (>= 2.35), gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1
-Recommends: gnome-shell-extension-appindicator
+Recommends: gnome-shell-extension-appindicator, gir1.2-secret-1
 Suggests: gnome-screenshot
 Section: utils
 Priority: optional

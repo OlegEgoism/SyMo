@@ -1,0 +1,13 @@
+# Обновление закреплённых версий через PR: действия GitHub (закреплены по SHA) и
+# зависимости сборки и тестов (constraints.txt, requirements-dev.txt).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5

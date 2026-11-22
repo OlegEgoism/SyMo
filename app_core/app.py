@@ -2,18 +2,14 @@ from __future__ import annotations
 
 import ctypes
 import dataclasses
-import fcntl
 import importlib
 import logging
-import os
 import signal
-import sys
 import subprocess
-import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import gi
 
@@ -24,8 +20,6 @@ from gi.repository import Gio, Gtk, GLib
 from .constants import (
     APP_ID,
     APP_NAME,
-    APP_VERSION,
-    DBUS_NAME,
     ICON_FALLBACK,
     LOG_FILE,
     SETTINGS_FILE,
@@ -35,12 +29,12 @@ from .constants import (
 )
 from . import autostart, updates
 from .alerts import AlertMonitor, show_desktop_notification
-from .click_tracker import increment_keyboard, increment_mouse, get_counts
 from .graphs import GraphWindow, build_graph_specs
 from .history import MetricsHistory
+from .input_counters import KINDS as INPUT_COUNTER_KINDS, InputCounters
 from .language import LANGUAGES
 from .localization import tr, detect_system_language, format_uptime, set_language, get_language
-from .logging_utils import MetricsLogWriter, setup_logging
+from .logging_utils import MetricsLogWriter
 from .power_control import PowerControl, action_label
 from .settings import (
     graph_line_color_rgb,
@@ -111,11 +105,6 @@ def _add_unix_signal_handler(signum: int, handler) -> None:
     GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signum, handler)
 
 POWER_MENU_KEYS = ('show_power_off', 'show_reboot', 'show_lock', 'show_timer')
-INPUT_COUNTER_KINDS = ('keyboard', 'mouse')
-
-
-def _is_wayland_session() -> bool:
-    return os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
 
 
 class SystemTrayApp:
@@ -129,8 +118,9 @@ class SystemTrayApp:
             self.save_settings()
         set_language(self.visibility_settings['language'])
         # Версия, найденная прошлой проверкой, показывается в меню сразу после запуска.
-        latest = self.visibility_settings.get('update_latest_version', '')
-        self.available_update: Optional[str] = latest if updates.is_newer(latest) else None
+        self.update_checker = updates.UpdateChecker(self.visibility_settings, self.save_settings,
+                                                    self._on_update_found)
+        self.available_update: Optional[str] = self.update_checker.known_update()
 
         self.indicator = AppInd.Indicator.new(APP_ID, ICON_FALLBACK, AppInd.IndicatorCategory.SYSTEM_SERVICES)
         self._set_indicator_icon()
@@ -152,14 +142,8 @@ class SystemTrayApp:
         self._item_display_cache: Dict[str, str] = {}
         self._last_item_update_ts: Dict[str, float] = {}
 
-        # Wayland не отдаёт приложениям чужие нажатия: глобальный хук увидел бы только
-        # окна XWayland, и счётчики показывали бы заниженные числа как настоящие.
-        self.input_counters_available = not _is_wayland_session()
-        if not self.input_counters_available:
-            logger.info("Сессия Wayland: счётчики клавиш и кликов отключены")
-        self.keyboard_listener = None
-        self.mouse_listener = None
-        self.sync_input_listeners()
+        self.input_counters = InputCounters()
+        self.input_counters.sync(self.visibility_settings)
 
         self.create_menu()
 
@@ -211,67 +195,6 @@ class SystemTrayApp:
             logger.warning("Не удалось установить иконку: %s", e)
             self.indicator.set_icon(ICON_FALLBACK)
 
-    def sync_input_listeners(self) -> None:
-        """Глобальный хук клавиатуры или мыши работает, только пока его счётчик показан в меню."""
-        for kind in INPUT_COUNTER_KINDS:
-            attr = f'{kind}_listener'
-            wanted = self.input_counters_available and self.visibility_settings.get(f'{kind}_clicks', True)
-            listener = getattr(self, attr)
-            if wanted and listener is None:
-                setattr(self, attr, self._start_input_listener(kind))
-            elif not wanted and listener is not None:
-                self._stop_input_listener(listener)
-                setattr(self, attr, None)
-        if not self.input_counters_available:
-            self._stop_input_listeners()
-
-    def _start_input_listener(self, kind: str):
-        # pynput падает уже при импорте, если нет X-дисплея: тогда отключаются
-        # только счётчики, а не всё приложение.
-        try:
-            from pynput import keyboard, mouse
-            if kind == 'keyboard':
-                listener = keyboard.Listener(on_press=self.on_key_press, daemon=True)
-            else:
-                listener = mouse.Listener(on_click=self.on_mouse_click, daemon=True)
-            listener.start()
-            return listener
-        except Exception as e:
-            logger.warning("Счётчики клавиш и кликов недоступны: %s", e)
-            self.input_counters_available = False
-            return None
-
-    @staticmethod
-    def _stop_input_listener(listener) -> None:
-        # stop() ждёт готовности хука и зависает навсегда, если поток pynput упал
-        # при запуске, поэтому главный поток GTK его не ждёт.
-        threading.Thread(target=listener.stop, name="pynput-stop", daemon=True).start()
-
-    def _stop_input_listeners(self) -> None:
-        for kind in INPUT_COUNTER_KINDS:
-            attr = f'{kind}_listener'
-            listener = getattr(self, attr)
-            if listener is not None:
-                self._stop_input_listener(listener)
-                setattr(self, attr, None)
-
-    def _input_counts(self) -> tuple[Optional[int], Optional[int]]:
-        """Значения счётчиков; None — счётчик недоступен или скрыт (хук не работает)."""
-        kbd, ms = get_counts()
-        return (kbd if self.keyboard_listener is not None else None,
-                ms if self.mouse_listener is not None else None)
-
-    def _input_counter_unavailable_text(self, title_key: str) -> str:
-        reason = " (Wayland)" if _is_wayland_session() else ""
-        return f"{tr(title_key)}: N/A{reason}"
-
-    def on_key_press(self, _key):
-        increment_keyboard()
-
-    def on_mouse_click(self, _x, _y, _button, pressed):
-        if pressed:
-            increment_mouse()
-
     @staticmethod
     def _graph_history_points(minutes: int) -> int:
         return max(1, minutes * 60 // TIME_UPDATE_SEC)
@@ -311,10 +234,10 @@ class SystemTrayApp:
         self._new_item('net', f"{tr('lan_speed')}: N/A", open_graph('net'))
         for kind in INPUT_COUNTER_KINDS:
             key = f'{kind}_clicks'
-            if self.input_counters_available:
+            if self.input_counters.available:
                 self._new_item(key, f"{tr(key)}: 0", open_graph(kind))
             else:
-                self._new_item(key, self._input_counter_unavailable_text(key), None)
+                self._new_item(key, self.input_counters.unavailable_text(key), None)
         self._new_item('uptime', f"{tr('uptime_label')}: N/A", None)
         self._new_item('battery', f"{tr('battery_label')}: N/A", open_graph('battery'))
         self._new_item('gpu', f"{tr('gpu_label')}: N/A", open_graph('gpu'))
@@ -464,12 +387,12 @@ class SystemTrayApp:
             vs[key] = sanitize_poll_interval(spin.get_value_as_int())
         if not vs['logging_enabled']:
             self.metrics_log.close()
-        self.sync_input_listeners()
+        self.input_counters.sync(self.visibility_settings)
 
         enable_updates = dialog.check_updates_check.get_active() and not vs.get('check_updates')
         vs['check_updates'] = dialog.check_updates_check.get_active()
         if enable_updates:
-            self._check_updates(force=True)
+            self.update_checker.check(force=True)
 
         want_autostart = dialog.autostart_check.get_active()
         if want_autostart != autostart.is_enabled() and not autostart.set_enabled(want_autostart):
@@ -529,39 +452,14 @@ class SystemTrayApp:
         # Флажки разрешений меняют список команд в меню Telegram.
         tel.publish_commands_async()
 
-    def _first_update_check(self) -> bool:
-        self._check_updates()
-        return GLib.SOURCE_REMOVE
+    def _on_update_found(self, version: str, first_time: bool) -> None:
+        self.available_update = version
+        self.menu_items['update'].set_label(tr('update_menu_item').format(version))
+        self.menu_items['update'].set_visible(True)
+        if first_time:
+            show_desktop_notification(tr('update_available').format(version), title=APP_NAME)
 
-    def _hourly_update_check(self) -> bool:
-        self._check_updates()
-        return GLib.SOURCE_CONTINUE
-
-    def _check_updates(self, force: bool = False) -> None:
-        """Раз в сутки спросить GitHub о новой версии; сеть — в фоновом потоке."""
-        vs = self.visibility_settings
-        due = time.time() - vs.get('update_last_check', 0.0) >= updates.CHECK_INTERVAL_SEC
-        if vs.get('check_updates') and (force or due):
-            vs['update_last_check'] = time.time()
-            threading.Thread(target=lambda: GLib.idle_add(self._on_update_checked, updates.fetch_latest_version()),
-                             name="update-check", daemon=True).start()
-
-    def _on_update_checked(self, version: Optional[str]) -> bool:
-        vs = self.visibility_settings
-        if version:
-            vs['update_latest_version'] = version
-        if version and updates.is_newer(version):
-            self.available_update = version
-            self.menu_items['update'].set_label(tr('update_menu_item').format(version))
-            self.menu_items['update'].set_visible(True)
-            if vs.get('update_notified_version') != version:
-                vs['update_notified_version'] = version
-                show_desktop_notification(tr('update_available').format(version), title=APP_NAME)
-        self.save_settings()
-        return GLib.SOURCE_REMOVE
-
-    @staticmethod
-    def _open_releases_page(*_args) -> None:
+    def _open_releases_page(self, *_args) -> None:
         try:
             Gio.AppInfo.launch_default_for_uri(updates.RELEASES_PAGE_URL, None)
         except GLib.Error as e:
@@ -660,7 +558,7 @@ class SystemTrayApp:
     def update_info(self) -> bool:
         cycle_start = time.perf_counter()
         try:
-            kbd, ms = self._input_counts()
+            kbd, ms = self.input_counters.counts()
             raw = self.metrics_sampler.snapshot(self.prev_net_data, self._metric_intervals(), kbd, ms)
             snapshot = dataclasses.replace(raw, uptime=format_uptime(raw.uptime))
             self.latest_snapshot = snapshot
@@ -782,7 +680,7 @@ class SystemTrayApp:
             item.set_visible(text is not None and bool(vs.get(key, True)))
             if text is not None:
                 self._set_label(item, text)
-        if self.input_counters_available:
+        if self.input_counters.available:
             immediate['keyboard_clicks'] = f"{tr('keyboard_clicks')}: {format_count(s.keyboard_clicks)}"
             immediate['mouse_clicks'] = f"{tr('mouse_clicks')}: {format_count(s.mouse_clicks)}"
         for key, text in immediate.items():
@@ -836,7 +734,7 @@ class SystemTrayApp:
                 pass
             self.settings_dialog = None
 
-        self._stop_input_listeners()
+        self.input_counters.stop()
         self.metrics_log.close()
         if self.application is not None:
             self.application.quit()
@@ -862,94 +760,4 @@ class SystemTrayApp:
         # Начальный снимок, чтобы графики не открывались полностью пустыми.
         self.update_info()
         GLib.timeout_add_seconds(TIME_UPDATE_SEC, self.update_info)
-        GLib.timeout_add_seconds(updates.FIRST_CHECK_DELAY_SEC, self._first_update_check)
-        # Раз в час проверяем, не прошли ли сутки с прошлой проверки.
-        GLib.timeout_add_seconds(3600, self._hourly_update_check)
-
-
-def _acquire_single_instance_lock() -> Optional[IO[str]]:
-    """Не дать запустить второй экземпляр (второй значок в трее и второй Telegram-бот)."""
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime_dir:
-        lock_path = Path(runtime_dir) / f"{APP_NAME.lower()}.lock"
-    else:
-        # Общий /tmp: файл с uid, чтобы не столкнуться с блокировкой другого пользователя.
-        lock_path = Path(tempfile.gettempdir()) / f"{APP_NAME.lower()}-{os.getuid()}.lock"
-    try:
-        lock_file = open(lock_path, "w")
-    except OSError as e:
-        logger.warning("Не удалось открыть файл блокировки %s: %s", lock_path, e)
-        # Работаем без защиты от второго экземпляра, но запускаемся.
-        return open(os.devnull, "w")
-    try:
-        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        lock_file.close()
-        return None
-    return lock_file
-
-
-def _report_missing_app_indicator() -> None:
-    set_language(load_settings(SETTINGS_FILE).get('language') or detect_system_language())
-    command = f"sudo apt install {APP_INDICATOR_PACKAGE}"
-    logger.error("Не найдена библиотека AppIndicator. Установите: %s", command)
-    dialog = Gtk.MessageDialog(message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK,
-                               text=tr('appindicator_missing').format(command))
-    dialog.set_title(APP_NAME)
-    dialog.run()
-    dialog.destroy()
-
-
-def main() -> None:
-    if "--version" in sys.argv[1:]:
-        print(f"{APP_NAME} {APP_VERSION}")
-        return
-    setup_logging()
-    logger.info("%s %s", APP_NAME, APP_VERSION)
-
-    # Gtk.Application владеет именем DBUS_NAME на сессионной шине: по нему расширение
-    # SyMo Launcher видит, что SyMo запущен. Повторный запуск (из меню, командой symo)
-    # не стартует второй экземпляр, а передаёт «activate» уже работающему — тот
-    # открывает настройки.
-    application = Gtk.Application(
-        application_id=DBUS_NAME,
-        flags=getattr(Gio.ApplicationFlags, "DEFAULT_FLAGS", Gio.ApplicationFlags.FLAGS_NONE))
-    state: Dict[str, Any] = {}
-
-    def on_startup(app: Gtk.Application) -> None:
-        # Файл блокировки — на случай второго графического сеанса того же пользователя:
-        # у него своя шина D-Bus, но второй Telegram-бот не нужен.
-        lock = _acquire_single_instance_lock()
-        if lock is None:
-            logger.info("%s уже запущен в другом сеансе", APP_NAME)
-            return
-        if AppInd is None:
-            _report_missing_app_indicator()
-            state['exit_code'] = 1
-            return
-        tray = SystemTrayApp(app)
-        state.update(lock=lock, tray=tray)
-        app.hold()
-        tray.start()
-
-    def on_activate(_app: Gtk.Application) -> None:
-        tray = state.get('tray')
-        if tray is None:
-            return
-        if not state.get('started'):
-            state['started'] = True  # первая активация — это сам запуск
-            return
-        logger.info("Повторный запуск %s: открываю настройки", APP_NAME)
-        tray.show_settings()
-
-    application.connect("startup", on_startup)
-    application.connect("activate", on_activate)
-    status = application.run([sys.argv[0]])
-    if state.get('lock'):
-        state['lock'].close()
-    if state.get('exit_code') or status:
-        raise SystemExit(state.get('exit_code') or status)
-
-
-if __name__ == "__main__":
-    main()
+        self.update_checker.start()

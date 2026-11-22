@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Optional
 
+from app_core import secret_store
 from app_core.constants import DISCORD_CONFIG_FILE
 from app_core.settings import atomic_write_json, read_json
 from notifications.base import normalize_interval, post_with_retries, truncate_message
@@ -39,16 +40,22 @@ class DiscordNotifier:
         config = read_json(DISCORD_CONFIG_FILE)
         if config:
             self.configure(
-                config.get('DISCORD_WEBHOOK_URL') or '',
+                secret_store.load_secret(config, 'DISCORD_WEBHOOK_URL', 'discord_webhook_url') or '',
                 config.get('enabled', False),
                 config.get('notification_interval', 3600),
             )
+            # Адрес webhook из старых версий лежит в файле открытым текстом: переносим в связку ключей.
+            if config.get('DISCORD_WEBHOOK_URL') and secret_store.available():
+                self._write_config()
 
     def save_config(self, webhook_url: str, enabled: bool, interval: int) -> bool:
         self.configure(webhook_url, enabled, interval)
+        return self._write_config()
+
+    def _write_config(self) -> bool:
         try:
             atomic_write_json(DISCORD_CONFIG_FILE, {
-                'DISCORD_WEBHOOK_URL': self.webhook_url,
+                **secret_store.save_secret('DISCORD_WEBHOOK_URL', 'discord_webhook_url', self.webhook_url),
                 'enabled': self.enabled,
                 'notification_interval': self.notification_interval,
             }, mode=0o600)

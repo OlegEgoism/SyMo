@@ -97,6 +97,9 @@ Use this if you can't install packages. SyMo goes to `~/.local/opt/SyMo`, for yo
    ./SyMo-*/install.sh
    ```
 
+   To confirm the file was built by the project's CI from the sources on GitHub:
+   `gh attestation verify SyMo-*.tar.gz -R OlegEgoism/SyMo`.
+
    Add `--no-autostart` if SyMo should not start at login.
 3. To uninstall: `~/.local/opt/SyMo/uninstall-symo.sh` (`--purge` also removes settings).
 
@@ -163,8 +166,10 @@ sudo apt remove symo
 
 If SyMo was installed from the archive: `~/.local/opt/SyMo/uninstall-symo.sh`.
 
-Settings and tokens stay in your home folder: `~/.symo_settings.json`,
-`~/.symo_telegram.json`, `~/.symo_discord.json`. Delete them by hand if you don't need them.
+Settings stay in your home folder: `~/.symo_settings.json`, `~/.symo_telegram.json`,
+`~/.symo_discord.json`. The bot token and webhook URL go to the system keyring
+("Passwords and Keys") when `gir1.2-secret-1` is installed, otherwise to these files,
+readable only by you. Delete the files by hand if you don't need them.
 
 ## GNOME Shell extension
 
@@ -197,6 +202,9 @@ Tests and checks (CI runs the same on every push):
 .venv/bin/python -m pytest tests
 .venv/bin/python -m pyflakes app.py app_core notifications tests
 ```
+
+Translations live in `app_core/language.py`; a test checks that every language has the same
+keys and `{}` placeholders. Fixes from native speakers are welcome.
 
 The app log goes to `~/.symo_app.log`; *Settings* → *Logging* → *Save log* saves it together with the metrics log.
 
