@@ -51,6 +51,7 @@ from .settings import (
     save_settings,
 )
 from .system_info import build_system_info_text
+from .tray_icon import MeterIcon
 from .system_usage import MetricsSampler, MetricsSnapshot, format_count, format_temp, initial_network_state
 from .ui import mapped_or_none, show_message
 from notifications import TelegramNotifier, DiscordNotifier
@@ -123,6 +124,7 @@ class SystemTrayApp:
         self.available_update: Optional[str] = self.update_checker.known_update()
 
         self.indicator = AppInd.Indicator.new(APP_ID, ICON_FALLBACK, AppInd.IndicatorCategory.SYSTEM_SERVICES)
+        self._meter_icon = MeterIcon()
         self._set_indicator_icon()
         self.indicator.set_status(AppInd.IndicatorStatus.ACTIVE)
 
@@ -341,7 +343,7 @@ class SystemTrayApp:
             self.settings_dialog.present()
             return
         from .dialogs import SettingsDialog
-        dialog = SettingsDialog(None, self.visibility_settings)
+        dialog = SettingsDialog(None, self.visibility_settings, on_replace_settings=self._replace_settings)
         self.settings_dialog = dialog
         self.power_control.set_parent_window(dialog)
         dialog.connect("response", self._on_settings_response)
@@ -370,6 +372,11 @@ class SystemTrayApp:
         vs.update(dialog.get_menu_visibility())
         vs['tray_cpu'] = dialog.tray_cpu_check.get_active()
         vs['tray_ram'] = dialog.tray_ram_check.get_active()
+        if dialog.tray_icon_combo.get_active_id() != vs.get('tray_icon'):
+            vs['tray_icon'] = dialog.tray_icon_combo.get_active_id() or 'logo'
+            self._meter_icon.reset()
+            if vs['tray_icon'] == 'logo':
+                self._set_indicator_icon()
         vs['logging_enabled'] = dialog.logging_check.get_active()
         vs['show_graph_zoom_controls'] = dialog.show_zoom_controls_check.get_active()
         for color_key, color_value in dialog.get_graph_line_colors().items():
@@ -451,6 +458,32 @@ class SystemTrayApp:
         tel.start_bot()
         # Флажки разрешений меняют список команд в меню Telegram.
         tel.publish_commands_async()
+
+    def _replace_settings(self, new: Dict[str, Any], message: str) -> None:
+        """Сброс или импорт: подменить все настройки и применить их сразу."""
+        vs = self.visibility_settings
+        # Тот же словарь: на него ссылаются проверка обновлений и окна графиков.
+        vs.clear()
+        vs.update(new)
+        if not vs.get('language'):
+            vs['language'] = detect_system_language()
+        set_language(vs['language'])
+        self.metrics_sampler.disk_path = vs['disk_path']
+        self._set_graph_history_window(vs['graph_history_minutes'])
+        self.input_counters.sync(vs)
+        if not vs['logging_enabled']:
+            self.metrics_log.close()
+        self._meter_icon.reset()
+        if vs['tray_icon'] == 'logo':
+            self._set_indicator_icon()
+        saved = self.save_settings()
+        # Окно настроек показывает старые значения — закрываем его, не применяя.
+        if self.settings_dialog is not None:
+            self.settings_dialog.response(Gtk.ResponseType.CANCEL)
+        self.create_menu()
+        for window in self.graph_windows.values():
+            window.refresh_texts()
+        show_message(tr('ok') if saved else tr('error'), message if saved else tr('settings_save_error'))
 
     def _on_update_found(self, version: str, first_time: bool) -> None:
         self.available_update = version
@@ -700,9 +733,18 @@ class SystemTrayApp:
         if countdown:
             tray_parts.append(f"⏻ {countdown}")
         tray_text = "  ".join(tray_parts)
+        if vs.get('tray_icon') == 'meter':
+            self._update_meter_icon(s)
         if self.telegram_notifier.enabled or self.discord_notifier.enabled:
             tray_text = "⤴  " + tray_text
         self._set_indicator_label(tray_text)
+
+    def _update_meter_icon(self, s: MetricsSnapshot) -> None:
+        ram_percent = s.ram_used / s.ram_total * 100.0 if s.ram_total > 0 else 0.0
+        path = self._meter_icon.update(s.cpu_usage, ram_percent, self.graph_line_color('graph_line_color_cpu'),
+                                       self.graph_line_color('graph_line_color_ram'))
+        if path is not None:
+            self.indicator.set_icon_full(str(path), f"CPU {s.cpu_usage:.0f}%, RAM {ram_percent:.0f}%")
 
     def _on_unix_signal(self) -> bool:
         self.quit()

@@ -85,3 +85,39 @@ jobs:
             dist/SyMo-*-linux-aarch64.tar.gz
             dist/SyMo-*-linux-aarch64.tar.gz.sha256
             dist/symo-launcher-gnome-*.shell-extension.zip
+
+  # Подписанный apt-репозиторий на GitHub Pages (ветка gh-pages): после подключения
+  # SyMo обновляется через apt. Работает, когда в секретах есть APT_GPG_PRIVATE_KEY;
+  # без него шаги пропускаются и релиз выходит как обычно.
+  apt-repo:
+    needs: release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.APT_GPG_PRIVATE_KEY != ''
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.APT_GPG_PRIVATE_KEY != ''
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Сборка и публикация репозитория
+        if: env.APT_GPG_PRIVATE_KEY != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          command -v dpkg-scanpackages >/dev/null || sudo apt-get install -y dpkg-dev
+          printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          ./build-apt-repo.sh dist site
+          cd site
+          git init -q -b gh-pages
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -qm "APT repository for $GITHUB_REF_NAME"
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages

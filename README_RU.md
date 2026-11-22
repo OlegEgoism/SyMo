@@ -36,6 +36,16 @@ GNOME установите `gnome-shell-extension-appindicator`.
 
 3. Запустите SyMo из меню приложений. Дальше он будет запускаться сам при входе в систему.
 
+### Способ 1а. Через apt — с обновлениями вместе с системой
+
+Подключите репозиторий SyMo один раз, дальше новые версии придут с `sudo apt upgrade`:
+
+```bash
+sudo curl -fsSLo /usr/share/keyrings/symo.gpg https://olegegoism.github.io/SyMo/symo.gpg
+echo "deb [signed-by=/usr/share/keyrings/symo.gpg] https://olegegoism.github.io/SyMo ./" | sudo tee /etc/apt/sources.list.d/symo.list
+sudo apt update && sudo apt install symo
+```
+
 ### Способ 2. Собрать из исходников
 
 Выполняйте команды по порядку.
@@ -207,6 +217,16 @@ sudo apt remove symo
 плейсхолдеры `{}`. Исправления переводов от носителей языка приветствуются.
 
 Журнал приложения пишется в `~/.symo_app.log`; «Настройки» → «Логирование» → «Сохранить лог» сохраняет его вместе с логом метрик.
+
+**apt-репозиторий.** CI публикует его на GitHub Pages при каждом релизе, если настроен ключ подписи:
+
+1. Создайте ключ (без пароля — им подписывает CI):
+   `gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key "SyMo APT <olegpustovalov220@gmail.com>" ed25519 sign never`
+2. Скопируйте его в секрет репозитория `APT_GPG_PRIVATE_KEY` (Settings → Secrets and variables → Actions):
+   `gpg --armor --export-secret-keys "SyMo APT"` — и нигде больше не храните вывод.
+3. После первого релиза включите Pages: Settings → Pages → Deploy from a branch → `gh-pages`, `/ (root)`.
+
+Без секрета этот шаг пропускается. Локально репозиторий собирает `./build-apt-repo.sh dist site`.
 
 Чтобы выпустить релиз, запушьте тег, совпадающий с `APP_VERSION`: `git tag v<версия> && git push origin v<версия>` — CI соберёт его на Ubuntu 22.04 и прикрепит все файлы из `dist/` к релизу на GitHub.
 

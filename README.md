@@ -36,6 +36,16 @@ install `gnome-shell-extension-appindicator`.
 
 3. Start SyMo from the application menu. From then on it starts by itself when you log in.
 
+### Option 1a. Via apt — updates come with the system
+
+Add the SyMo repository once; new versions then arrive with `sudo apt upgrade`:
+
+```bash
+sudo curl -fsSLo /usr/share/keyrings/symo.gpg https://olegegoism.github.io/SyMo/symo.gpg
+echo "deb [signed-by=/usr/share/keyrings/symo.gpg] https://olegegoism.github.io/SyMo ./" | sudo tee /etc/apt/sources.list.d/symo.list
+sudo apt update && sudo apt install symo
+```
+
 ### Option 2. Build from source
 
 Run the commands in this order.
@@ -207,6 +217,16 @@ Translations live in `app_core/language.py`; a test checks that every language h
 keys and `{}` placeholders. Fixes from native speakers are welcome.
 
 The app log goes to `~/.symo_app.log`; *Settings* → *Logging* → *Save log* saves it together with the metrics log.
+
+**apt repository.** CI publishes it to GitHub Pages on every release once a signing key is set up:
+
+1. Create a key (no passphrase — CI signs with it):
+   `gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key "SyMo APT <olegpustovalov220@gmail.com>" ed25519 sign never`
+2. Put it into the repository secret `APT_GPG_PRIVATE_KEY` (Settings → Secrets and variables → Actions):
+   `gpg --armor --export-secret-keys "SyMo APT"` — and keep the output nowhere else.
+3. After the first release, enable Pages: Settings → Pages → Deploy from a branch → `gh-pages`, `/ (root)`.
+
+Without the secret this step is skipped. Locally, `./build-apt-repo.sh dist site` builds the repository.
 
 To publish a release, push a tag matching `APP_VERSION`: `git tag v<version> && git push origin v<version>` — CI builds on Ubuntu 22.04 and attaches all files from `dist/` to the GitHub release.
 
