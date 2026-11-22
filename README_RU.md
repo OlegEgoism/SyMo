@@ -97,6 +97,9 @@ sudo apt install ./dist/symo_*.deb
    ./SyMo-*/install.sh
    ```
 
+   Убедиться, что файл собран CI проекта из исходников на GitHub:
+   `gh attestation verify SyMo-*.tar.gz -R OlegEgoism/SyMo`.
+
    С флагом `--no-autostart` SyMo не будет запускаться при входе.
 3. Удаление: `~/.local/opt/SyMo/uninstall-symo.sh` (с `--purge` удалятся и настройки).
 
@@ -163,8 +166,10 @@ sudo apt remove symo
 
 Если SyMo установлен из архива: `~/.local/opt/SyMo/uninstall-symo.sh`.
 
-Настройки и токены лежат в домашней папке: `~/.symo_settings.json`,
-`~/.symo_telegram.json`, `~/.symo_discord.json`. Удалите их вручную, если они не нужны.
+Настройки лежат в домашней папке: `~/.symo_settings.json`, `~/.symo_telegram.json`,
+`~/.symo_discord.json`. Токен бота и адрес webhook хранятся в связке ключей системы
+(«Пароли и ключи»), если установлен `gir1.2-secret-1`, иначе — в этих файлах с доступом
+только для вас. Удалите файлы вручную, если они не нужны.
 
 ## Расширение GNOME Shell
 
@@ -197,6 +202,9 @@ sudo apt remove symo
 .venv/bin/python -m pytest tests
 .venv/bin/python -m pyflakes app.py app_core notifications tests
 ```
+
+Переводы — в `app_core/language.py`; тест проверяет, что во всех языках одинаковые ключи и
+плейсхолдеры `{}`. Исправления переводов от носителей языка приветствуются.
 
 Журнал приложения пишется в `~/.symo_app.log`; «Настройки» → «Логирование» → «Сохранить лог» сохраняет его вместе с логом метрик.
 

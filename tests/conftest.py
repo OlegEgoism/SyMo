@@ -15,3 +15,8 @@ gi.require_version("Gtk", "3.0")
 from app_core.localization import set_language  # noqa: E402
 
 set_language("en")
+
+from app_core import secret_store  # noqa: E402
+
+# Тесты не должны писать в настоящую связку ключей пользователя.
+secret_store._SCHEMA = None
